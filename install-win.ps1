@@ -1,0 +1,49 @@
+﻿$ErrorActionPreference = "Stop"
+$Here = Split-Path -Parent $MyInvocation.MyCommand.Path
+
+Write-Host "🚀 正在安装 Antigravity Google Gemini 主题与全中文三扩展套件 (Windows)..." -ForegroundColor Cyan
+
+foreach ($cmd in @("node", "python")) {
+  if (-not (Get-Command $cmd -ErrorAction SilentlyContinue)) {
+    Write-Error "❌ 未检测到 $cmd，请先安装 Node.js (>=20) 与 Python 3 并加入 PATH。"
+  }
+}
+
+$PluginsDst  = Join-Path $env:USERPROFILE ".gemini\config\plugins"
+$AuraDataDst = Join-Path $env:USERPROFILE ".gemini\antigravity\plugin_data\aura-dashboard"
+New-Item -ItemType Directory -Force -Path $PluginsDst, $AuraDataDst | Out-Null
+
+# 1. 复制已定制好的 3 个扩展 (Aura 控制台 / 项目文件 / 文件启动器)
+foreach ($p in @("aura-dashboard", "workspace-file-tree", "file-launcher")) {
+  $src = Join-Path $Here "plugins\$p"
+  $dst = Join-Path $PluginsDst $p
+  if (Test-Path $dst) { Remove-Item -Recurse -Force $dst }
+  Copy-Item -Recurse -Force $src $dst
+}
+
+# 2. 复制 Google Gemini 四色流体流光主题与全量汉化配置
+foreach ($f in @("config.json", "custom.css", "custom.js", "i18n.override.json")) {
+  Copy-Item -Force (Join-Path $Here "plugin_data\aura-dashboard\$f") (Join-Path $AuraDataDst $f)
+}
+
+# 3. 将 sidecar.json 的 command 适配为 Windows 标准 node / python（UTF-8 无 BOM）
+$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+$targets = @(
+  @{ Path = (Join-Path $PluginsDst "aura-dashboard\sidecars\dashboard\sidecar.json"); Cmd = "node" },
+  @{ Path = (Join-Path $PluginsDst "workspace-file-tree\sidecars\panel\sidecar.json"); Cmd = "node" },
+  @{ Path = (Join-Path $PluginsDst "file-launcher\sidecars\launcher_pane\sidecar.json"); Cmd = "python" }
+)
+foreach ($t in $targets) {
+  $obj = Get-Content $t.Path -Raw -Encoding UTF8 | ConvertFrom-Json
+  $obj.command = $t.Cmd
+  [System.IO.File]::WriteAllText($t.Path, ($obj | ConvertTo-Json -Depth 10), $utf8NoBom)
+}
+Write-Host "  • 已完成 3 个扩展的 Windows 启动命令适配"
+
+# 4. 如未安装官方 Antigravity CLI (agy)，自动安装
+if (-not (Get-Command "agy" -ErrorAction SilentlyContinue)) {
+  Write-Host "  • 正在安装官方 Antigravity CLI (agy)..."
+  try { irm https://antigravity.google/cli/install.ps1 | iex } catch {}
+}
+
+Write-Host "✅ 安装完成！请完全退出 Antigravity（含右下角系统托盘图标）并重新打开即可生效。" -ForegroundColor Green

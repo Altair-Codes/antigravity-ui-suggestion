@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>文件启动器</title>
+  <link rel="stylesheet" href="/styles.css?v=2.5.0" />
+</head>
+<body>
+  <div class="codex-shell">
+    <!-- 主列表视图 -->
+    <div id="listViewWrap" style="display:flex;flex-direction:column;height:100vh;">
+      <!-- 顶部最高优先级：项目 / 左侧对话 / 本地文件夹隔离范围选择 -->
+      <div id="scopeBar" class="scope-bar" title="选择范围：优先隔离 Antigravity 项目与左侧边栏对话；支持一键复制文件 @ 引用">
+        <span class="scope-bar-label">隔离范围</span>
+        <div id="scopeWrap" class="scope-select-wrap">
+          <button id="scopeTrigger" type="button" class="scope-trigger">
+            <span class="scope-trigger-left">
+              <span id="scopeKindBadge" class="scope-kind-badge">对话</span>
+              <span id="scopeTriggerName" class="scope-trigger-name">正在加载...</span>
+            </span>
+            <span class="scope-trigger-right">
+              <span id="scopeTriggerCount">0</span>
+              <span>▾</span>
+            </span>
+          </button>
+          <div id="scopeDropdown" class="scope-dropdown hidden"></div>
+        </div>
+        <span id="scopeProjStat" class="scope-proj-stat" title="Antigravity 项目数量">项目: 0</span>
+      </div>
+
+      <!-- 导航标签与全局工具按钮 -->
+      <header class="codex-header">
+        <div class="seg-tabs">
+          <button id="tabSession" class="seg-btn active" data-tab="session" title="AI 在会话中产生、修改与读取的文档">
+            <span>本次产出</span>
+            <span id="countSession" class="seg-count">0</span>
+          </button>
+          <button id="tabSent" class="seg-btn" data-tab="sent" title="单独隔离：您发送、上传或 @引用 的文件与文件夹">
+            <span>我发送的</span>
+            <span id="countSent" class="seg-count">0</span>
+          </button>
+          <button id="tabPinned" class="seg-btn" data-tab="pinned" title="收藏保留区：防止上下文压缩吞掉重要文件">
+            <span>★ 收藏保留</span>
+            <span id="countPinned" class="seg-count">0</span>
+          </button>
+          <button id="tabRecent" class="seg-btn" data-tab="recent" title="工作区及监控目录中的最近项目文件">
+            <span>最近项目</span>
+            <span id="countRecent" class="seg-count">0</span>
+          </button>
+        </div>
+        <div class="header-right">
+          <button id="selectModeBtn" class="icon-btn" title="进入多选模式：批量收藏(防压缩)、归档、移除记录或复制引用">
+            <span>选择</span>
+          </button>
+          <button id="sortTimeBtn" class="icon-btn active" title="点击切换排序方式：时间↓ / 时间↑ / 名称 / 类型">
+            <span id="sortTimeLabel">时间↓</span>
+          </button>
+          <button id="groupToggleBtn" class="icon-btn active" title="切换分组模式：按类型 / 按项目-会话 / 不分组">
+            <span id="groupToggleLabel">分组</span>
+          </button>
+          <button id="refreshBtn" class="icon-btn" title="立即强制刷新文件列表">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="svg-icon">
+              <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+              <polyline points="21 3 21 9 15 9" />
+            </svg>
+          </button>
+          <button id="settingsBtn" class="icon-btn" title="插件设置：主题、刷新间隔、PDF渲染参数、归档目录与本机应用">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="svg-icon">
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <!-- 快捷类型分类条 -->
+      <div id="catStrip" class="cat-bar"></div>
+
+      <!-- 搜索 + 主从筛选 Popover 触发 + 独立已归档切换 -->
+      <div class="toolbar-row">
+        <div class="search-box">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="search-icon">
+            <circle cx="11" cy="11" r="7" />
+            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
+          <input id="searchInput" type="text" class="search-input" placeholder="搜索文件名、路径、后缀或类型..." autocomplete="off" />
+        </div>
+        <div class="filter-wrap">
+          <button id="filterBtn" type="button" class="toolbar-pill-btn" title="来源 × 文件类型 主从双栏复合筛选">
+            <span id="filterBtnLabel">筛选 ▾</span>
+          </button>
+        </div>
+        <button id="archivedToggleBtn" type="button" class="toolbar-pill-btn" title="切换查看已归档备份的文件列表">
+          <span>📦 已归档</span>
+          <span id="countArchivedPill" class="toolbar-pill-badge">0</span>
+        </button>
+      </div>
+
+      <!-- 激活筛选标签条（支持单个点 × 移除或一键清除） -->
+      <div id="activeFiltersBar" class="active-filters-bar hidden"></div>
+
+      <!-- 主文件列表容器 -->
+      <main id="fileListContainer" class="codex-list">
+        <div class="empty-box fl-loading-box" role="status">
+          <div class="fl-loading-head">
+            <span class="fl-spinner" aria-hidden="true"></span>
+            <span class="fl-loading-title">正在为您整理对话产出与项目文件，请稍候…</span>
+          </div>
+          <div class="fl-loading-track" aria-hidden="true"><div class="fl-loading-fill" style="width: 24%"></div></div>
+          <p class="fl-loading-eta">初次扫描预计约 1–3 秒，马上就绪</p>
+          <p class="fl-loading-hint">就绪后会自动展示，请放心稍等片刻。</p>
+        </div>
+      </main>
+
+      <!-- 底部多选批量操作栏 -->
+      <div id="compositeBar" class="composite-bar hidden">
+        <div class="comp-left">
+          <button id="selAllBtn" class="comp-btn">全选</button>
+          <span id="selCountLabel">已选 0 项</span>
+        </div>
+        <div class="comp-actions">
+          <button id="batchPinBtn" class="comp-btn" title="收藏所选文件并写入防压缩保护清单">★ 收藏</button>
+          <button id="batchArchiveBtn" class="comp-btn" title="归档复制到按日期分类的目录">📦 归档</button>
+          <button id="batchForgetBtn" class="comp-btn" title="仅从插件索引中移除记录（不删除磁盘文件）">移除记录</button>
+          <button id="batchCopyRefBtn" class="comp-btn primary" title="一键复制所选文件引用，粘贴到对话框即可发送">复制引用</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 增强内部文档/图片/PDF阅读预览视图 -->
+    <div id="internalDocView" class="internal-doc-view hidden">
+      <div class="doc-topbar">
+        <button id="docBackBtn" class="doc-back-btn" title="返回列表 (Esc)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;"><path d="m15 18-6-6 6-6"/></svg>
+          <span>返回</span>
+        </button>
+        <div class="doc-nav-btns">
+          <button id="docPrevBtn" class="doc-mini-btn" title="上一个文件 (←)">←</button>
+          <button id="docNextBtn" class="doc-mini-btn" title="下一个文件 (→)">→</button>
+        </div>
+        <div id="docTopTitle" class="doc-top-title">文档阅读</div>
+        <button id="docSidecarBtn" class="doc-mini-btn" title="在 Antigravity 右侧 fileView 分栏打开">分栏打开</button>
+        <div class="open-with-wrap">
+          <button id="docMenuBtn" class="open-with-btn">
+            <span>操作</span>
+            <svg viewBox="0 0 24 24" class="svg-caret"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <div id="docMenuDrop" class="dropdown-menu hidden"></div>
+        </div>
+      </div>
+      <!-- PDF / Office 逐页缩放与翻页工具栏 -->
+      <div id="pdfToolbar" class="pdf-toolbar hidden">
+        <div class="pdf-ctrl-group">
+          <button id="pdfPrevPageBtn" class="doc-mini-btn" title="上一页">‹ 上页</button>
+          <span id="pdfPageIndicator" class="pdf-page-indicator">1 / 1</span>
+          <button id="pdfNextPageBtn" class="doc-mini-btn" title="下一页">下页 ›</button>
+        </div>
+        <div class="pdf-ctrl-group">
+          <button id="pdfZoomOutBtn" class="doc-mini-btn" title="缩小">－</button>
+          <button id="pdfZoomFitBtn" class="doc-mini-btn" title="适应宽度">适宽</button>
+          <button id="pdfZoomInBtn" class="doc-mini-btn" title="放大">＋</button>
+          <span id="pdfZoomLabel" class="pdf-page-indicator">100%</span>
+        </div>
+      </div>
+      <div id="docBanner" class="pdf-banner hidden"></div>
+      <div id="docContent" class="doc-content"></div>
+    </div>
+
+    <!-- 主从来源 × 类型双栏筛选弹层 -->
+    <div id="filterPopover" class="filter-popover hidden">
+      <div id="filterSourceCol" class="filter-col"></div>
+      <div id="filterTypeCol" class="filter-col"></div>
+    </div>
+
+    <!-- 全局浮动自适应可滚动上下文菜单（行内菜单与整行右键共用） -->
+    <div id="globalContextMenu" class="fl-context-menu hidden" role="menu"></div>
+
+    <!-- 永久删除安全二次确认弹窗 -->
+    <div id="deleteConfirmModal" class="modal-backdrop hidden">
+      <div class="modal-card" style="width:min(390px, 100%);">
+        <div class="modal-head">
+          <span>确认永久删除文件</span>
+          <button id="delModalCloseBtn" class="doc-mini-btn">✕</button>
+        </div>
+        <div class="modal-body">
+          <p style="margin:0;line-height:1.5;">
+            此操作将从<strong>磁盘物理删除</strong>以下文件，并同步清除只读镜像、收藏、归档及对话引用记录，<strong>删除后无法恢复</strong>：
+          </p>
+          <div id="delTargetPathBox" class="settings-path-note" style="padding:8px;background:var(--bg-base);border:1px solid var(--border-subtle);border-radius:6px;"></div>
+          <p style="margin:0;font-size:11px;color:var(--fg-muted);">
+            如果只想将其从列表中移除而不删除磁盘文件，请点击“取消”，并使用右键菜单中的“移除记录”或“取消归档”。
+          </p>
+        </div>
+        <div class="modal-foot">
+          <button id="delCancelBtn" class="btn-secondary">取消</button>
+          <button id="delConfirmBtn" class="btn-danger">确认永久删除</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 设置面板弹窗 -->
+    <div id="settingsModal" class="modal-backdrop hidden">
+      <div class="modal-card">
+        <div class="modal-head">
+          <span>File Launcher 设置</span>
+          <button id="settingsCloseBtn" class="doc-mini-btn">✕</button>
+        </div>
+        <div id="settingsBody" class="modal-body"></div>
+        <div class="modal-foot">
+          <button id="settingsCancelBtn" class="btn-secondary">关闭</button>
+          <button id="settingsSaveBtn" class="btn-primary">保存设置</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="toastMsg" class="toast-msg hidden"></div>
+  </div>
+
+  <script src="/app.js?v=2.4.1"></script>
+</body>
+</html>

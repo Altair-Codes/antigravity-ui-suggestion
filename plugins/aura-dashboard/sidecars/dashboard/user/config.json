@@ -1,0 +1,102 @@
+{
+  "enabled": true,
+  "channel": "auto",
+  "language": "default",
+  "presets": {
+    "light": "high-contrast",
+    "dark": "claude-dark"
+  },
+  "typography": {
+    "primarySans": "Anthropic Serif Web",
+    "customPrimarySans": "",
+    "fallbackSans": "LXGW WenKai Medium",
+    "customFallbackSans": "",
+    "mono": "Anthropic Mono",
+    "customMono": "",
+    "fontSize": 15
+  },
+  "composer": {
+    "collinear": true,
+    "waxSeal": true,
+    "hideArrows": true
+  },
+  "telemetry": {
+    "enabled": true,
+    "interval": 2000
+  },
+  "modules": {
+    "deadlockHealer": true,
+    "customCss": true,
+    "customJs": true,
+    "activitySummary": true
+  },
+  "advanced": {
+    "labsDeveloperMode": true,
+    "releaseChannel": "stable",
+    "isByoa": false,
+    "cde": false,
+    "isEnterpriseDisabled": false,
+    "hostVariant": "default",
+    "enableMicrophone": false,
+    "experimentalFlags": {
+      "enable-developer-mode": true,
+      "enable-context-usage-indicator": true,
+      "enable-resource-manager": true,
+      "enable-split-view": true,
+      "enable-code-search-palette": true,
+      "enable-trajectory-debug-tools": true,
+      "labs-autonomous-mode": true,
+      "labs-inline-actions": true,
+      "configure-artifact-width": true,
+      "enable-bottom-terminal-panel": true,
+      "enable-file-explorer-tab": true,
+      "enable-pane-selection-actions": true,
+      "enable-input-autocomplete": true,
+      "enable-file-viewer-keyboard-navigation": true,
+      "enable-conversation-groups": true,
+      "enable-conversation-forking": true,
+      "enable-fork-at-historical-step": true,
+      "enable-fork-in-new-worktree": true,
+      "enable-conversation-scoped-permissions": true,
+      "enable-auto-permission-preset": true,
+      "enable-github-decorator": true,
+      "enable-browser-subagent-webview": true,
+      "enable-browser-subagent-webview-script": true,
+      "enable-browser-subagent-webview-ux": true,
+      "enable-battle-mode": true,
+      "enable-battle-contrib-variants": true,
+      "enable-conversation-selection-quoting": true,
+      "enable-paste-text-as-snippet": true,
+      "enable-thought-editing": true,
+      "enable-thought-steering-from-selection": true,
+      "enable-conversation-navigator": true,
+      "enable-conversation-navigator-chapter-titles": true,
+      "enable-conversation-search-v2": true,
+      "enable-text-transitions": true,
+      "markdown-virtualize-long-documents": true,
+      "markdown-table-v2": true,
+      "enable-enhanced-file-viewer": true,
+      "enable-notebook-rendering": true,
+      "enable-pdf-viewer": true,
+      "enable-context-menu-system": true,
+      "enable-browser-element-picker": true,
+      "enable-composer-connectors": true,
+      "enable-upload-html-artifact-to-drive": true,
+      "enable-sidecar-pill-auto-open": true
+    }
+  },
+  "themeVars": {},
+  "selectors": {
+    "inputBoxId": "antigravity.agentSidePanelInputBox",
+    "branchPillInBox": "#antigravity\\.agentSidePanelInputBox [data-testid=\"branch-pill-trigger\"], [id=\"antigravity.agentSidePanelInputBox\"] [data-testid=\"branch-pill-trigger\"], #antigravity\\.agentSidePanelInputBox [aria-label*=\"Select project\" i], [id=\"antigravity.agentSidePanelInputBox\"] [aria-label*=\"Select project\" i]",
+    "homeGreeting": "[data-testid=\"home-greeting\"]",
+    "excludeI18n": "code, pre, kbd, samp, textarea, input, style, script, noscript, [contenteditable=\"true\"], .prose, .markdown, [class*=\"chat-message\"], [class*=\"group/file-title\"], [data-testid=\"conversation-row-sidebar\"] a[href^=\"/c/\"], [data-testid=\"conversation-row-sidebar\"] span.truncate, #ag-live-metrics-pill, #ag-live-metrics-tooltip"
+  },
+  "allowedOrigins": [
+    "http://127.0.0.1",
+    "https://127.0.0.1",
+    "http://localhost",
+    "https://localhost",
+    "vscode-file://"
+  ]
+}
