@@ -13,7 +13,7 @@
     el.textContent = msg;
     el.classList.add("show");
     clearTimeout(window.__ag_suite_toast_timer);
-    window.__ag_suite_toast_timer = setTimeout(() => el.classList.remove("show"), 3200);
+    window.__ag_suite_toast_timer = setTimeout(() => el.classList.remove("show"), 3600);
   }
 
   function injectStyles() {
@@ -42,6 +42,7 @@
         display: flex;
         align-items: center;
         gap: 8px;
+        flex-wrap: wrap;
       }
       .ag-suite-sub {
         font-size: 11.5px;
@@ -63,11 +64,6 @@
         color: #81c995;
         border-color: rgba(129, 201, 149, 0.28);
       }
-      .ag-suite-badge.warn {
-        background: rgba(251, 188, 5, 0.14);
-        color: #fdd663;
-        border-color: rgba(253, 214, 99, 0.30);
-      }
       .ag-suite-btn {
         appearance: none;
         border: 1px solid rgba(138, 180, 248, 0.30);
@@ -78,7 +74,7 @@
         font-size: 12px;
         font-weight: 500;
         cursor: pointer;
-        transition: background-color 140ms ease, border-color 140ms ease, transform 120ms ease;
+        transition: background-color 140ms ease, border-color 140ms ease;
       }
       .ag-suite-btn:hover {
         background: rgba(66, 133, 244, 0.24);
@@ -115,7 +111,6 @@
         padding: 5px 11px;
         border-radius: 6px;
         cursor: pointer;
-        transition: all 140ms ease;
       }
       .ag-suite-seg button.active {
         background: rgba(138, 180, 248, 0.18);
@@ -129,11 +124,24 @@
         gap: 12px;
         padding: 10px 0;
         border-top: 1px solid var(--aura-border, rgba(255,255,255,0.06));
+        flex-wrap: wrap;
       }
       .ag-suite-row:first-of-type { border-top: none; padding-top: 2px; }
+      .ag-suite-select, .ag-suite-input {
+        background: rgba(255,255,255,0.05);
+        border: 1px solid var(--aura-border, rgba(255,255,255,0.12));
+        color: var(--aura-fg, #e3e3e3);
+        border-radius: 8px;
+        padding: 5px 9px;
+        font-size: 12px;
+        outline: none;
+      }
+      .ag-suite-select:focus, .ag-suite-input:focus {
+        border-color: #8ab4f8;
+      }
       .ag-quota-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
         gap: 10px;
       }
       .ag-quota-item {
@@ -147,12 +155,17 @@
         border-radius: 999px;
         background: rgba(255,255,255,0.08);
         overflow: hidden;
-        margin: 7px 0 5px;
+        margin: 5px 0 4px;
       }
       .ag-quota-bar-fill {
         height: 100%;
         border-radius: 999px;
         transition: width 300ms ease;
+      }
+      .ag-quota-subrow {
+        margin-top: 8px;
+        padding-top: 6px;
+        border-top: 1px dashed rgba(255,255,255,0.07);
       }
       .ag-update-banner {
         display: none;
@@ -169,6 +182,14 @@
         font-size: 12px;
         color: var(--aura-fg, #e3e3e3);
         line-height: 1.55;
+      }
+      .ag-as-controls {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-top: 8px;
+        width: 100%;
       }
     `;
     document.head.appendChild(style);
@@ -188,31 +209,47 @@
     return `${mins}分钟后重置`;
   }
 
+  function pctColor(pct) {
+    if (pct === null || pct === undefined) return "#8ab4f8";
+    return pct <= 15 ? "#f28b82" : pct <= 40 ? "#fdd663" : "#81c995";
+  }
+
   function renderQuotaCard(container, quotaData) {
     const body = container.querySelector("#ag-quota-body");
     if (!body) return;
     if (!quotaData || !Array.isArray(quotaData.groups) || quotaData.groups.length === 0) {
-      body.innerHTML = `<div class="ag-suite-sub">正在等待宿主窗口同步当前账号模型额度池（约数秒内自动更新）...</div>`;
+      body.innerHTML = `<div class="ag-suite-sub">正在等待宿主窗口同步当前账号每周 / 5小时额度池（数秒内自动更新）...</div>`;
       return;
     }
     const itemsHtml = quotaData.groups
       .map((g) => {
-        const pct = typeof g.pct === "number" ? Math.max(0, Math.min(100, Math.round(g.pct))) : null;
-        const color = pct === null ? "#8ab4f8" : pct <= 15 ? "#f28b82" : pct <= 40 ? "#fdd663" : "#81c995";
-        const resetTxt = formatResetTime(g.resetTime);
+        const wPct = typeof g.weeklyPct === "number" ? Math.max(0, Math.min(100, Math.round(g.weeklyPct))) : (typeof g.pct === "number" ? Math.round(g.pct) : null);
+        const hPct = typeof g.fiveHourPct === "number" ? Math.max(0, Math.min(100, Math.round(g.fiveHourPct))) : null;
+        const wCol = pctColor(wPct);
+        const hCol = pctColor(hPct);
+        const wReset = formatResetTime(g.weeklyResetTime || g.resetTime);
+        const hReset = formatResetTime(g.fiveHourResetTime);
         return `
           <div class="ag-quota-item">
-            <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;">
-              <span style="font-size:12px;font-weight:600;color:var(--aura-fg,#e3e3e3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${g.label}</span>
-              <span style="font-size:12px;font-weight:700;color:${color};font-family:var(--aura-font-mono);">${pct !== null ? pct + "%" : "--"}</span>
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;margin-bottom:4px;">
+              <span style="font-size:12.5px;font-weight:600;color:var(--aura-fg,#e3e3e3);">${g.label}</span>
+              <span style="font-size:11px;color:var(--aura-muted,#9aa0a6);">每周限额 <b style="color:${wCol};font-family:var(--aura-font-mono);font-size:12px;">${wPct !== null ? wPct + "%" : "--"}</b></span>
             </div>
             <div class="ag-quota-bar-bg">
-              <div class="ag-quota-bar-fill" style="width:${pct !== null ? pct : 0}%;background:${color};"></div>
+              <div class="ag-quota-bar-fill" style="width:${wPct !== null ? wPct : 0}%;background:${wCol};"></div>
             </div>
-            <div class="ag-suite-sub" style="display:flex;justify-content:space-between;font-size:10.5px;">
-              <span>${g.modelsCount ? g.modelsCount + " 个模型" : "共享额度池"}</span>
-              <span>${resetTxt || ""}</span>
-            </div>
+            <div class="ag-suite-sub" style="font-size:10.5px;">${wReset || "每周共享配额"}</div>
+            ${hPct !== null ? `
+              <div class="ag-quota-subrow">
+                <div style="display:flex;justify-content:space-between;align-items:center;font-size:10.5px;color:var(--aura-muted,#9aa0a6);">
+                  <span>5小时限额</span>
+                  <span><b style="color:${hCol};font-family:var(--aura-font-mono);">${hPct}%</b>${hReset ? " · " + hReset : ""}</span>
+                </div>
+                <div class="ag-quota-bar-bg" style="height:4px;">
+                  <div class="ag-quota-bar-fill" style="width:${hPct}%;background:${hCol};"></div>
+                </div>
+              </div>
+            ` : ""}
           </div>
         `;
       })
@@ -247,17 +284,16 @@
 
       <div class="ag-suite-card" id="ag-suite-quota-card">
         <div class="ag-suite-head">
-          <div>
-            <div class="ag-suite-title">
-              <span>模型额度池与快捷 CLI</span>
-              <span id="ag-quota-meta" class="ag-suite-badge">Gemini 套件</span>
-            </div>
+          <div class="ag-suite-title">
+            <span>模型额度池与快捷 CLI</span>
+            <span id="ag-quota-meta" class="ag-suite-badge">Gemini 套件</span>
+            <span id="ag-autoswitch-overview-badge" class="ag-suite-badge ok" style="display:none;">自动切号已开启</span>
           </div>
           <div style="display:flex;gap:8px;align-items:center;">
             <button id="ag-btn-overview-cli" class="ag-suite-btn" type="button">&gt;_ 启动 agy CLI</button>
           </div>
         </div>
-        <div id="ag-quota-body"><div class="ag-suite-sub">正在读取模型额度池...</div></div>
+        <div id="ag-quota-body"><div class="ag-suite-sub">正在读取每周 / 5小时模型额度池...</div></div>
       </div>
     `;
     view.insertBefore(wrap, view.firstChild);
@@ -268,7 +304,8 @@
       try {
         const res = await apiFetch("/api/launch-cli", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
         const j = await res.json();
-        showToast(j.ok ? `已拉起终端 (${j.terminal || "CLI"})：${j.cwd}` : `启动失败：${j.error || "未知错误"}`);
+        const proxyTip = j.proxyApplied ? "（已自动注入系统代理）" : "";
+        showToast(j.ok ? `已拉起 ${j.terminal || "CLI"}${proxyTip}：${j.cwd}` : `启动失败：${j.error || "未知错误"}`);
       } catch {
         showToast("启动 CLI 请求失败");
       } finally {
@@ -300,10 +337,10 @@
       <div class="ag-suite-head">
         <div>
           <div class="ag-suite-title">
-            <span>防幻觉护栏、CLI 与 GitHub 更新中心</span>
+            <span>防幻觉护栏、CLI、周额度自动切号与更新中心</span>
             <span id="ag-settings-ver-badge" class="ag-suite-badge">v--</span>
           </div>
-          <div class="ag-suite-sub">全平台原生插件规则（macOS Intel / Apple Silicon / Windows 通用，热更新不丢失）</div>
+          <div class="ag-suite-sub">全平台原生插件增强（macOS Intel / Apple Silicon / Windows 通用，热更新不丢失）</div>
         </div>
       </div>
 
@@ -320,9 +357,35 @@
       </div>
 
       <div class="ag-suite-row">
+        <div style="flex:1;min-width:220px;">
+          <div style="font-size:12.5px;font-weight:600;color:var(--aura-fg,#e3e3e3);">每周额度阈值自动切号</div>
+          <div id="ag-autoswitch-desc" class="ag-suite-sub">当监控模型池的每周剩余额度 ≤ 设定百分比时，自动切换至已保存的另一个账号并重载窗口</div>
+        </div>
+        <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--aura-fg,#e3e3e3);cursor:pointer;">
+          <input id="ag-as-enabled" type="checkbox" style="accent-color:#8ab4f8;width:15px;height:15px;cursor:pointer;" />
+          <span>启用自动切号</span>
+        </label>
+        <div class="ag-as-controls">
+          <span class="ag-suite-sub">监控池：</span>
+          <select id="ag-as-pool" class="ag-suite-select">
+            <option value="gemini-weekly">Gemini 核心池 (每周限额)</option>
+            <option value="3p-weekly">Claude / GPT (每周限额)</option>
+            <option value="gemini-argon-wtu-weekly">Gemini 4 Argon (每周限额)</option>
+            <option value="any-weekly">任意模型池 (最紧缩每周限额)</option>
+          </select>
+          <span class="ag-suite-sub">剩余 ≤</span>
+          <input id="ag-as-threshold" class="ag-suite-input" type="number" min="1" max="95" value="10" style="width:62px;text-align:center;" />
+          <span class="ag-suite-sub">% 自动切号</span>
+          <button id="ag-as-save-btn" class="ag-suite-btn" type="button">保存策略</button>
+          <button id="ag-as-save-acct-btn" class="ag-suite-btn ghost" type="button">+ 保存当前账号到备选库</button>
+        </div>
+        <div id="ag-autoswitch-vault-info" class="ag-suite-sub" style="width:100%;margin-top:2px;">正在读取账号备选库...</div>
+      </div>
+
+      <div class="ag-suite-row">
         <div>
-          <div style="font-size:12.5px;font-weight:600;color:var(--aura-fg,#e3e3e3);">&gt;_ agy CLI 快捷启动器</div>
-          <div id="ag-cli-status-desc" class="ag-suite-sub">正在检测本机 agy CLI 路径...</div>
+          <div style="font-size:12.5px;font-weight:600;color:var(--aura-fg,#e3e3e3);">&gt;_ agy CLI 快捷启动器（自动继承当前账号与系统代理）</div>
+          <div id="ag-cli-status-desc" class="ag-suite-sub">正在检测本机 agy CLI 路径与系统代理...</div>
         </div>
         <button id="ag-btn-settings-cli" class="ag-suite-btn" type="button">打开 CLI 终端</button>
       </div>
@@ -374,13 +437,78 @@
     });
     syncGuardrails();
 
-    // 2. CLI 路径探测与启动
+    // 2. 每周额度阈值自动切号绑定
+    const asEnabled = card.querySelector("#ag-as-enabled");
+    const asPool = card.querySelector("#ag-as-pool");
+    const asThreshold = card.querySelector("#ag-as-threshold");
+    const asVaultInfo = card.querySelector("#ag-autoswitch-vault-info");
+    const syncAutoSwitch = async () => {
+      try {
+        const res = await apiFetch("/api/suite-auto-switch", { method: "GET" });
+        const j = await res.json();
+        if (!j.ok) return;
+        const cfg = j.config || {};
+        asEnabled.checked = Boolean(cfg.enabled);
+        asPool.value = cfg.poolKey || "gemini-weekly";
+        asThreshold.value = String(cfg.thresholdPct ?? 10);
+        const overviewBadge = document.getElementById("ag-autoswitch-overview-badge");
+        if (overviewBadge) {
+          overviewBadge.style.display = cfg.enabled ? "inline-flex" : "none";
+          overviewBadge.textContent = `周额度 ≤ ${cfg.thresholdPct}% 自动切号`;
+        }
+        const accts = (j.accounts || []).map((a) => a.email).join("、");
+        const lastLog = cfg.lastSwitchAt
+          ? ` · 上次自动切号：${cfg.lastSwitchFrom || ""} → ${cfg.lastSwitchTo || ""}（${cfg.lastTriggerReason || ""}）`
+          : "";
+        asVaultInfo.textContent =
+          j.vaultCount >= 2
+            ? `备选库已有 ${j.vaultCount} 个账号（${accts}），已满足自动切号条件${lastLog}`
+            : `备选库当前有 ${j.vaultCount} 个账号${accts ? "（" + accts + "）" : ""}。提示：请先点右侧「+ 保存当前账号到备选库」，再登录另一个账号并保存一次，即可全自动循环切号！${lastLog}`;
+      } catch {}
+    };
+    const saveAutoSwitch = async () => {
+      const payload = {
+        enabled: asEnabled.checked,
+        poolKey: asPool.value,
+        thresholdPct: Math.max(1, Math.min(95, parseInt(asThreshold.value, 10) || 10))
+      };
+      const res = await apiFetch("/api/suite-auto-switch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const j = await res.json();
+      if (j.ok) {
+        showToast(payload.enabled ? `已启用周额度自动切号（剩余 ≤ ${payload.thresholdPct}% 时自动切换）` : "已关闭周额度自动切号");
+        syncAutoSwitch();
+      }
+    };
+    asEnabled.addEventListener("change", saveAutoSwitch);
+    card.querySelector("#ag-as-save-btn")?.addEventListener("click", saveAutoSwitch);
+    card.querySelector("#ag-as-save-acct-btn")?.addEventListener("click", async (e) => {
+      const b = e.currentTarget;
+      b.disabled = true;
+      try {
+        const res = await apiFetch("/api/accounts/save-current", { method: "POST" });
+        const j = await res.json();
+        showToast(j.ok ? `已将当前账号保存至备选库` : `保存失败：${j.error || ""}`);
+        syncAutoSwitch();
+      } finally {
+        b.disabled = false;
+      }
+    });
+    syncAutoSwitch();
+
+    // 3. CLI 路径与代理探测 + 启动
     const cliDesc = card.querySelector("#ag-cli-status-desc");
     (async () => {
       try {
         const res = await apiFetch("/api/launch-cli", { method: "GET" });
         const j = await res.json();
-        cliDesc.textContent = j.installed ? `已就绪：${j.cliPath}` : "未检测到 agy CLI，请先安装官方 agy CLI";
+        const proxyStr = j.proxy && (j.proxy.HTTPS_PROXY || j.proxy.HTTP_PROXY || j.proxy.ALL_PROXY);
+        cliDesc.textContent = j.installed
+          ? `已就绪：${j.cliPath}${proxyStr ? " · 自动注入代理：" + proxyStr : " · 直连模式"}`
+          : "未检测到 agy CLI，请先安装官方 agy CLI";
       } catch {}
     })();
     card.querySelector("#ag-btn-settings-cli")?.addEventListener("click", async (e) => {
@@ -389,13 +517,14 @@
       try {
         const res = await apiFetch("/api/launch-cli", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
         const j = await res.json();
-        showToast(j.ok ? `已启动 ${j.terminal || "CLI"}` : `启动失败：${j.error || ""}`);
+        const proxyTip = j.proxyApplied ? "（已自动注入系统代理）" : "";
+        showToast(j.ok ? `已启动 ${j.terminal || "CLI"}${proxyTip}` : `启动失败：${j.error || ""}`);
       } finally {
         b.disabled = false;
       }
     });
 
-    // 3. GitHub 更新检查与一键更新
+    // 4. GitHub 更新检查与一键更新
     const applyUpdateUi = (info) => {
       if (!info || !info.ok) return;
       const verBadge = card.querySelector("#ag-settings-ver-badge");

@@ -54,6 +54,19 @@ const GUARDRAIL_TEMPLATES = {
 `
 };
 
+const DEFAULT_AUTO_SWITCH_CFG = {
+  enabled: false,
+  poolKey: "gemini-weekly",
+  thresholdPct: 10,
+  cooldownMinutes: 10,
+  reloadWindow: true,
+  lastSwitchAt: 0,
+  lastSwitchFrom: "",
+  lastSwitchTo: "",
+  lastTriggerReason: "",
+  accountQuotaSnapshots: {}
+};
+
 function compareSemver(a, b) {
   const pa = String(a || "0.0.0").replace(/^v/i, "").split(".").map((n) => parseInt(n, 10) || 0);
   const pb = String(b || "0.0.0").replace(/^v/i, "").split(".").map((n) => parseInt(n, 10) || 0);
@@ -78,6 +91,82 @@ function readJsonSafe(filePath, fallback) {
 function writeJsonSafe(filePath, obj) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, JSON.stringify(obj, null, 2) + "\n", "utf8");
+}
+
+function detectSystemProxyEnv() {
+  const proxy = {
+    HTTP_PROXY: process.env.HTTP_PROXY || process.env.http_proxy || "",
+    HTTPS_PROXY: process.env.HTTPS_PROXY || process.env.https_proxy || "",
+    ALL_PROXY: process.env.ALL_PROXY || process.env.all_proxy || "",
+    NO_PROXY: process.env.NO_PROXY || process.env.no_proxy || "127.0.0.1,localhost,::1"
+  };
+
+  if (proxy.HTTPS_PROXY || proxy.HTTP_PROXY || proxy.ALL_PROXY) {
+    if (!proxy.HTTPS_PROXY && proxy.HTTP_PROXY) proxy.HTTPS_PROXY = proxy.HTTP_PROXY;
+    if (!proxy.HTTP_PROXY && proxy.HTTPS_PROXY) proxy.HTTP_PROXY = proxy.HTTPS_PROXY;
+    return proxy;
+  }
+
+  if (process.platform === "darwin") {
+    try {
+      const out = execFileSync("scutil", ["--proxy"], { encoding: "utf8", timeout: 2000, stdio: ["ignore", "pipe", "ignore"] });
+      const getVal = (key) => {
+        const m = out.match(new RegExp(`^\\s*${key}\\s*:\\s*(.+)$`, "m"));
+        return m ? m[1].trim() : "";
+      };
+      if (getVal("HTTPSEnable") === "1") {
+        const host = getVal("HTTPSProxy");
+        const port = getVal("HTTPSPort");
+        if (host && port) proxy.HTTPS_PROXY = `http://${host}:${port}`;
+      }
+      if (getVal("HTTPEnable") === "1") {
+        const host = getVal("HTTPProxy");
+        const port = getVal("HTTPPort");
+        if (host && port) proxy.HTTP_PROXY = `http://${host}:${port}`;
+      }
+      if (getVal("SOCKSEnable") === "1") {
+        const host = getVal("SOCKSProxy");
+        const port = getVal("SOCKSPort");
+        if (host && port) proxy.ALL_PROXY = `socks5://${host}:${port}`;
+      }
+      if (!proxy.HTTPS_PROXY && proxy.HTTP_PROXY) proxy.HTTPS_PROXY = proxy.HTTP_PROXY;
+      if (!proxy.HTTP_PROXY && proxy.HTTPS_PROXY) proxy.HTTP_PROXY = proxy.HTTPS_PROXY;
+    } catch {}
+  } else if (process.platform === "win32") {
+    try {
+      const out = execFileSync(
+        "reg",
+        ["query", "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings"],
+        { encoding: "utf8", timeout: 2000, windowsHide: true, stdio: ["ignore", "pipe", "ignore"] }
+      );
+      const enMatch = out.match(/ProxyEnable\s+REG_DWORD\s+0x([0-9a-f]+)/i);
+      const srvMatch = out.match(/ProxyServer\s+REG_SZ\s+(.+)/i);
+      if (enMatch && parseInt(enMatch[1], 16) === 1 && srvMatch) {
+        const raw = srvMatch[1].trim();
+        let httpP = "";
+        let httpsP = "";
+        if (raw.includes("=")) {
+          for (const part of raw.split(";")) {
+            const [k, v] = part.split("=");
+            if (!k || !v) continue;
+            const kl = k.trim().toLowerCase();
+            const val = v.trim();
+            if (kl === "https") httpsP = /^https?:\/\//i.test(val) ? val : `http://${val}`;
+            if (kl === "http") httpP = /^https?:\/\//i.test(val) ? val : `http://${val}`;
+            if (kl === "socks") proxy.ALL_PROXY = /^socks/i.test(val) ? val : `socks5://${val}`;
+          }
+        } else {
+          const normalized = /^https?:\/\//i.test(raw) ? raw : `http://${raw}`;
+          httpP = normalized;
+          httpsP = normalized;
+        }
+        proxy.HTTP_PROXY = httpP || httpsP;
+        proxy.HTTPS_PROXY = httpsP || httpP;
+      }
+    } catch {}
+  }
+
+  return proxy;
 }
 
 function resolveAgyCliPath() {
@@ -145,23 +234,75 @@ function launchAgyCli({ cwd, model, dryRun } = {}) {
     extraArgs.push("--model", model.trim());
   }
 
+  const proxyEnv = detectSystemProxyEnv();
+
   if (dryRun) {
-    return { ok: true, dryRun: true, installed: true, cliPath, cwd: targetCwd, platform: process.platform, args: extraArgs };
+    return {
+      ok: true,
+      dryRun: true,
+      installed: true,
+      cliPath,
+      cwd: targetCwd,
+      platform: process.platform,
+      args: extraArgs,
+      proxy: proxyEnv
+    };
   }
 
   try {
     if (process.platform === "darwin") {
+      const exportsList = [
+        "TERM=xterm-256color",
+        "COLORTERM=truecolor",
+        `NO_PROXY=${shellEscapePosix(proxyEnv.NO_PROXY)}`,
+        `no_proxy=${shellEscapePosix(proxyEnv.NO_PROXY)}`
+      ];
+      if (proxyEnv.HTTP_PROXY) {
+        exportsList.push(`HTTP_PROXY=${shellEscapePosix(proxyEnv.HTTP_PROXY)}`, `http_proxy=${shellEscapePosix(proxyEnv.HTTP_PROXY)}`);
+      }
+      if (proxyEnv.HTTPS_PROXY) {
+        exportsList.push(`HTTPS_PROXY=${shellEscapePosix(proxyEnv.HTTPS_PROXY)}`, `https_proxy=${shellEscapePosix(proxyEnv.HTTPS_PROXY)}`);
+      }
+      if (proxyEnv.ALL_PROXY) {
+        exportsList.push(`ALL_PROXY=${shellEscapePosix(proxyEnv.ALL_PROXY)}`, `all_proxy=${shellEscapePosix(proxyEnv.ALL_PROXY)}`);
+      }
       const cliInvoke = [shellEscapePosix(cliPath), ...extraArgs.map(shellEscapePosix)].join(" ");
-      const shellCmd = `cd ${shellEscapePosix(targetCwd)} && export TERM=xterm-256color COLORTERM=truecolor && unset NO_COLOR && ${cliInvoke}`;
+      const shellCmd = `cd ${shellEscapePosix(targetCwd)} && export ${exportsList.join(" ")} && unset NO_COLOR && ${cliInvoke}`;
       const script = `tell application "Terminal"\n  activate\n  do script "${appleScriptEscape(shellCmd)}"\nend tell`;
       const child = spawn("osascript", ["-e", script], { detached: true, stdio: "ignore" });
       child.unref();
-      return { ok: true, installed: true, terminal: "Terminal.app", cliPath, cwd: targetCwd };
+      return {
+        ok: true,
+        installed: true,
+        terminal: "Terminal.app",
+        cliPath,
+        cwd: targetCwd,
+        proxyApplied: Boolean(proxyEnv.HTTPS_PROXY || proxyEnv.HTTP_PROXY || proxyEnv.ALL_PROXY),
+        proxyUrl: proxyEnv.HTTPS_PROXY || proxyEnv.HTTP_PROXY || proxyEnv.ALL_PROXY || ""
+      };
     }
 
     if (process.platform === "win32") {
+      const childEnv = { ...process.env, TERM: "xterm-256color", COLORTERM: "truecolor", NO_PROXY: proxyEnv.NO_PROXY };
+      delete childEnv.NO_COLOR;
+      const setLines = [];
+      if (proxyEnv.HTTP_PROXY) {
+        childEnv.HTTP_PROXY = proxyEnv.HTTP_PROXY;
+        childEnv.http_proxy = proxyEnv.HTTP_PROXY;
+        setLines.push(`set "HTTP_PROXY=${proxyEnv.HTTP_PROXY}"`);
+      }
+      if (proxyEnv.HTTPS_PROXY) {
+        childEnv.HTTPS_PROXY = proxyEnv.HTTPS_PROXY;
+        childEnv.https_proxy = proxyEnv.HTTPS_PROXY;
+        setLines.push(`set "HTTPS_PROXY=${proxyEnv.HTTPS_PROXY}"`);
+      }
+      if (proxyEnv.ALL_PROXY) {
+        childEnv.ALL_PROXY = proxyEnv.ALL_PROXY;
+        childEnv.all_proxy = proxyEnv.ALL_PROXY;
+        setLines.push(`set "ALL_PROXY=${proxyEnv.ALL_PROXY}"`);
+      }
       const argsStr = extraArgs.map((a) => `"${a.replace(/"/g, "")}"`).join(" ");
-      const cmdInner = `"${cliPath}"${argsStr ? " " + argsStr : ""}`;
+      const cmdInner = [...setLines, `"${cliPath}"${argsStr ? " " + argsStr : ""}`].join(" && ");
       let hasWt = false;
       try {
         execFileSync("where.exe", ["wt.exe"], { timeout: 1500, stdio: "ignore" });
@@ -170,21 +311,39 @@ function launchAgyCli({ cwd, model, dryRun } = {}) {
       if (hasWt) {
         const child = spawn("wt.exe", ["-d", targetCwd, "cmd", "/k", cmdInner], {
           cwd: targetCwd,
+          env: childEnv,
           detached: true,
           stdio: "ignore",
           windowsHide: false
         });
         child.unref();
-        return { ok: true, installed: true, terminal: "Windows Terminal", cliPath, cwd: targetCwd };
+        return {
+          ok: true,
+          installed: true,
+          terminal: "Windows Terminal",
+          cliPath,
+          cwd: targetCwd,
+          proxyApplied: Boolean(proxyEnv.HTTPS_PROXY || proxyEnv.HTTP_PROXY || proxyEnv.ALL_PROXY),
+          proxyUrl: proxyEnv.HTTPS_PROXY || proxyEnv.HTTP_PROXY || proxyEnv.ALL_PROXY || ""
+        };
       }
       const child = spawn("cmd.exe", ["/c", "start", "", "/D", targetCwd, "cmd.exe", "/k", cmdInner], {
         cwd: targetCwd,
+        env: childEnv,
         detached: true,
         stdio: "ignore",
         windowsHide: false
       });
       child.unref();
-      return { ok: true, installed: true, terminal: "cmd.exe", cliPath, cwd: targetCwd };
+      return {
+        ok: true,
+        installed: true,
+        terminal: "cmd.exe",
+        cliPath,
+        cwd: targetCwd,
+        proxyApplied: Boolean(proxyEnv.HTTPS_PROXY || proxyEnv.HTTP_PROXY || proxyEnv.ALL_PROXY),
+        proxyUrl: proxyEnv.HTTPS_PROXY || proxyEnv.HTTP_PROXY || proxyEnv.ALL_PROXY || ""
+      };
     }
 
     return { ok: false, installed: true, error: `暂不支持在 ${process.platform} 自动拉起终端` };
@@ -194,13 +353,19 @@ function launchAgyCli({ cwd, model, dryRun } = {}) {
 }
 
 async function fetchRemoteVersionJson() {
-  // 1. 优先尝试 curl（自动遵循 macOS/Windows 系统代理与环境变量代理，4 秒超时）
+  const proxyEnv = detectSystemProxyEnv();
+  const childEnv = { ...process.env };
+  if (proxyEnv.HTTPS_PROXY) childEnv.HTTPS_PROXY = proxyEnv.HTTPS_PROXY;
+  if (proxyEnv.HTTP_PROXY) childEnv.HTTP_PROXY = proxyEnv.HTTP_PROXY;
+  if (proxyEnv.ALL_PROXY) childEnv.ALL_PROXY = proxyEnv.ALL_PROXY;
+
+  // 1. 优先尝试 curl（自动注入检测到的系统代理，4 秒超时）
   try {
     const out = await new Promise((resolve, reject) => {
       execFile(
         process.platform === "win32" ? "curl.exe" : "curl",
         ["-fsSL", "--max-time", "4", `${REMOTE_VERSION_URL}?t=${Date.now()}`],
-        { encoding: "utf8", timeout: 4500, windowsHide: true },
+        { encoding: "utf8", env: childEnv, timeout: 4500, windowsHide: true },
         (err, stdout) => {
           if (err) reject(err);
           else resolve(stdout);
@@ -226,10 +391,19 @@ async function fetchRemoteVersionJson() {
   return null;
 }
 
-export function initSuiteExtensions({ dataDir, pluginRoot, reloadAll, panelAddonPath }) {
+export function initSuiteExtensions({
+  dataDir,
+  pluginRoot,
+  reloadAll,
+  panelAddonPath,
+  accountVault,
+  recordAccountSwitch,
+  reloadHostWindow
+}) {
   const rulesPath = path.join(pluginRoot, "rules", "AGENTS.md");
   const versionFile = path.join(dataDir, "suite-version.json");
   const updateStateFile = path.join(dataDir, "suite-update-state.json");
+  const autoSwitchFile = path.join(dataDir, "suite-auto-switch.json");
 
   let cachedQuota = null;
   let cachedRemote = null;
@@ -273,8 +447,167 @@ export function initSuiteExtensions({ dataDir, pluginRoot, reloadAll, panelAddon
     }
   }
 
+  function loadAutoSwitchConfig() {
+    const raw = readJsonSafe(autoSwitchFile, {});
+    return {
+      ...DEFAULT_AUTO_SWITCH_CFG,
+      ...(raw && typeof raw === "object" ? raw : {}),
+      thresholdPct: Math.max(1, Math.min(95, Number(raw?.thresholdPct ?? DEFAULT_AUTO_SWITCH_CFG.thresholdPct) || 10)),
+      cooldownMinutes: Math.max(1, Math.min(180, Number(raw?.cooldownMinutes ?? DEFAULT_AUTO_SWITCH_CFG.cooldownMinutes) || 10))
+    };
+  }
+
+  function saveAutoSwitchConfig(patch) {
+    const cur = loadAutoSwitchConfig();
+    const next = {
+      ...cur,
+      ...(typeof patch?.enabled === "boolean" ? { enabled: patch.enabled } : {}),
+      ...(typeof patch?.poolKey === "string" && patch.poolKey.trim() ? { poolKey: patch.poolKey.trim() } : {}),
+      ...(patch?.thresholdPct !== undefined ? { thresholdPct: Math.max(1, Math.min(95, Math.round(Number(patch.thresholdPct) || 10))) } : {}),
+      ...(patch?.cooldownMinutes !== undefined ? { cooldownMinutes: Math.max(1, Math.min(180, Math.round(Number(patch.cooldownMinutes) || 10))) } : {}),
+      ...(typeof patch?.reloadWindow === "boolean" ? { reloadWindow: patch.reloadWindow } : {})
+    };
+    writeJsonSafe(autoSwitchFile, next);
+    return next;
+  }
+
+  function getVaultSnapshot() {
+    if (!accountVault || typeof accountVault.listAccounts !== "function") {
+      return { available: false, currentEmail: "", accounts: [] };
+    }
+    try {
+      const res = accountVault.listAccounts();
+      const accounts = Array.isArray(res?.accounts) ? res.accounts : (Array.isArray(res) ? res : []);
+      const currentEmail = res?.currentEmail || res?.activeEmail || accounts.find((a) => a.isCurrent || a.active)?.email || "";
+      return { available: true, currentEmail, accounts };
+    } catch {
+      return { available: false, currentEmail: "", accounts: [] };
+    }
+  }
+
+  function extractMonitoredWeeklyPct(quotaPayload, poolKey) {
+    const groups = Array.isArray(quotaPayload?.groups) ? quotaPayload.groups : [];
+    const weeklyEntries = [];
+    for (const g of groups) {
+      const wPct = typeof g.weeklyPct === "number" ? g.weeklyPct : (typeof g.pct === "number" ? g.pct : null);
+      if (wPct === null) continue;
+      weeklyEntries.push({
+        bucketId: g.weeklyBucketId || g.key || "",
+        key: g.key || "",
+        label: g.label || g.key || "",
+        pct: wPct
+      });
+    }
+    if (weeklyEntries.length === 0) return null;
+    if (poolKey === "any-weekly") {
+      weeklyEntries.sort((a, b) => a.pct - b.pct);
+      return weeklyEntries[0];
+    }
+    const exact = weeklyEntries.find((e) => e.bucketId === poolKey || e.key === poolKey);
+    if (exact) return exact;
+    if (poolKey === "gemini-weekly") return weeklyEntries.find((e) => /gemini/i.test(e.bucketId) && !/argon/i.test(e.bucketId)) || weeklyEntries[0];
+    if (poolKey === "3p-weekly") return weeklyEntries.find((e) => /3p|claude|gpt/i.test(e.bucketId) || /claude|gpt/i.test(e.label)) || null;
+    if (poolKey === "gemini-argon-wtu-weekly") return weeklyEntries.find((e) => /argon/i.test(e.bucketId) || /argon/i.test(e.label)) || null;
+    return null;
+  }
+
+  function evaluateAutoSwitch(quotaPayload) {
+    const cfg = loadAutoSwitchConfig();
+    const curEmail = String(quotaPayload?.email || "").trim();
+
+    // 记录当前账号各模型池的周额度快照，方便切号时优先挑余额高的账号
+    if (curEmail && Array.isArray(quotaPayload?.groups)) {
+      const snap = { ...(cfg.accountQuotaSnapshots || {}) };
+      const emailSnap = { updatedAt: Date.now() };
+      for (const g of quotaPayload.groups) {
+        const k = g.weeklyBucketId || g.key;
+        if (k && typeof g.weeklyPct === "number") emailSnap[k] = g.weeklyPct;
+      }
+      snap[curEmail] = emailSnap;
+      cfg.accountQuotaSnapshots = snap;
+      writeJsonSafe(autoSwitchFile, cfg);
+    }
+
+    if (!cfg.enabled || !accountVault || typeof accountVault.switchAccount !== "function") {
+      return { triggered: false };
+    }
+
+    const monitored = extractMonitoredWeeklyPct(quotaPayload, cfg.poolKey);
+    if (!monitored || monitored.pct > cfg.thresholdPct) {
+      return { triggered: false, monitored };
+    }
+
+    const now = Date.now();
+    const cooldownMs = cfg.cooldownMinutes * 60 * 1000;
+    if (cfg.lastSwitchAt && now - cfg.lastSwitchAt < cooldownMs) {
+      return { triggered: false, reason: "cooldown", monitored };
+    }
+
+    const vault = getVaultSnapshot();
+    const activeEmail = curEmail || vault.currentEmail;
+    const candidates = (vault.accounts || []).filter((a) => a && a.email && a.email.toLowerCase() !== String(activeEmail || "").toLowerCase());
+    if (candidates.length === 0) {
+      return { triggered: false, reason: "no_candidate_accounts", monitored };
+    }
+
+    // 优先挑选已知周额度最高的候选账号（若未知则优先尝试）
+    const snaps = cfg.accountQuotaSnapshots || {};
+    candidates.sort((a, b) => {
+      const sa = snaps[a.email]?.[monitored.bucketId];
+      const sb = snaps[b.email]?.[monitored.bucketId];
+      const va = typeof sa === "number" ? sa : 101;
+      const vb = typeof sb === "number" ? sb : 101;
+      return vb - va;
+    });
+
+    const target = candidates[0];
+    // 若候选账号在近 30 分钟内也已知 <= 阈值，则避免死循环来回切换
+    const targetSnap = snaps[target.email];
+    if (targetSnap && now - (targetSnap.updatedAt || 0) < 30 * 60 * 1000) {
+      const targetPct = targetSnap[monitored.bucketId];
+      if (typeof targetPct === "number" && targetPct <= cfg.thresholdPct) {
+        return { triggered: false, reason: "all_candidates_below_threshold", monitored };
+      }
+    }
+
+    try {
+      // 切换前先自动保存当前账号最新凭据
+      if (typeof accountVault.saveCurrentAccount === "function") {
+        try { accountVault.saveCurrentAccount(); } catch {}
+      }
+      const switched = accountVault.switchAccount(target.email);
+      if (typeof recordAccountSwitch === "function") {
+        try { recordAccountSwitch(switched.email || target.email); } catch {}
+      }
+      const reason = `${monitored.label} 每周剩余 ${monitored.pct}% ≤ ${cfg.thresholdPct}%`;
+      writeJsonSafe(autoSwitchFile, {
+        ...cfg,
+        lastSwitchAt: now,
+        lastSwitchFrom: activeEmail,
+        lastSwitchTo: switched.email || target.email,
+        lastTriggerReason: reason
+      });
+
+      if (cfg.reloadWindow && typeof reloadHostWindow === "function") {
+        setTimeout(() => {
+          Promise.resolve(reloadHostWindow()).catch(() => {});
+        }, 1200);
+      }
+
+      return {
+        triggered: true,
+        fromEmail: activeEmail,
+        toEmail: switched.email || target.email,
+        reason,
+        monitored
+      };
+    } catch (err) {
+      return { triggered: false, error: err instanceof Error ? err.message : String(err), monitored };
+    }
+  }
+
   function getLocalVersionInfo() {
-    const fallback = { version: "1.2.0", publishedAt: "", repoUrl: REPO_URL, highlights: [] };
+    const fallback = { version: "1.2.1", publishedAt: "", repoUrl: REPO_URL, highlights: [] };
     const fromData = readJsonSafe(versionFile, null);
     if (fromData && fromData.version) return { ...fallback, ...fromData };
     const fromSeed = readJsonSafe(path.join(pluginRoot, "sidecars", "dashboard", "user", "suite-version.json"), null);
@@ -288,7 +621,7 @@ export function initSuiteExtensions({ dataDir, pluginRoot, reloadAll, panelAddon
     const now = Date.now();
 
     if (!force && cachedRemote && now - lastRemoteCheckAt < UPDATE_CACHE_TTL_MS) {
-      // use memory cache
+      // memory cache hit
     } else if (!force && state.lastRemote && now - (state.lastCheckedAt || 0) < UPDATE_CACHE_TTL_MS) {
       cachedRemote = state.lastRemote;
       lastRemoteCheckAt = state.lastCheckedAt;
@@ -331,9 +664,15 @@ export function initSuiteExtensions({ dataDir, pluginRoot, reloadAll, panelAddon
     }
     updateInProgress = true;
     const tmpDir = path.join(os.tmpdir(), `ag-ui-sync-${Date.now()}`);
+    const proxyEnv = detectSystemProxyEnv();
+    const gitEnv = { ...process.env };
+    if (proxyEnv.HTTPS_PROXY) gitEnv.HTTPS_PROXY = proxyEnv.HTTPS_PROXY;
+    if (proxyEnv.HTTP_PROXY) gitEnv.HTTP_PROXY = proxyEnv.HTTP_PROXY;
+    if (proxyEnv.ALL_PROXY) gitEnv.ALL_PROXY = proxyEnv.ALL_PROXY;
+
     try {
       await new Promise((resolve, reject) => {
-        execFile("git", ["clone", "--depth", "1", REPO_GIT_URL, tmpDir], { timeout: 45000, windowsHide: true }, (err, stdout, stderr) => {
+        execFile("git", ["clone", "--depth", "1", REPO_GIT_URL, tmpDir], { env: gitEnv, timeout: 45000, windowsHide: true }, (err, stdout, stderr) => {
           if (err) reject(new Error(stderr || err.message));
           else resolve(stdout);
         });
@@ -345,7 +684,7 @@ export function initSuiteExtensions({ dataDir, pluginRoot, reloadAll, panelAddon
         : [path.join(tmpDir, "install-mac.sh")];
 
       const output = await new Promise((resolve, reject) => {
-        execFile(cmd, args, { cwd: tmpDir, timeout: 60000, windowsHide: true }, (err, stdout, stderr) => {
+        execFile(cmd, args, { cwd: tmpDir, env: gitEnv, timeout: 60000, windowsHide: true }, (err, stdout, stderr) => {
           if (err) reject(new Error((stderr || stdout || err.message).slice(-600)));
           else resolve(stdout || "");
         });
@@ -401,13 +740,30 @@ export function initSuiteExtensions({ dataDir, pluginRoot, reloadAll, panelAddon
       ...payload,
       updatedAt: Date.now()
     };
-    return { ok: true, updatedAt: cachedQuota.updatedAt };
+    const autoSwitch = evaluateAutoSwitch(cachedQuota);
+    return { ok: true, updatedAt: cachedQuota.updatedAt, autoSwitch };
   }
 
   function getQuotaCache() {
     return {
       ok: true,
       data: cachedQuota
+    };
+  }
+
+  function getAutoSwitchState() {
+    const cfg = loadAutoSwitchConfig();
+    const vault = getVaultSnapshot();
+    return {
+      ok: true,
+      config: cfg,
+      vaultCount: vault.accounts.length,
+      currentEmail: vault.currentEmail || cachedQuota?.email || "",
+      accounts: vault.accounts.map((a) => ({
+        email: a.email,
+        isCurrent: Boolean(a.isCurrent || a.active || (vault.currentEmail && a.email === vault.currentEmail)),
+        lastWeekly: cfg.accountQuotaSnapshots?.[a.email] || null
+      }))
     };
   }
 
@@ -453,7 +809,8 @@ export function initSuiteExtensions({ dataDir, pluginRoot, reloadAll, panelAddon
     try {
       if (urlObj.pathname === "/api/launch-cli" && req.method === "GET") {
         const cliPath = resolveAgyCliPath();
-        result = { ok: true, installed: Boolean(cliPath), cliPath, platform: process.platform };
+        const proxy = detectSystemProxyEnv();
+        result = { ok: true, installed: Boolean(cliPath), cliPath, platform: process.platform, proxy };
       } else if (urlObj.pathname === "/api/launch-cli" && req.method === "POST") {
         result = launchAgyCli(bodyObj);
       } else if (urlObj.pathname === "/api/suite-guardrails" && req.method === "GET") {
@@ -468,6 +825,11 @@ export function initSuiteExtensions({ dataDir, pluginRoot, reloadAll, panelAddon
         result = getQuotaCache();
       } else if (urlObj.pathname === "/api/suite-quota" && req.method === "POST") {
         result = updateQuotaCache(bodyObj);
+      } else if (urlObj.pathname === "/api/suite-auto-switch" && req.method === "GET") {
+        result = getAutoSwitchState();
+      } else if (urlObj.pathname === "/api/suite-auto-switch" && req.method === "POST") {
+        saveAutoSwitchConfig(bodyObj);
+        result = getAutoSwitchState();
       } else {
         status = 404;
       }
@@ -501,7 +863,8 @@ export function initSuiteExtensions({ dataDir, pluginRoot, reloadAll, panelAddon
 
     Oe.api("/api/launch-cli", () => {
       const cliPath = resolveAgyCliPath();
-      return { ok: true, installed: Boolean(cliPath), cliPath, platform: process.platform };
+      const proxy = detectSystemProxyEnv();
+      return { ok: true, installed: Boolean(cliPath), cliPath, platform: process.platform, proxy };
     }, "GET");
     Oe.api("/api/launch-cli", (e) => launchAgyCli(parseBody(e)), "POST");
 
@@ -510,6 +873,12 @@ export function initSuiteExtensions({ dataDir, pluginRoot, reloadAll, panelAddon
 
     Oe.api("/api/suite-quota", () => getQuotaCache(), "GET");
     Oe.api("/api/suite-quota", (e) => updateQuotaCache(parseBody(e)), "POST");
+
+    Oe.api("/api/suite-auto-switch", () => getAutoSwitchState(), "GET");
+    Oe.api("/api/suite-auto-switch", (e) => {
+      saveAutoSwitchConfig(parseBody(e));
+      return getAutoSwitchState();
+    }, "POST");
 
     Oe.api("/suite-panel-addon.js", () => {
       const src = panelAddonPath && fs.existsSync(panelAddonPath)

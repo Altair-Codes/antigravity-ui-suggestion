@@ -2,8 +2,8 @@
  * user/custom.js — 用户专属前端扩展钩子（Google Gemini 套件增强）
  * 包含：
  *  1. 动态模型档位文本汉化修复与禁用 File Launcher 自动弹窗
- *  2. 顶栏极简 >_ CLI 快捷启动按钮（自动识别当前项目目录并拉起本机 agy CLI）
- *  3. 原生 GetUserStatus 模型额度池实时同步至 Aura 控制台
+ *  2. 顶栏极简 >_ CLI 快捷启动按钮（自动识别当前项目目录与系统代理并拉起本机 agy CLI）
+ *  3. 原生 RetrieveUserQuotaSummary + GetUserStatus 周额度/5h额度同步 & 触发自动切号提示
  *  4. GitHub 扩展套件新版本非侵入式提醒气泡（支持一键更新 / 忽略此版本）
  */
 if (!window.__ag_i18n_dynamic_fix_v1) {
@@ -48,7 +48,7 @@ try {
     el.dataset.err = isError ? "1" : "0";
     el.classList.add("show");
     clearTimeout(window.__ag_suite_notice_timer);
-    window.__ag_suite_notice_timer = setTimeout(() => el.classList.remove("show"), 3200);
+    window.__ag_suite_notice_timer = setTimeout(() => el.classList.remove("show"), 4200);
   }
 
   // 1. 顶栏注入极简 >_ CLI 快捷启动按钮
@@ -62,14 +62,13 @@ try {
     const btn = document.createElement("button");
     btn.id = "ag-suite-cli-btn";
     btn.type = "button";
-    btn.title = "在当前项目目录一键启动 agy CLI 终端";
+    btn.title = "在当前项目目录一键启动 agy CLI 终端（自动继承当前账号与系统代理）";
     btn.innerHTML = `<span class="ag-cli-chevron">&gt;_</span><span>CLI</span>`;
     btn.addEventListener("click", async () => {
       const b = window.__AG_SUITE_BRIDGE__;
       if (!b) return;
       btn.disabled = true;
       try {
-        // 尽量从地址栏或打开的文件 tab 中推断当前工作区目录
         let cwd = "";
         try {
           const tabParam = new URLSearchParams(location.search).get("tab") || "";
@@ -86,7 +85,8 @@ try {
         });
         const j = await res.json();
         if (j.ok) {
-          showMiniNotice(`已打开 ${j.terminal || "CLI"} · ${j.cwd}`, false);
+          const proxyTag = j.proxyApplied ? ` · 已自动注入代理` : "";
+          showMiniNotice(`已打开 ${j.terminal || "CLI"}${proxyTag} · ${j.cwd}`, false);
         } else {
           showMiniNotice(j.error || "启动 agy CLI 失败", true);
         }
@@ -99,72 +99,102 @@ try {
     anchor.parentElement.insertBefore(btn, anchor);
   }
 
-  // 2. 通过 Antigravity 原生 GetUserStatus 同步模型额度池到 Aura 控制台
+  // 2. 通过 Antigravity 原生 RetrieveUserQuotaSummary + GetUserStatus 同步每周/5h额度并评估自动切号
   async function syncNativeModelQuotas() {
     const b = window.__AG_SUITE_BRIDGE__;
     const csrf = window.__APP_CONFIG__ && window.__APP_CONFIG__.csrfToken;
     if (!b || !csrf) return;
     try {
-      const resp = await fetch("/exa.language_server_pb.LanguageServerService/GetUserStatus", {
+      const reqOpts = {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "X-Codeium-Csrf-Token": csrf
         },
         body: JSON.stringify({})
-      });
-      if (!resp.ok) return;
-      const json = await resp.json();
-      const us = json && json.userStatus;
-      if (!us) return;
-      const configs = (us.cascadeModelConfigData && us.cascadeModelConfigData.clientModelConfigs) || [];
-      const bucketMap = new Map();
+      };
+      const [statusRes, summaryRes] = await Promise.allSettled([
+        fetch("/exa.language_server_pb.LanguageServerService/GetUserStatus", reqOpts).then((r) => (r.ok ? r.json() : null)),
+        fetch("/exa.language_server_pb.LanguageServerService/RetrieveUserQuotaSummary", reqOpts).then((r) => (r.ok ? r.json() : null))
+      ]);
 
-      for (const c of configs) {
-        const label = String(c.label || "");
-        const rem = c.quotaInfo && typeof c.quotaInfo.remainingFraction === "number" ? c.quotaInfo.remainingFraction : null;
-        const resetTime = (c.quotaInfo && c.quotaInfo.resetTime) || "";
-        if (rem === null) continue;
+      const us = (statusRes.status === "fulfilled" && statusRes.value && statusRes.value.userStatus) || {};
+      const summaryGroups =
+        (summaryRes.status === "fulfilled" && summaryRes.value && summaryRes.value.response && summaryRes.value.response.groups) || [];
 
-        let groupKey = "Other";
-        let groupLabel = "其他模型";
-        if (/Argon/i.test(label)) {
-          groupKey = "argon";
-          groupLabel = "Gemini 4 Argon";
-        } else if (/Carbon/i.test(label)) {
-          groupKey = "carbon";
-          groupLabel = "Gemini 4 Carbon";
-        } else if (/Claude|GPT/i.test(label)) {
-          groupKey = "claude_gpt";
-          groupLabel = "Claude / GPT";
-        } else if (/Gemini|Orchestrator/i.test(label)) {
-          groupKey = "gemini_core";
-          groupLabel = "Gemini 核心池";
+      let groups = [];
+      if (Array.isArray(summaryGroups) && summaryGroups.length > 0) {
+        groups = summaryGroups.map((g) => {
+          const buckets = Array.isArray(g.buckets) ? g.buckets : [];
+          const weekly = buckets.find((bk) => bk.window === "weekly" || /weekly/i.test(bk.bucketId || ""));
+          const fiveH = buckets.find((bk) => bk.window === "5h" || /5h/i.test(bk.bucketId || ""));
+          const weeklyPct = weekly && typeof weekly.remainingFraction === "number" ? Math.round(weekly.remainingFraction * 100) : null;
+          const fiveHourPct = fiveH && typeof fiveH.remainingFraction === "number" ? Math.round(fiveH.remainingFraction * 100) : null;
+          let cnLabel = g.displayName || "模型池";
+          if (/Gemini Models/i.test(cnLabel)) cnLabel = "Gemini 核心池";
+          else if (/Claude and GPT/i.test(cnLabel)) cnLabel = "Claude / GPT";
+          return {
+            key: (weekly && weekly.bucketId) || (fiveH && fiveH.bucketId) || cnLabel,
+            label: cnLabel,
+            description: g.description || "",
+            weeklyBucketId: (weekly && weekly.bucketId) || "",
+            weeklyPct,
+            weeklyResetTime: (weekly && weekly.resetTime) || "",
+            fiveHourPct,
+            fiveHourResetTime: (fiveH && fiveH.resetTime) || "",
+            pct: weeklyPct !== null ? weeklyPct : fiveHourPct,
+            resetTime: (weekly && weekly.resetTime) || (fiveH && fiveH.resetTime) || ""
+          };
+        });
+      } else {
+        // 回退至 GetUserStatus 的单模型额度聚合
+        const configs = (us.cascadeModelConfigData && us.cascadeModelConfigData.clientModelConfigs) || [];
+        const bucketMap = new Map();
+        for (const c of configs) {
+          const label = String(c.label || "");
+          const rem = c.quotaInfo && typeof c.quotaInfo.remainingFraction === "number" ? c.quotaInfo.remainingFraction : null;
+          const resetTime = (c.quotaInfo && c.quotaInfo.resetTime) || "";
+          if (rem === null) continue;
+          let groupKey = "gemini-weekly";
+          let groupLabel = "Gemini 核心池";
+          if (/Argon/i.test(label)) {
+            groupKey = "gemini-argon-wtu-weekly";
+            groupLabel = "Gemini 4 Argon";
+          } else if (/Claude|GPT/i.test(label)) {
+            groupKey = "3p-weekly";
+            groupLabel = "Claude / GPT";
+          }
+          const pct = Math.round(rem * 100);
+          const prev = bucketMap.get(groupKey);
+          if (!prev) {
+            bucketMap.set(groupKey, { key: groupKey, weeklyBucketId: groupKey, label: groupLabel, weeklyPct: pct, pct, resetTime, weeklyResetTime: resetTime });
+          } else if (pct < prev.pct) {
+            prev.pct = pct;
+            prev.weeklyPct = pct;
+          }
         }
-
-        const prev = bucketMap.get(groupKey);
-        const pct = Math.round(rem * 100);
-        if (!prev) {
-          bucketMap.set(groupKey, { key: groupKey, label: groupLabel, pct, resetTime, modelsCount: 1 });
-        } else {
-          prev.modelsCount += 1;
-          if (pct < prev.pct) prev.pct = pct;
-          if (!prev.resetTime && resetTime) prev.resetTime = resetTime;
-        }
+        groups = Array.from(bucketMap.values());
       }
 
-      const order = ["gemini_core", "claude_gpt", "argon", "carbon", "Other"];
-      const groups = order.map((k) => bucketMap.get(k)).filter(Boolean);
       const payload = {
         email: us.email || "",
         planName: (us.planStatus && us.planStatus.planInfo && us.planStatus.planInfo.planName) || (us.userTier && us.userTier.name) || "",
         groups
       };
-      await fetch(`${b.origin}/api/suite-quota`, {
+      const postRes = await fetch(`${b.origin}/api/suite-quota`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-Suite-Token": b.token },
         body: JSON.stringify(payload)
       });
+      if (postRes.ok) {
+        const postJson = await postRes.json();
+        if (postJson && postJson.autoSwitch && postJson.autoSwitch.triggered) {
+          showMiniNotice(
+            `⚡ ${postJson.autoSwitch.reason}，已自动切换账号至 ${postJson.autoSwitch.toEmail}`,
+            false
+          );
+        }
+      }
     } catch {}
   }
 
@@ -236,7 +266,6 @@ try {
     } catch {}
   }
 
-  // 防重复启动定时器
   if (!window.__ag_suite_host_timers_v1) {
     window.__ag_suite_host_timers_v1 = true;
     ensureCliButton();
