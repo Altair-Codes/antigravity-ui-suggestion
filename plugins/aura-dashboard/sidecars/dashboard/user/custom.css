@@ -307,7 +307,8 @@ html[data-ag-collinear="on"] #antigravity\.agentSidePanelInputBox button[data-te
 
 /* ============================================================================
  * 5. 左侧对话轮次导航栏：macOS 阶梯型波浪刻度条 (Stepped Wave Turn Navigator)
- *    选中/悬停项居中放大变亮，上下相邻 1~4 级依次阶梯递减
+ *    常态未悬停时全部整齐收起为 5px 短刻度（不放大）；
+ *    仅在鼠标悬停/滑过刻度时，当前项与上下相邻 1~4 级瞬间阶梯放大（60ms 零延迟跟手）
  * ============================================================================ */
 [data-testid="conversation-navigator"],
 div:has(> [data-testid="conversation-navigator"]) {
@@ -315,7 +316,7 @@ div:has(> [data-testid="conversation-navigator"]) {
 }
 
 [data-testid="conversation-navigator"] ol {
-  opacity: 0.92 !important;
+  opacity: 0.75 !important;
   align-items: flex-start !important;
   width: 100% !important;
 }
@@ -325,16 +326,26 @@ div:has(> [data-testid="conversation-navigator"]) {
   opacity: 1 !important;
 }
 
+/* 常态未悬停：所有刻度统一 5px 短横线，绝不自动放大 */
 [data-testid="conversation-navigator"] ol > li {
   width: 36px !important;
   --ag-nav-bar-w: 5px;
   --ag-nav-bar-h: 2px;
-  --ag-nav-bar-bg: rgba(255, 255, 255, 0.22);
-  --ag-nav-bar-shadow: none;
+  --ag-nav-bar-bg: rgba(255, 255, 255, 0.24);
+}
+
+/* 常态下当前所在轮次仅略微提亮，保持 5px 不放大 */
+[data-testid="conversation-navigator"] ol:not(:hover) > li:has(> button[data-active="true"]) {
+  --ag-nav-bar-w: 5px;
+  --ag-nav-bar-bg: rgba(255, 255, 255, 0.52);
 }
 
 html:not([data-ag-color-scheme="dark"]) [data-testid="conversation-navigator"] ol > li {
-  --ag-nav-bar-bg: rgba(31, 31, 31, 0.20);
+  --ag-nav-bar-bg: rgba(31, 31, 31, 0.22);
+}
+
+html:not([data-ag-color-scheme="dark"]) [data-testid="conversation-navigator"] ol:not(:hover) > li:has(> button[data-active="true"]) {
+  --ag-nav-bar-bg: rgba(31, 31, 31, 0.55);
 }
 
 [data-testid="conversation-navigator"] button[data-testid="conversation-navigator-turn"],
@@ -349,121 +360,67 @@ html:not([data-ag-color-scheme="dark"]) [data-testid="conversation-navigator"] o
   width: var(--ag-nav-bar-w, 5px) !important;
   height: var(--ag-nav-bar-h, 2px) !important;
   border-radius: 999px !important;
-  background-color: var(--ag-nav-bar-bg, rgba(255, 255, 255, 0.22)) !important;
-  box-shadow: var(--ag-nav-bar-shadow, none) !important;
+  background-color: var(--ag-nav-bar-bg, rgba(255, 255, 255, 0.24)) !important;
+  box-shadow: none !important;
   scale: 1 !important;
-  transform: none !important;
+  transform: translateZ(0) !important;
+  will-change: width, background-color !important;
   transition:
-    width 170ms cubic-bezier(0.22, 1, 0.36, 1),
-    height 170ms cubic-bezier(0.22, 1, 0.36, 1),
-    background-color 170ms ease,
-    box-shadow 170ms ease !important;
+    width 60ms cubic-bezier(0.2, 0, 0, 1),
+    background-color 60ms linear !important;
 }
 
 /* ----------------------------------------------------------------------------
- * 状态 A：鼠标正在导航刻度栏上悬停滑动（以 li:hover 为中心阶梯展开）
+ * 仅当鼠标悬停在刻度项上时：以 li:hover 为中心，上下 1~4 级阶梯放大
  * ---------------------------------------------------------------------------- */
 /* ±4 级 */
-[data-testid="conversation-navigator"] ol:has(> li:hover) > li:hover + li + li + li + li,
-[data-testid="conversation-navigator"] ol:has(> li:hover) > li:has(+ li + li + li + li:hover) {
+[data-testid="conversation-navigator"] ol > li:hover + li + li + li + li,
+[data-testid="conversation-navigator"] ol > li:has(+ li + li + li + li:hover) {
   --ag-nav-bar-w: 6.5px;
-  --ag-nav-bar-bg: rgba(255, 255, 255, 0.29);
+  --ag-nav-bar-bg: rgba(255, 255, 255, 0.30);
 }
 /* ±3 级 */
-[data-testid="conversation-navigator"] ol:has(> li:hover) > li:hover + li + li + li,
-[data-testid="conversation-navigator"] ol:has(> li:hover) > li:has(+ li + li + li:hover) {
+[data-testid="conversation-navigator"] ol > li:hover + li + li + li,
+[data-testid="conversation-navigator"] ol > li:has(+ li + li + li:hover) {
   --ag-nav-bar-w: 9px;
-  --ag-nav-bar-bg: rgba(255, 255, 255, 0.37);
+  --ag-nav-bar-bg: rgba(255, 255, 255, 0.38);
 }
 /* ±2 级 */
-[data-testid="conversation-navigator"] ol:has(> li:hover) > li:hover + li + li,
-[data-testid="conversation-navigator"] ol:has(> li:hover) > li:has(+ li + li:hover) {
+[data-testid="conversation-navigator"] ol > li:hover + li + li,
+[data-testid="conversation-navigator"] ol > li:has(+ li + li:hover) {
   --ag-nav-bar-w: 13px;
-  --ag-nav-bar-bg: rgba(255, 255, 255, 0.47);
+  --ag-nav-bar-bg: rgba(255, 255, 255, 0.48);
 }
 /* ±1 级 */
-[data-testid="conversation-navigator"] ol:has(> li:hover) > li:hover + li,
-[data-testid="conversation-navigator"] ol:has(> li:hover) > li:has(+ li:hover) {
+[data-testid="conversation-navigator"] ol > li:hover + li,
+[data-testid="conversation-navigator"] ol > li:has(+ li:hover) {
   --ag-nav-bar-w: 17.5px;
-  --ag-nav-bar-bg: rgba(255, 255, 255, 0.62);
+  --ag-nav-bar-bg: rgba(255, 255, 255, 0.64);
 }
 /* 0 级（当前悬停中心峰值） */
-[data-testid="conversation-navigator"] ol:has(> li:hover) > li:hover {
+[data-testid="conversation-navigator"] ol > li:hover {
   --ag-nav-bar-w: 24px;
   --ag-nav-bar-h: 2.5px;
   --ag-nav-bar-bg: #ffffff;
-  --ag-nav-bar-shadow: 0 0 8px rgba(255, 255, 255, 0.36);
 }
 
-/* ----------------------------------------------------------------------------
- * 状态 B：预览气泡卡片展开中且鼠标移入卡片（以 [data-ag-wave-open="true"] 为中心阶梯展开）
- * ---------------------------------------------------------------------------- */
-[data-testid="conversation-navigator"] ol:not(:has(> li:hover)):has(> li[data-ag-wave-open="true"]) > li[data-ag-wave-open="true"] + li + li + li + li,
-[data-testid="conversation-navigator"] ol:not(:has(> li:hover)):has(> li[data-ag-wave-open="true"]) > li:has(+ li + li + li + li[data-ag-wave-open="true"]) {
-  --ag-nav-bar-w: 6.5px;
-  --ag-nav-bar-bg: rgba(255, 255, 255, 0.29);
+/* 浅色模式下的悬停阶梯颜色适配 */
+html:not([data-ag-color-scheme="dark"]) [data-testid="conversation-navigator"] ol > li:hover + li + li + li + li,
+html:not([data-ag-color-scheme="dark"]) [data-testid="conversation-navigator"] ol > li:has(+ li + li + li + li:hover) {
+  --ag-nav-bar-bg: rgba(31, 31, 31, 0.28);
 }
-[data-testid="conversation-navigator"] ol:not(:has(> li:hover)):has(> li[data-ag-wave-open="true"]) > li[data-ag-wave-open="true"] + li + li + li,
-[data-testid="conversation-navigator"] ol:not(:has(> li:hover)):has(> li[data-ag-wave-open="true"]) > li:has(+ li + li + li[data-ag-wave-open="true"]) {
-  --ag-nav-bar-w: 9px;
-  --ag-nav-bar-bg: rgba(255, 255, 255, 0.37);
+html:not([data-ag-color-scheme="dark"]) [data-testid="conversation-navigator"] ol > li:hover + li + li + li,
+html:not([data-ag-color-scheme="dark"]) [data-testid="conversation-navigator"] ol > li:has(+ li + li + li:hover) {
+  --ag-nav-bar-bg: rgba(31, 31, 31, 0.36);
 }
-[data-testid="conversation-navigator"] ol:not(:has(> li:hover)):has(> li[data-ag-wave-open="true"]) > li[data-ag-wave-open="true"] + li + li,
-[data-testid="conversation-navigator"] ol:not(:has(> li:hover)):has(> li[data-ag-wave-open="true"]) > li:has(+ li + li[data-ag-wave-open="true"]) {
-  --ag-nav-bar-w: 13px;
-  --ag-nav-bar-bg: rgba(255, 255, 255, 0.47);
+html:not([data-ag-color-scheme="dark"]) [data-testid="conversation-navigator"] ol > li:hover + li + li,
+html:not([data-ag-color-scheme="dark"]) [data-testid="conversation-navigator"] ol > li:has(+ li + li:hover) {
+  --ag-nav-bar-bg: rgba(31, 31, 31, 0.46);
 }
-[data-testid="conversation-navigator"] ol:not(:has(> li:hover)):has(> li[data-ag-wave-open="true"]) > li[data-ag-wave-open="true"] + li,
-[data-testid="conversation-navigator"] ol:not(:has(> li:hover)):has(> li[data-ag-wave-open="true"]) > li:has(+ li[data-ag-wave-open="true"]) {
-  --ag-nav-bar-w: 17.5px;
-  --ag-nav-bar-bg: rgba(255, 255, 255, 0.62);
+html:not([data-ag-color-scheme="dark"]) [data-testid="conversation-navigator"] ol > li:hover + li,
+html:not([data-ag-color-scheme="dark"]) [data-testid="conversation-navigator"] ol > li:has(+ li:hover) {
+  --ag-nav-bar-bg: rgba(31, 31, 31, 0.62);
 }
-[data-testid="conversation-navigator"] ol:not(:has(> li:hover)):has(> li[data-ag-wave-open="true"]) > li[data-ag-wave-open="true"] {
-  --ag-nav-bar-w: 24px;
-  --ag-nav-bar-h: 2.5px;
-  --ag-nav-bar-bg: #ffffff;
-  --ag-nav-bar-shadow: 0 0 8px rgba(255, 255, 255, 0.36);
-}
-
-/* ----------------------------------------------------------------------------
- * 状态 C：常态未悬停时，以当前选中的对话轮次 (button[data-active="true"]) 为中心阶梯展开
- * ---------------------------------------------------------------------------- */
-/* ±4 级 */
-[data-testid="conversation-navigator"] ol:not(:has(> li:hover)):not(:has(> li[data-ag-wave-open="true"])) > li:has(> button[data-active="true"]) + li + li + li + li,
-[data-testid="conversation-navigator"] ol:not(:has(> li:hover)):not(:has(> li[data-ag-wave-open="true"])) > li:has(+ li + li + li + li > button[data-active="true"]) {
-  --ag-nav-bar-w: 6.5px;
-  --ag-nav-bar-bg: rgba(255, 255, 255, 0.29);
-}
-/* ±3 级 */
-[data-testid="conversation-navigator"] ol:not(:has(> li:hover)):not(:has(> li[data-ag-wave-open="true"])) > li:has(> button[data-active="true"]) + li + li + li,
-[data-testid="conversation-navigator"] ol:not(:has(> li:hover)):not(:has(> li[data-ag-wave-open="true"])) > li:has(+ li + li + li > button[data-active="true"]) {
-  --ag-nav-bar-w: 9px;
-  --ag-nav-bar-bg: rgba(255, 255, 255, 0.37);
-}
-/* ±2 级 */
-[data-testid="conversation-navigator"] ol:not(:has(> li:hover)):not(:has(> li[data-ag-wave-open="true"])) > li:has(> button[data-active="true"]) + li + li,
-[data-testid="conversation-navigator"] ol:not(:has(> li:hover)):not(:has(> li[data-ag-wave-open="true"])) > li:has(+ li + li > button[data-active="true"]) {
-  --ag-nav-bar-w: 13px;
-  --ag-nav-bar-bg: rgba(255, 255, 255, 0.47);
-}
-/* ±1 级 */
-[data-testid="conversation-navigator"] ol:not(:has(> li:hover)):not(:has(> li[data-ag-wave-open="true"])) > li:has(> button[data-active="true"]) + li,
-[data-testid="conversation-navigator"] ol:not(:has(> li:hover)):not(:has(> li[data-ag-wave-open="true"])) > li:has(+ li > button[data-active="true"]) {
-  --ag-nav-bar-w: 17.5px;
-  --ag-nav-bar-bg: rgba(255, 255, 255, 0.62);
-}
-/* 0 级（当前选中轮次峰值） */
-[data-testid="conversation-navigator"] ol:not(:has(> li:hover)):not(:has(> li[data-ag-wave-open="true"])) > li:has(> button[data-active="true"]) {
-  --ag-nav-bar-w: 24px;
-  --ag-nav-bar-h: 2.5px;
-  --ag-nav-bar-bg: #ffffff;
-  --ag-nav-bar-shadow: 0 0 8px rgba(255, 255, 255, 0.36);
-}
-
-/* 浅色模式下的阶梯刻度颜色适配 */
-html:not([data-ag-color-scheme="dark"]) [data-testid="conversation-navigator"] ol > li:hover,
-html:not([data-ag-color-scheme="dark"]) [data-testid="conversation-navigator"] ol:not(:has(> li:hover)) > li[data-ag-wave-open="true"],
-html:not([data-ag-color-scheme="dark"]) [data-testid="conversation-navigator"] ol:not(:has(> li:hover)):not(:has(> li[data-ag-wave-open="true"])) > li:has(> button[data-active="true"]) {
+html:not([data-ag-color-scheme="dark"]) [data-testid="conversation-navigator"] ol > li:hover {
   --ag-nav-bar-bg: #1f1f1f;
-  --ag-nav-bar-shadow: 0 0 6px rgba(26, 115, 232, 0.25);
 }
