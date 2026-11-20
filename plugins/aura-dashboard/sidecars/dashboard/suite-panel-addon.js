@@ -439,6 +439,17 @@
 
       <div class="ag-suite-row">
         <div>
+          <div style="font-size:12.5px;font-weight:600;color:var(--aura-fg,#e3e3e3);">退出后重开自动恢复上次页面</div>
+          <div id="ag-last-route-desc" class="ag-suite-sub">退出 Antigravity 时自动记忆当前对话与右侧栏标签，下次打开直接回到原页面</div>
+        </div>
+        <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--aura-fg,#e3e3e3);cursor:pointer;">
+          <input id="ag-lr-enabled" type="checkbox" checked style="accent-color:#8ab4f8;width:15px;height:15px;cursor:pointer;" />
+          <span>启用自动恢复</span>
+        </label>
+      </div>
+
+      <div class="ag-suite-row">
+        <div>
           <div style="font-size:12.5px;font-weight:600;color:var(--aura-fg,#e3e3e3);">&gt;_ agy CLI 快捷启动器（自动继承当前账号与系统代理）</div>
           <div id="ag-cli-status-desc" class="ag-suite-sub">正在检测本机 agy CLI 路径与系统代理...</div>
         </div>
@@ -635,6 +646,36 @@
       }
     });
     syncAutoSwitch();
+
+    // 2.5 退出重开自动恢复上次页面开关
+    const lrEnabled = card.querySelector("#ag-lr-enabled");
+    const lrDesc = card.querySelector("#ag-last-route-desc");
+    const syncLastRoute = async () => {
+      try {
+        const res = await apiFetch("/api/suite-last-route", { method: "GET" });
+        const j = await res.json();
+        if (!j.ok) return;
+        if (lrEnabled) lrEnabled.checked = j.enabled !== false;
+        if (lrDesc) {
+          lrDesc.textContent = j.route
+            ? `当前已记忆：${j.title ? j.title + " · " : ""}${j.route.slice(0, 68)}${j.route.length > 68 ? "..." : ""}`
+            : "退出 Antigravity 时自动记忆当前对话与右侧栏标签，下次打开直接回到原页面";
+        }
+      } catch {}
+    };
+    lrEnabled?.addEventListener("change", async () => {
+      const res = await apiFetch("/api/suite-last-route", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: lrEnabled.checked })
+      });
+      const j = await res.json();
+      if (j.ok) {
+        showToast(lrEnabled.checked ? "已开启：重启后自动恢复上次关闭时的页面" : "已关闭：重启后保持打开默认首页");
+        syncLastRoute();
+      }
+    });
+    syncLastRoute();
 
     // 3. CLI 路径与代理探测 + 启动
     const cliDesc = card.querySelector("#ag-cli-status-desc");

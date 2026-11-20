@@ -420,11 +420,44 @@ export function initSuiteExtensions({
   const versionFile = path.join(dataDir, "suite-version.json");
   const updateStateFile = path.join(dataDir, "suite-update-state.json");
   const autoSwitchFile = path.join(dataDir, "suite-auto-switch.json");
+  const lastRouteFile = path.join(dataDir, "suite-last-route.json");
 
   let cachedQuota = null;
   let cachedRemote = null;
   let lastRemoteCheckAt = 0;
   let updateInProgress = false;
+
+  function getLastRouteState() {
+    const raw = readJsonSafe(lastRouteFile, {});
+    return {
+      ok: true,
+      enabled: raw?.enabled !== false,
+      route: typeof raw?.route === "string" ? raw.route : "",
+      title: typeof raw?.title === "string" ? raw.title : "",
+      savedAt: Number(raw?.savedAt) || 0
+    };
+  }
+
+  function saveLastRouteState(patch) {
+    const cur = getLastRouteState();
+    const next = {
+      enabled: typeof patch?.enabled === "boolean" ? patch.enabled : cur.enabled,
+      route: cur.route,
+      title: cur.title,
+      savedAt: cur.savedAt
+    };
+    if (typeof patch?.route === "string") {
+      const r = patch.route.trim();
+      const isStandalone = /^\/(settings-standalone|artifact|terminal-standalone)\b/i.test(r);
+      if (r.startsWith("/") && !isStandalone) {
+        next.route = r;
+        next.savedAt = Date.now();
+        if (typeof patch?.title === "string") next.title = patch.title.trim().slice(0, 120);
+      }
+    }
+    writeJsonSafe(lastRouteFile, next);
+    return { ok: true, ...next };
+  }
 
   function getGuardrailsState() {
     try {
@@ -907,6 +940,10 @@ export function initSuiteExtensions({
       } else if (urlObj.pathname === "/api/suite-auto-switch" && req.method === "POST") {
         saveAutoSwitchConfig(bodyObj);
         result = getAutoSwitchState();
+      } else if (urlObj.pathname === "/api/suite-last-route" && req.method === "GET") {
+        result = getLastRouteState();
+      } else if (urlObj.pathname === "/api/suite-last-route" && req.method === "POST") {
+        result = saveLastRouteState(bodyObj);
       } else {
         status = 404;
       }
@@ -956,6 +993,9 @@ export function initSuiteExtensions({
       saveAutoSwitchConfig(parseBody(e));
       return getAutoSwitchState();
     }, "POST");
+
+    Oe.api("/api/suite-last-route", () => getLastRouteState(), "GET");
+    Oe.api("/api/suite-last-route", (e) => saveLastRouteState(parseBody(e)), "POST");
 
     Oe.api("/suite-panel-addon.js", () => {
       const src = panelAddonPath && fs.existsSync(panelAddonPath)

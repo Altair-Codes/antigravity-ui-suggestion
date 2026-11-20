@@ -301,15 +301,120 @@ try {
     } catch {}
   }
 
+  // 4. 退出记忆当前页面，重新打开 Antigravity 时自动恢复上次关闭时的对话与右侧标签页
+  function initLastRoutePersistence() {
+    if (window.__ag_suite_last_route_v1) return;
+    const isStandaloneWin = /^\/(settings-standalone|artifact|terminal-standalone)\b/i.test(location.pathname);
+    if (isStandaloneWin) return;
+    window.__ag_suite_last_route_v1 = true;
+
+    let trackingReady = false;
+    let lastSavedRoute = "";
+    let saveTimer = null;
+
+    const getCurrentRoute = () => `${location.pathname || "/"}${location.search || ""}`;
+    const getCleanTitle = () => (document.title || "").replace(/\s*-\s*Antigravity\s*$/i, "").trim();
+
+    const postRouteNow = (keepalive) => {
+      const b = window.__AG_SUITE_BRIDGE__;
+      if (!b || !trackingReady) return;
+      const route = getCurrentRoute();
+      if (!route || route === lastSavedRoute) return;
+      // 如果只是空根路径且没有参数，不覆盖已记忆的具体对话页面
+      if (route === "/" && lastSavedRoute && lastSavedRoute.startsWith("/c/")) return;
+      lastSavedRoute = route;
+      try {
+        fetch(`${b.origin}/api/suite-last-route`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Suite-Token": b.token },
+          body: JSON.stringify({ route, title: getCleanTitle() }),
+          keepalive: Boolean(keepalive)
+        }).catch(() => {});
+      } catch {}
+    };
+
+    const scheduleSave = () => {
+      if (!trackingReady) return;
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(() => postRouteNow(false), 350);
+    };
+
+    // 拦截 SPA 路由变化 + 退出事件保存
+    try {
+      const origPush = history.pushState;
+      const origReplace = history.replaceState;
+      history.pushState = function (...args) {
+        const ret = origPush.apply(this, args);
+        scheduleSave();
+        return ret;
+      };
+      history.replaceState = function (...args) {
+        const ret = origReplace.apply(this, args);
+        scheduleSave();
+        return ret;
+      };
+    } catch {}
+    window.addEventListener("popstate", scheduleSave, { passive: true });
+    window.addEventListener("pagehide", () => postRouteNow(true), { passive: true });
+    window.addEventListener("beforeunload", () => postRouteNow(true), { passive: true });
+    setInterval(() => {
+      if (trackingReady && getCurrentRoute() !== lastSavedRoute) scheduleSave();
+    }, 2000);
+
+    // 仅在全新打开 Antigravity 窗口且停留在默认首页（尚未进入具体会话）时恢复一次
+    const alreadyRestored = (() => {
+      try { return sessionStorage.getItem("ag_suite_route_restored_v1") === "1"; } catch { return false; }
+    })();
+    const markRestored = () => {
+      try { sessionStorage.setItem("ag_suite_route_restored_v1", "1"); } catch {}
+    };
+
+    const isDefaultLanding = location.pathname === "/" || /^\/new\b/i.test(location.pathname);
+    if (!alreadyRestored && isDefaultLanding) {
+      markRestored();
+      bridgeFetch("/api/suite-last-route", { method: "GET" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((info) => {
+          const targetRoute = info && info.enabled && typeof info.route === "string" ? info.route.trim() : "";
+          if (targetRoute && targetRoute !== "/" && targetRoute !== getCurrentRoute()) {
+            try {
+              history.replaceState(history.state, "", targetRoute);
+              window.dispatchEvent(new PopStateEvent("popstate"));
+              setTimeout(() => {
+                // 若 React 路由未响应初始 popstate，则执行一次平滑整页跳转兜底
+                if (`${location.pathname}${location.search}` !== targetRoute) {
+                  location.replace(`${location.origin}${targetRoute}`);
+                }
+              }, 380);
+              showMiniNotice(`已自动恢复上次关闭时的页面${info.title ? " · " + info.title : ""}`, false);
+            } catch {}
+          }
+          setTimeout(() => {
+            trackingReady = true;
+            postRouteNow(false);
+          }, 1200);
+        })
+        .catch(() => {
+          trackingReady = true;
+        });
+    } else {
+      markRestored();
+      trackingReady = true;
+      setTimeout(() => postRouteNow(false), 600);
+    }
+  }
+
   if (!window.__ag_suite_host_timers_v1) {
     window.__ag_suite_host_timers_v1 = true;
     ensureCliButton();
     setInterval(ensureCliButton, 2500);
+    initLastRoutePersistence();
     setTimeout(syncNativeModelQuotas, 1200);
     setInterval(syncNativeModelQuotas, 60000);
     setTimeout(checkUpdatesOnce, 4500);
   } else {
     ensureCliButton();
+    initLastRoutePersistence();
     syncNativeModelQuotas();
   }
 })(typeof ctx !== "undefined" ? ctx : (typeof boot !== "undefined" ? boot : null));
