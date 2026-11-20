@@ -72,10 +72,15 @@ antigravity-ui-suggestion/
 │   └── file-launcher/         # 文件启动器（极速增量缓存 + 禁自动弹窗 + Gemini 配色）
 ├── plugin_data/
 │   └── aura-dashboard/        # 预置 config.json、Gemini 流体流光 custom.css、custom.js、i18n.override.json
+├── enable-cdp.mjs             # 跨平台 CDP 调试端口自愈脚本（含 Windows 退出瞬间自动解锁替换与自动重开机制）
 ├── install-mac.sh             # macOS 一键同步脚本（自动探测 Homebrew / nvm Node 与 Python3 路径）
-├── install-win.ps1            # Windows PowerShell 一键同步脚本
+├── install-win.ps1            # Windows PowerShell 一键同步脚本（含快捷方式注入与文件锁自愈）
 └── README.md                  # 本说明文档
 ```
+
+> [!TIP]
+> **Windows 用户特别说明（为什么刚跑完脚本还没变中文？）**：
+> Windows 系统在 `Antigravity.exe` 运行期间会独占锁定 `resources\app.asar`。本仓库的 `install-win.ps1` 与 `enable-cdp.mjs` 已内置 **Windows 文件锁后台自愈**：如果是在打开的 Antigravity 里让 AI 执行安装，脚本会自动在后台挂起轻量监听，**只要你关掉一次 Antigravity 窗口，后台会在进程退出的 0.5 秒内自动完成 CDP 解锁并自动帮你重新打开 Antigravity**，重开即 100% 呈现全套简体中文与 Google Gemini 四色流体流光！
 
 ---
 

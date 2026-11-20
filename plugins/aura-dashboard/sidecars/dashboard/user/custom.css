@@ -1,4 +1,306 @@
 /* ============================================================================
- * user/custom.css — 用户专属 CSS 规则扩展槽（在此编写的样式优先级最高）
- * 若需修改全局字体或字号，请优先在侧边栏「川瓣主题配置」中进行可视化热调。
+ * Google Gemini Fluid Aurora & Material 3 Native Theme
+ * 四色流体渐变：Google Blue (#4285F4) -> Gemini Violet (#9B72CB) -> Coral Red (#EA4335) -> Amber (#FBBC05) -> Emerald (#34A853)
  * ============================================================================ */
+
+@property --gemini-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes geminiFluidSpin {
+  0%   { --gemini-angle: 0deg; }
+  100% { --gemini-angle: 360deg; }
+}
+
+@keyframes geminiPillFlow {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes geminiPulseDot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.55; transform: scale(0.86); }
+}
+
+/* 1. 输入框流体渐变动态流光边框（像网页版 Gemini 对话框一样滚动变色） */
+html[data-ag-color-scheme="dark"] #antigravity\.agentSidePanelInputBox .surface-composer-card {
+  position: relative !important;
+  border: 1.5px solid transparent !important;
+  background:
+    linear-gradient(#1b1c1f, #1b1c1f) padding-box,
+    conic-gradient(
+      from var(--gemini-angle),
+      #4285f4 0%,
+      #9b72cb 22%,
+      #ea4335 42%,
+      #fbbc05 60%,
+      #34a853 78%,
+      #4285f4 100%
+    ) border-box !important;
+  animation: geminiFluidSpin 4.8s linear infinite !important;
+  box-shadow:
+    0 0 18px -4px rgba(66, 133, 244, 0.25),
+    0 0 24px -6px rgba(155, 114, 203, 0.22),
+    0 4px 16px rgba(0, 0, 0, 0.35) !important;
+  transition: box-shadow 0.25s ease !important;
+}
+
+html[data-ag-color-scheme="dark"] #antigravity\.agentSidePanelInputBox:hover .surface-composer-card,
+html[data-ag-color-scheme="dark"] #antigravity\.agentSidePanelInputBox:focus-within .surface-composer-card {
+  border: 2px solid transparent !important;
+  animation-duration: 3.2s !important;
+  box-shadow:
+    0 0 22px -2px rgba(66, 133, 244, 0.38),
+    0 0 28px -4px rgba(155, 114, 203, 0.32),
+    0 0 18px -4px rgba(234, 67, 53, 0.2),
+    0 6px 20px rgba(0, 0, 0, 0.45) !important;
+}
+
+html:not([data-ag-color-scheme="dark"]) #antigravity\.agentSidePanelInputBox .surface-composer-card {
+  position: relative !important;
+  border: 1.5px solid transparent !important;
+  background:
+    linear-gradient(#ffffff, #ffffff) padding-box,
+    conic-gradient(
+      from var(--gemini-angle),
+      #4285f4 0%,
+      #9b72cb 22%,
+      #ea4335 42%,
+      #fbbc05 60%,
+      #34a853 78%,
+      #4285f4 100%
+    ) border-box !important;
+  animation: geminiFluidSpin 4.8s linear infinite !important;
+  box-shadow:
+    0 2px 14px rgba(66, 133, 244, 0.16),
+    0 2px 20px rgba(155, 114, 203, 0.12) !important;
+}
+
+html:not([data-ag-color-scheme="dark"]) #antigravity\.agentSidePanelInputBox:focus-within .surface-composer-card {
+  border: 2px solid transparent !important;
+  animation-duration: 3.2s !important;
+  box-shadow:
+    0 4px 20px rgba(66, 133, 244, 0.26),
+    0 4px 24px rgba(155, 114, 203, 0.22) !important;
+}
+
+/* 2. 彻底清除 Aura 残留的 Claude 橙色按钮与橙色边框 (#d97757 / #c45f40)，换为 Gemini 流体渐变 */
+[data-testid="voice-live-pill"],
+button[data-testid="send-button"]:not(:disabled),
+.agy-send-button:not(:disabled) {
+  background: linear-gradient(135deg, #4285f4 0%, #9b72cb 38%, #ea4335 72%, #fbbc05 100%) !important;
+  background-size: 260% 260% !important;
+  animation: geminiPillFlow 4s ease infinite !important;
+  border: 1px solid rgba(168, 199, 250, 0.45) !important;
+  color: #ffffff !important;
+  box-shadow: 0 2px 10px rgba(66, 133, 244, 0.35), 0 1px 6px rgba(155, 114, 203, 0.25) !important;
+}
+
+[data-testid="voice-live-pill"]:hover,
+button[data-testid="send-button"]:not(:disabled):hover,
+.agy-send-button:not(:disabled):hover {
+  filter: brightness(1.08) !important;
+  border-color: #a8c7fa !important;
+  box-shadow: 0 3px 14px rgba(66, 133, 244, 0.48), 0 2px 10px rgba(155, 114, 203, 0.35) !important;
+}
+
+button[data-testid="send-button"]:disabled,
+.agy-send-button:disabled,
+button[data-testid="send-button"][aria-disabled="true"] {
+  background: rgba(138, 180, 248, 0.08) !important;
+  border: 1px solid rgba(138, 180, 248, 0.28) !important;
+  color: #8ab4f8 !important;
+  box-shadow: none !important;
+}
+
+/* 3. 输入框底栏 Token 速度遥测微胶囊栏（去除左侧弯曲括号残影，改用 Google Gemini 四色微胶囊） */
+#ag-live-metrics-pill {
+  border-left: none !important;
+  border-radius: 8px !important;
+  padding: 0 4px !important;
+  margin-left: 4px !important;
+  height: 24px !important;
+  background: transparent !important;
+  position: relative !important;
+}
+
+#ag-live-metrics-pill::before {
+  content: "";
+  display: inline-block;
+  width: 1px;
+  height: 13px;
+  margin-right: 7px;
+  background: rgba(168, 199, 250, 0.22);
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+html:not([data-ag-color-scheme="dark"]) #ag-live-metrics-pill::before {
+  background: rgba(26, 115, 232, 0.22);
+}
+
+#ag-live-metrics-pill #ag-live-metrics-text {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 5px !important;
+  font-size: 11px !important;
+  font-weight: 500 !important;
+}
+
+#ag-live-metrics-pill .ag-m-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.045);
+  color: #c4c7c5;
+  transition: transform 0.14s ease, border-color 0.14s ease, background-color 0.14s ease;
+}
+
+#ag-live-metrics-pill .ag-m-chip b {
+  font-family: "JetBrains Mono", "SF Mono", Menlo, monospace;
+  font-weight: 600;
+  color: #e3e3e3;
+}
+
+/* 速率微胶囊：Google Blue */
+#ag-live-metrics-pill .ag-m-tps {
+  background: rgba(66, 133, 244, 0.13);
+  border-color: rgba(138, 180, 248, 0.26);
+  color: #a8c7fa;
+}
+#ag-live-metrics-pill .ag-m-tps b {
+  color: #8ab4f8;
+}
+#ag-live-metrics-pill .ag-m-dot {
+  width: 5.5px;
+  height: 5.5px;
+  border-radius: 50%;
+  background: #8ab4f8;
+  box-shadow: 0 0 6px #4285f4;
+  animation: geminiPulseDot 2.2s ease-in-out infinite;
+}
+
+/* 首字延迟微胶囊：Gemini Violet */
+#ag-live-metrics-pill .ag-m-ttft {
+  background: rgba(155, 114, 203, 0.12);
+  border-color: rgba(197, 138, 249, 0.24);
+  color: #d7aefb;
+}
+#ag-live-metrics-pill .ag-m-ttft b {
+  color: #c58af9;
+}
+
+/* 上下文水位微胶囊：Google Emerald / Amber / Coral */
+#ag-live-metrics-pill .ag-m-ctx {
+  background: rgba(52, 168, 83, 0.12);
+  border-color: rgba(129, 201, 149, 0.24);
+  color: #a8dab5;
+}
+#ag-live-metrics-pill .ag-m-ctx b {
+  color: #81c995;
+}
+#ag-live-metrics-pill .ag-m-ctx.ag-ctx-warn {
+  background: rgba(251, 188, 5, 0.14) !important;
+  border-color: rgba(253, 214, 99, 0.32) !important;
+  color: #fde293 !important;
+}
+#ag-live-metrics-pill .ag-m-ctx.ag-ctx-warn b {
+  color: #fdd663 !important;
+}
+#ag-live-metrics-pill .ag-m-ctx.ag-ctx-crit {
+  background: rgba(234, 67, 53, 0.16) !important;
+  border-color: rgba(242, 139, 130, 0.36) !important;
+  color: #f6aea9 !important;
+}
+#ag-live-metrics-pill .ag-m-ctx.ag-ctx-crit b {
+  color: #f28b82 !important;
+}
+
+/* 浅色模式适配 */
+html:not([data-ag-color-scheme="dark"]) #ag-live-metrics-pill .ag-m-chip {
+  background: rgba(26, 115, 232, 0.06);
+  border-color: rgba(26, 115, 232, 0.16);
+  color: #444746;
+}
+html:not([data-ag-color-scheme="dark"]) #ag-live-metrics-pill .ag-m-chip b {
+  color: #1f1f1f;
+}
+html:not([data-ag-color-scheme="dark"]) #ag-live-metrics-pill .ag-m-tps {
+  background: rgba(26, 115, 232, 0.1);
+  border-color: rgba(26, 115, 232, 0.25);
+  color: #1a73e8;
+}
+html:not([data-ag-color-scheme="dark"]) #ag-live-metrics-pill .ag-m-tps b {
+  color: #1557b0;
+}
+html:not([data-ag-color-scheme="dark"]) #ag-live-metrics-pill .ag-m-ttft {
+  background: rgba(147, 52, 230, 0.08);
+  border-color: rgba(147, 52, 230, 0.22);
+  color: #7627bb;
+}
+html:not([data-ag-color-scheme="dark"]) #ag-live-metrics-pill .ag-m-ttft b {
+  color: #681da8;
+}
+html:not([data-ag-color-scheme="dark"]) #ag-live-metrics-pill .ag-m-ctx {
+  background: rgba(19, 115, 51, 0.08);
+  border-color: rgba(19, 115, 51, 0.22);
+  color: #137333;
+}
+html:not([data-ag-color-scheme="dark"]) #ag-live-metrics-pill .ag-m-ctx b {
+  color: #0d652d;
+}
+
+#ag-live-metrics-pill:hover .ag-m-chip {
+  border-color: rgba(138, 180, 248, 0.42);
+}
+
+/* 悬浮详情 Tooltip 改为 Google Gemini 深空灰蓝主题 */
+html[data-ag-color-scheme="dark"] #ag-live-metrics-tooltip {
+  background-color: #1b1c1f !important;
+  color: #e3e3e3 !important;
+  border: 1px solid rgba(138, 180, 248, 0.24) !important;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.65), 0 0 20px -4px rgba(66, 133, 244, 0.2) !important;
+}
+html[data-ag-color-scheme="dark"] #ag-live-metrics-tooltip .ag-tt-accent {
+  color: #8ab4f8 !important;
+}
+html[data-ag-color-scheme="dark"] #ag-live-metrics-tooltip .ag-tt-tag {
+  background-color: rgba(138, 180, 248, 0.15) !important;
+  color: #a8c7fa !important;
+}
+html[data-ag-color-scheme="dark"] #ag-live-metrics-tooltip .ag-tt-progress-fill {
+  background: linear-gradient(90deg, #4285f4, #9b72cb, #34a853) !important;
+}
+
+/* 搜索框与通用焦点环统一改为 Google Blue */
+input[placeholder*="Search" i]:focus,
+input[placeholder*="搜索" i]:focus,
+input[class*="focus:border-ring"]:focus,
+input[placeholder*="Search" i]:focus-visible,
+input[class*="focus:border-ring"]:focus-visible {
+  border-color: #8ab4f8 !important;
+  box-shadow: 0 0 0 1px #8ab4f8 !important;
+}
+
+/* 4. 确保多窗口 / 新建对话 / 分屏下模型选择器始终靠右、层级置顶且可点击 */
+html[data-ag-collinear="on"] #antigravity\.agentSidePanelInputBox .agy-composer-footer {
+  right: 4px !important;
+  justify-content: flex-end !important;
+  z-index: 15 !important;
+  pointer-events: auto !important;
+}
+html[data-ag-collinear="on"] #antigravity\.agentSidePanelInputBox button[data-testid="model-selector-trigger"] {
+  position: relative !important;
+  z-index: 16 !important;
+  pointer-events: auto !important;
+}

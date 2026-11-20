@@ -12,3 +12,23 @@
  *   ctx.syncPreset()            - 手动触发预设状态同步 ('high-contrast' | 'claude-desktop-purewhite' | 'claude-dark' | 'vintage-dark' | 'default')
  *   ctx.ensureMetricsPill(true) - 手动刷新实时指标胶囊布局
  */
+if (!window.__ag_i18n_dynamic_fix_v1) {
+  window.__ag_i18n_dynamic_fix_v1 = true;
+  window.__ag_orig_text_map = new WeakMap();
+}
+try {
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && /experiment|flag/i.test(k)) {
+      const v = localStorage.getItem(k);
+      if (v && v.includes("enable-sidecar-pill-auto-open")) {
+        const parsed = JSON.parse(v);
+        if (parsed && typeof parsed === "object") {
+          delete parsed["enable-sidecar-pill-auto-open"];
+          localStorage.setItem(k, JSON.stringify(parsed));
+        }
+      }
+    }
+  }
+} catch (_) {}
+

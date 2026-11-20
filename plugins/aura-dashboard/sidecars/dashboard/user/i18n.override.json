@@ -1,3 +1,15 @@
 {
-  "_comment": "在此添加或覆盖汉化词条（支持直接写 \"英文原词\": \"自定义中文\"，也支持包裹在 \"exact\": { ... } 中）。保存后 2.5 秒自动热生效。"
+  "_comment": "在此添加或覆盖汉化词条（支持直接写 \"英文原词\": \"自定义中文\"，也支持包裹在 \"exact\": { ... } 中）。保存后 2.5 秒自动热生效。",
+  "External browser": "外部浏览器",
+  "Built-in browser": "内置浏览器",
+  "No other accounts saved.": "暂未保存其他账号。",
+  "Accounts logged in via CLI or App will appear here automatically.": "通过 CLI 或桌面端登录的账号会自动显示在这里。",
+  "New accounts logged in via CLI or App are automatically saved.": "通过 CLI 或桌面端新登录的账号会自动保存。",
+  "Aura Dashboard": "Aura 控制台",
+  "Workspace Files": "项目文件",
+  "Workspace File Tree": "项目文件",
+  "File Launcher": "文件启动器",
+  "Token Activity (Last 30 Days)": "Token 活跃趋势（近 30 天）",
+  "Send Message": "发送消息",
+  "Proceed": "确认执行"
 }

@@ -1,24 +1,24 @@
 {
   "enabled": true,
   "channel": "auto",
-  "language": "default",
+  "language": "zh-CN",
   "presets": {
-    "light": "high-contrast",
-    "dark": "claude-dark"
+    "light": "default",
+    "dark": "default"
   },
   "typography": {
-    "primarySans": "Anthropic Serif Web",
+    "primarySans": "Inter",
     "customPrimarySans": "",
-    "fallbackSans": "LXGW WenKai Medium",
+    "fallbackSans": "PingFang SC",
     "customFallbackSans": "",
-    "mono": "Anthropic Mono",
+    "mono": "JetBrains Mono",
     "customMono": "",
     "fontSize": 15
   },
   "composer": {
-    "collinear": true,
-    "waxSeal": true,
-    "hideArrows": true
+    "collinear": false,
+    "waxSeal": false,
+    "hideArrows": false
   },
   "telemetry": {
     "enabled": true,
@@ -82,7 +82,7 @@
       "enable-browser-element-picker": true,
       "enable-composer-connectors": true,
       "enable-upload-html-artifact-to-drive": true,
-      "enable-sidecar-pill-auto-open": true
+      "enable-sidecar-pill-auto-open": false
     }
   },
   "themeVars": {},
