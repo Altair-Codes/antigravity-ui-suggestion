@@ -429,7 +429,8 @@ html:not([data-ag-color-scheme="dark"]) [data-testid="conversation-navigator"] o
  * 6. 顶栏极简 >_ CLI 快捷按钮 & GitHub 扩展更新轻量提示卡片
  * ============================================================================ */
 #ag-suite-cli-btn,
-#ag-suite-aura-btn {
+#ag-suite-aura-btn,
+#ag-suite-update-btn {
   -webkit-app-region: no-drag;
   display: inline-flex;
   align-items: center;
@@ -449,11 +450,53 @@ html:not([data-ag-color-scheme="dark"]) [data-testid="conversation-navigator"] o
   transition: background-color 140ms ease, border-color 140ms ease, transform 120ms ease;
 }
 
-#ag-suite-aura-btn {
+#ag-suite-aura-btn,
+#ag-suite-update-btn {
   font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+#ag-suite-aura-btn {
   border-color: rgba(197, 138, 249, 0.30);
   background: rgba(155, 114, 203, 0.13);
   color: #d7aefb;
+}
+
+#ag-suite-update-btn {
+  border-color: rgba(129, 201, 149, 0.32);
+  background: rgba(52, 168, 83, 0.13);
+  color: #a8dab5;
+}
+
+#ag-suite-update-btn:hover {
+  background: rgba(52, 168, 83, 0.25);
+  border-color: rgba(129, 201, 149, 0.62);
+  color: #ffffff;
+}
+
+#ag-suite-update-btn.has-update {
+  background: linear-gradient(135deg, #4285f4 0%, #9b72cb 60%, #ea4335 100%) !important;
+  border-color: rgba(255, 255, 255, 0.35) !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 12px rgba(66, 133, 244, 0.45);
+}
+
+#ag-suite-update-btn .ag-upd-ico {
+  color: #81c995;
+  font-size: 12px;
+  line-height: 1;
+}
+#ag-suite-update-btn.has-update .ag-upd-ico {
+  color: #ffffff;
+}
+
+html:not([data-ag-color-scheme="dark"]) #ag-suite-update-btn {
+  background: rgba(19, 115, 51, 0.09);
+  border-color: rgba(19, 115, 51, 0.28);
+  color: #137333;
+}
+html:not([data-ag-color-scheme="dark"]) #ag-suite-update-btn:hover {
+  background: rgba(19, 115, 51, 0.17);
+  color: #0d652d;
 }
 
 #ag-suite-cli-btn:hover {

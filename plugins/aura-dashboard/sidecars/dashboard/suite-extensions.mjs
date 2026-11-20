@@ -944,6 +944,9 @@ export function initSuiteExtensions({
         result = getLastRouteState();
       } else if (urlObj.pathname === "/api/suite-last-route" && req.method === "POST") {
         result = saveLastRouteState(bodyObj);
+      } else if (urlObj.pathname === "/api/suite-reload" && req.method === "POST") {
+        if (typeof reloadAll === "function") await reloadAll();
+        result = { ok: true, reloaded: true };
       } else {
         status = 404;
       }

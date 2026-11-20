@@ -51,23 +51,26 @@ try {
     window.__ag_suite_notice_timer = setTimeout(() => el.classList.remove("show"), 4200);
   }
 
-  // 1. 顶栏注入极简 >_ CLI 与 ⚙ 控制台 快捷按钮
+  // 1. 顶栏注入极简 >_ CLI、⚙ 控制台 与 ↻ 更新 快捷按钮
   async function openAuraDashboardTab() {
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const winW = window.innerWidth || 1440;
-    const isSidePanelCollapsed = () => {
-      const btn = document.querySelector('[data-testid="side-panel-new-tab-button"]');
-      if (!btn) return true;
-      const r = btn.getBoundingClientRect();
-      return r.width === 0 || r.left >= winW - 5;
+    const isVisible = (el) => {
+      if (!el) return false;
+      const r = el.getBoundingClientRect();
+      return r.width > 0 && r.height > 0 && r.left < winW - 5;
     };
+    const isSidePanelVisible = () =>
+      isVisible(document.querySelector('[data-testid="new-tab-card-extensions"]')) ||
+      isVisible(document.querySelector('[data-testid="side-panel-new-tab-button"]')) ||
+      Array.from(document.querySelectorAll(".agy-aux-tab")).some(isVisible);
 
-    // 1) 若右侧边栏收起，先展开它
-    if (isSidePanelCollapsed()) {
+    // 1) 若右侧边栏确实收起，先展开它
+    if (!isSidePanelVisible()) {
       const toggleBtn = document.querySelector('[data-testid="toggle-aux-sidebar"]');
       if (toggleBtn) {
         toggleBtn.click();
-        await sleep(220);
+        await sleep(240);
       }
     }
 
@@ -79,15 +82,25 @@ try {
       return;
     }
 
-    // 3) 通过原生「+ 新标签 → 扩展 → Aura 控制台」菜单无感打开
-    const newTabBtn = document.querySelector('[data-testid="side-panel-new-tab-button"]');
-    if (newTabBtn) {
-      newTabBtn.click();
-      await sleep(100);
-      const extCard = document.querySelector('[data-testid="new-tab-card-extensions"]');
-      if (extCard) {
-        extCard.click();
-        await sleep(120);
+    // 3) 若当前尚未停留在新标签导航页，先点「+ 新标签」；若已在空侧边栏导航页（无 + 号），直接找「扩展」卡片
+    let extCard = document.querySelector('[data-testid="new-tab-card-extensions"]');
+    if (!isVisible(extCard)) {
+      const newTabBtn = document.querySelector('[data-testid="side-panel-new-tab-button"]');
+      if (isVisible(newTabBtn)) {
+        newTabBtn.click();
+        for (let i = 0; i < 6; i++) {
+          await sleep(70);
+          extCard = document.querySelector('[data-testid="new-tab-card-extensions"]');
+          if (isVisible(extCard)) break;
+        }
+      }
+    }
+
+    // 4) 点击「扩展」并在弹出的扩展菜单里精准点击「Aura 控制台」
+    if (isVisible(extCard)) {
+      extCard.click();
+      for (let i = 0; i < 8; i++) {
+        await sleep(80);
         const menuItems = Array.from(document.querySelectorAll('[role="menuitem"], [role="option"]'));
         const auraMenu = menuItems.find((el) => /Aura 控制台|Aura Dashboard/i.test((el.innerText || "").trim()));
         if (auraMenu) {
@@ -116,6 +129,49 @@ try {
       auraBtn.innerHTML = `<span class="ag-aura-ico">⚙</span><span>控制台</span>`;
       auraBtn.addEventListener("click", () => window.__ag_open_aura_fn && window.__ag_open_aura_fn());
       anchor.parentElement.insertBefore(auraBtn, anchor);
+    }
+
+    if (!document.getElementById("ag-suite-update-btn")) {
+      const updBtn = document.createElement("button");
+      updBtn.id = "ag-suite-update-btn";
+      updBtn.type = "button";
+      updBtn.title = "点击一键热重载主题样式并检查 GitHub 套件新版本";
+      updBtn.innerHTML = `<span class="ag-upd-ico">↻</span><span class="ag-upd-label">更新</span>`;
+      updBtn.addEventListener("click", async () => {
+        const b = window.__AG_SUITE_BRIDGE__;
+        if (!b) return;
+        updBtn.disabled = true;
+        const lbl = updBtn.querySelector(".ag-upd-label");
+        const prevText = lbl ? lbl.textContent : "更新";
+        if (lbl) lbl.textContent = "检查中...";
+        try {
+          const hdr = { "Content-Type": "application/json", "X-Suite-Token": b.token };
+          await fetch(`${b.origin}/api/suite-reload`, { method: "POST", headers: hdr }).catch(() => {});
+          const r = await fetch(`${b.origin}/api/suite-update/action`, {
+            method: "POST",
+            headers: hdr,
+            body: JSON.stringify({ action: "check" })
+          });
+          const info = r.ok ? await r.json() : null;
+          if (info && info.hasUpdate) {
+            updBtn.classList.add("has-update");
+            if (lbl) lbl.textContent = `新版 v${info.latestVersion}`;
+            renderUpdateToast({ ...info, shouldNotify: true });
+            showMiniNotice(`发现套件新版本 v${info.latestVersion}（当前 v${info.currentVersion}）`, false);
+          } else {
+            updBtn.classList.remove("has-update");
+            if (lbl) lbl.textContent = "更新";
+            showMiniNotice(`样式已热重载 · 当前已是最新 v${info?.currentVersion || ""}`, false);
+          }
+        } catch {
+          if (lbl) lbl.textContent = prevText;
+          showMiniNotice("检查更新失败，请确认网络或代理状态", true);
+        } finally {
+          updBtn.disabled = false;
+        }
+      });
+      const auraBtnEl2 = document.getElementById("ag-suite-aura-btn");
+      anchor.parentElement.insertBefore(updBtn, auraBtnEl2 ? auraBtnEl2.nextSibling : anchor);
     }
 
     if (document.getElementById("ag-suite-cli-btn")) return;
@@ -323,6 +379,12 @@ try {
       const r = await bridgeFetch("/api/suite-update", { method: "GET" });
       if (r.ok) {
         const info = await r.json();
+        const updBtn = document.getElementById("ag-suite-update-btn");
+        if (updBtn && info && info.hasUpdate) {
+          updBtn.classList.add("has-update");
+          const lbl = updBtn.querySelector(".ag-upd-label");
+          if (lbl) lbl.textContent = `新版 v${info.latestVersion}`;
+        }
         renderUpdateToast(info);
       }
     } catch {}

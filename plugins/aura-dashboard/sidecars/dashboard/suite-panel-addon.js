@@ -337,13 +337,15 @@
       </div>
 
       <div class="ag-suite-card" id="ag-suite-quota-card">
-        <div class="ag-suite-head">
+        <div class="ag-suite-head" style="flex-wrap:wrap;">
           <div class="ag-suite-title">
-            <span>模型额度池与快捷 CLI</span>
+            <span>模型额度池与快捷操作</span>
             <span id="ag-quota-meta" class="ag-suite-badge">Gemini 套件</span>
             <span id="ag-autoswitch-overview-badge" class="ag-suite-badge ok" style="display:none;">自动切号已开启</span>
           </div>
-          <div style="display:flex;gap:8px;align-items:center;">
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+            <button id="ag-btn-overview-reload" class="ag-suite-btn ghost" type="button">↻ 热重载样式</button>
+            <button id="ag-btn-overview-check" class="ag-suite-btn ghost" type="button">↑ 检查更新</button>
             <button id="ag-btn-overview-cli" class="ag-suite-btn" type="button">&gt;_ 启动 agy CLI</button>
           </div>
         </div>
@@ -351,6 +353,52 @@
       </div>
     `;
     view.insertBefore(wrap, view.firstChild);
+
+    wrap.querySelector("#ag-btn-overview-reload")?.addEventListener("click", async (e) => {
+      const btn = e.currentTarget;
+      btn.disabled = true;
+      try {
+        const res = await apiFetch("/api/reload", { method: "POST" });
+        showToast(res.ok ? "样式与脚本已实时热重载" : "热重载失败");
+      } catch {
+        showToast("热重载请求失败");
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    wrap.querySelector("#ag-btn-overview-check")?.addEventListener("click", async (e) => {
+      const btn = e.currentTarget;
+      btn.disabled = true;
+      btn.textContent = "检查中...";
+      try {
+        const res = await apiFetch("/api/suite-update/action", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "check" })
+        });
+        const j = await res.json();
+        if (j.hasUpdate) {
+          const banner = document.getElementById("ag-suite-update-banner");
+          if (banner) {
+            banner.classList.add("show");
+            const bVer = document.getElementById("ag-upd-ver-badge");
+            if (bVer) bVer.textContent = `v${j.currentVersion} → v${j.latestVersion}`;
+            const ul = document.getElementById("ag-upd-highlights");
+            if (ul) ul.innerHTML = (j.highlights || []).slice(0, 4).map((h) => `<li>${h}</li>`).join("");
+            banner.dataset.latestVer = j.latestVersion;
+          }
+          showToast(`发现新版本 v${j.latestVersion}！点击上方横幅即可一键更新`);
+        } else {
+          showToast(`当前已是最新版本 v${j.currentVersion}`);
+        }
+      } catch {
+        showToast("检查更新失败");
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "↑ 检查更新";
+      }
+    });
 
     wrap.querySelector("#ag-btn-overview-cli")?.addEventListener("click", async (e) => {
       const btn = e.currentTarget;
