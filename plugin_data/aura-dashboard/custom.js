@@ -322,14 +322,17 @@ try {
       if (!route || route === lastSavedRoute) return;
       // 如果只是空根路径且没有参数，不覆盖已记忆的具体对话页面
       if (route === "/" && lastSavedRoute && lastSavedRoute.startsWith("/c/")) return;
-      lastSavedRoute = route;
       try {
         fetch(`${b.origin}/api/suite-last-route`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "X-Suite-Token": b.token },
           body: JSON.stringify({ route, title: getCleanTitle() }),
           keepalive: Boolean(keepalive)
-        }).catch(() => {});
+        })
+          .then((r) => {
+            if (r && r.ok) lastSavedRoute = route;
+          })
+          .catch(() => {});
       } catch {}
     };
 
