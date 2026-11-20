@@ -32,3 +32,56 @@ try {
   }
 } catch (_) {}
 
+// 左侧对话轮次阶梯波浪导航栏：保持预览卡片悬停时的波浪焦点 + 卡片“20 of 28”汉化
+if (!window.__ag_wave_nav_hook_v1) {
+  window.__ag_wave_nav_hook_v1 = true;
+  let lastHoveredLi = null;
+
+  const syncWaveOpenState = () => {
+    const card = document.querySelector(
+      '[data-testid="conversation-navigator-card"], [data-testid="conversation-navigator-group-card"]'
+    );
+    if (card) {
+      // 顺带汉化预览卡片底部 "20 of 28" -> "第 20 / 28 轮"
+      const spans = card.querySelectorAll("span");
+      for (const sp of spans) {
+        if (sp.children.length === 0) {
+          const txt = (sp.textContent || "").trim();
+          const m = txt.match(/^(\d+)\s+of\s+(\d+)$/i);
+          if (m) {
+            sp.textContent = `第 ${m[1]} / ${m[2]} 轮`;
+          } else if (/^\d+\s+turns?$/i.test(txt)) {
+            sp.textContent = txt.replace(/(\d+)\s+turns?/i, "$1 轮对话");
+          }
+        }
+      }
+    } else if (lastHoveredLi) {
+      lastHoveredLi.removeAttribute("data-ag-wave-open");
+      lastHoveredLi = null;
+    }
+  };
+
+  document.addEventListener(
+    "pointerover",
+    (e) => {
+      const t = e.target;
+      if (!(t instanceof Element)) return;
+      const li = t.closest('[data-testid="conversation-navigator"] ol > li');
+      if (li) {
+        if (lastHoveredLi && lastHoveredLi !== li) {
+          lastHoveredLi.removeAttribute("data-ag-wave-open");
+        }
+        li.setAttribute("data-ag-wave-open", "true");
+        lastHoveredLi = li;
+      }
+      syncWaveOpenState();
+    },
+    { passive: true }
+  );
+
+  const obs = new MutationObserver(() => syncWaveOpenState());
+  if (document.body) {
+    obs.observe(document.body, { childList: true, subtree: true });
+  }
+}
+

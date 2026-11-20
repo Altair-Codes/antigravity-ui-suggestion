@@ -304,3 +304,166 @@ html[data-ag-collinear="on"] #antigravity\.agentSidePanelInputBox button[data-te
   z-index: 16 !important;
   pointer-events: auto !important;
 }
+
+/* ============================================================================
+ * 5. 左侧对话轮次导航栏：macOS 阶梯型波浪刻度条 (Stepped Wave Turn Navigator)
+ *    选中/悬停项居中放大变亮，上下相邻 1~4 级依次阶梯递减
+ * ============================================================================ */
+[data-testid="conversation-navigator"],
+div:has(> [data-testid="conversation-navigator"]) {
+  width: 36px !important;
+}
+
+[data-testid="conversation-navigator"] ol {
+  opacity: 0.92 !important;
+  align-items: flex-start !important;
+  width: 100% !important;
+}
+
+[data-testid="conversation-navigator"]:hover ol,
+[data-testid="conversation-navigator"] ol:hover {
+  opacity: 1 !important;
+}
+
+[data-testid="conversation-navigator"] ol > li {
+  width: 36px !important;
+  --ag-nav-bar-w: 5px;
+  --ag-nav-bar-h: 2px;
+  --ag-nav-bar-bg: rgba(255, 255, 255, 0.22);
+  --ag-nav-bar-shadow: none;
+}
+
+html:not([data-ag-color-scheme="dark"]) [data-testid="conversation-navigator"] ol > li {
+  --ag-nav-bar-bg: rgba(31, 31, 31, 0.20);
+}
+
+[data-testid="conversation-navigator"] button[data-testid="conversation-navigator-turn"],
+[data-testid="conversation-navigator"] button[data-testid="conversation-navigator-group"] {
+  width: 36px !important;
+  justify-content: flex-start !important;
+  padding-left: 8px !important;
+}
+
+[data-testid="conversation-navigator"] button[data-testid="conversation-navigator-turn"] > span,
+[data-testid="conversation-navigator"] button[data-testid="conversation-navigator-group"] > span {
+  width: var(--ag-nav-bar-w, 5px) !important;
+  height: var(--ag-nav-bar-h, 2px) !important;
+  border-radius: 999px !important;
+  background-color: var(--ag-nav-bar-bg, rgba(255, 255, 255, 0.22)) !important;
+  box-shadow: var(--ag-nav-bar-shadow, none) !important;
+  scale: 1 !important;
+  transform: none !important;
+  transition:
+    width 170ms cubic-bezier(0.22, 1, 0.36, 1),
+    height 170ms cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 170ms ease,
+    box-shadow 170ms ease !important;
+}
+
+/* ----------------------------------------------------------------------------
+ * 状态 A：鼠标正在导航刻度栏上悬停滑动（以 li:hover 为中心阶梯展开）
+ * ---------------------------------------------------------------------------- */
+/* ±4 级 */
+[data-testid="conversation-navigator"] ol:has(> li:hover) > li:hover + li + li + li + li,
+[data-testid="conversation-navigator"] ol:has(> li:hover) > li:has(+ li + li + li + li:hover) {
+  --ag-nav-bar-w: 6.5px;
+  --ag-nav-bar-bg: rgba(255, 255, 255, 0.29);
+}
+/* ±3 级 */
+[data-testid="conversation-navigator"] ol:has(> li:hover) > li:hover + li + li + li,
+[data-testid="conversation-navigator"] ol:has(> li:hover) > li:has(+ li + li + li:hover) {
+  --ag-nav-bar-w: 9px;
+  --ag-nav-bar-bg: rgba(255, 255, 255, 0.37);
+}
+/* ±2 级 */
+[data-testid="conversation-navigator"] ol:has(> li:hover) > li:hover + li + li,
+[data-testid="conversation-navigator"] ol:has(> li:hover) > li:has(+ li + li:hover) {
+  --ag-nav-bar-w: 13px;
+  --ag-nav-bar-bg: rgba(255, 255, 255, 0.47);
+}
+/* ±1 级 */
+[data-testid="conversation-navigator"] ol:has(> li:hover) > li:hover + li,
+[data-testid="conversation-navigator"] ol:has(> li:hover) > li:has(+ li:hover) {
+  --ag-nav-bar-w: 17.5px;
+  --ag-nav-bar-bg: rgba(255, 255, 255, 0.62);
+}
+/* 0 级（当前悬停中心峰值） */
+[data-testid="conversation-navigator"] ol:has(> li:hover) > li:hover {
+  --ag-nav-bar-w: 24px;
+  --ag-nav-bar-h: 2.5px;
+  --ag-nav-bar-bg: #ffffff;
+  --ag-nav-bar-shadow: 0 0 8px rgba(255, 255, 255, 0.36);
+}
+
+/* ----------------------------------------------------------------------------
+ * 状态 B：预览气泡卡片展开中且鼠标移入卡片（以 [data-ag-wave-open="true"] 为中心阶梯展开）
+ * ---------------------------------------------------------------------------- */
+[data-testid="conversation-navigator"] ol:not(:has(> li:hover)):has(> li[data-ag-wave-open="true"]) > li[data-ag-wave-open="true"] + li + li + li + li,
+[data-testid="conversation-navigator"] ol:not(:has(> li:hover)):has(> li[data-ag-wave-open="true"]) > li:has(+ li + li + li + li[data-ag-wave-open="true"]) {
+  --ag-nav-bar-w: 6.5px;
+  --ag-nav-bar-bg: rgba(255, 255, 255, 0.29);
+}
+[data-testid="conversation-navigator"] ol:not(:has(> li:hover)):has(> li[data-ag-wave-open="true"]) > li[data-ag-wave-open="true"] + li + li + li,
+[data-testid="conversation-navigator"] ol:not(:has(> li:hover)):has(> li[data-ag-wave-open="true"]) > li:has(+ li + li + li[data-ag-wave-open="true"]) {
+  --ag-nav-bar-w: 9px;
+  --ag-nav-bar-bg: rgba(255, 255, 255, 0.37);
+}
+[data-testid="conversation-navigator"] ol:not(:has(> li:hover)):has(> li[data-ag-wave-open="true"]) > li[data-ag-wave-open="true"] + li + li,
+[data-testid="conversation-navigator"] ol:not(:has(> li:hover)):has(> li[data-ag-wave-open="true"]) > li:has(+ li + li[data-ag-wave-open="true"]) {
+  --ag-nav-bar-w: 13px;
+  --ag-nav-bar-bg: rgba(255, 255, 255, 0.47);
+}
+[data-testid="conversation-navigator"] ol:not(:has(> li:hover)):has(> li[data-ag-wave-open="true"]) > li[data-ag-wave-open="true"] + li,
+[data-testid="conversation-navigator"] ol:not(:has(> li:hover)):has(> li[data-ag-wave-open="true"]) > li:has(+ li[data-ag-wave-open="true"]) {
+  --ag-nav-bar-w: 17.5px;
+  --ag-nav-bar-bg: rgba(255, 255, 255, 0.62);
+}
+[data-testid="conversation-navigator"] ol:not(:has(> li:hover)):has(> li[data-ag-wave-open="true"]) > li[data-ag-wave-open="true"] {
+  --ag-nav-bar-w: 24px;
+  --ag-nav-bar-h: 2.5px;
+  --ag-nav-bar-bg: #ffffff;
+  --ag-nav-bar-shadow: 0 0 8px rgba(255, 255, 255, 0.36);
+}
+
+/* ----------------------------------------------------------------------------
+ * 状态 C：常态未悬停时，以当前选中的对话轮次 (button[data-active="true"]) 为中心阶梯展开
+ * ---------------------------------------------------------------------------- */
+/* ±4 级 */
+[data-testid="conversation-navigator"] ol:not(:has(> li:hover)):not(:has(> li[data-ag-wave-open="true"])) > li:has(> button[data-active="true"]) + li + li + li + li,
+[data-testid="conversation-navigator"] ol:not(:has(> li:hover)):not(:has(> li[data-ag-wave-open="true"])) > li:has(+ li + li + li + li > button[data-active="true"]) {
+  --ag-nav-bar-w: 6.5px;
+  --ag-nav-bar-bg: rgba(255, 255, 255, 0.29);
+}
+/* ±3 级 */
+[data-testid="conversation-navigator"] ol:not(:has(> li:hover)):not(:has(> li[data-ag-wave-open="true"])) > li:has(> button[data-active="true"]) + li + li + li,
+[data-testid="conversation-navigator"] ol:not(:has(> li:hover)):not(:has(> li[data-ag-wave-open="true"])) > li:has(+ li + li + li > button[data-active="true"]) {
+  --ag-nav-bar-w: 9px;
+  --ag-nav-bar-bg: rgba(255, 255, 255, 0.37);
+}
+/* ±2 级 */
+[data-testid="conversation-navigator"] ol:not(:has(> li:hover)):not(:has(> li[data-ag-wave-open="true"])) > li:has(> button[data-active="true"]) + li + li,
+[data-testid="conversation-navigator"] ol:not(:has(> li:hover)):not(:has(> li[data-ag-wave-open="true"])) > li:has(+ li + li > button[data-active="true"]) {
+  --ag-nav-bar-w: 13px;
+  --ag-nav-bar-bg: rgba(255, 255, 255, 0.47);
+}
+/* ±1 级 */
+[data-testid="conversation-navigator"] ol:not(:has(> li:hover)):not(:has(> li[data-ag-wave-open="true"])) > li:has(> button[data-active="true"]) + li,
+[data-testid="conversation-navigator"] ol:not(:has(> li:hover)):not(:has(> li[data-ag-wave-open="true"])) > li:has(+ li > button[data-active="true"]) {
+  --ag-nav-bar-w: 17.5px;
+  --ag-nav-bar-bg: rgba(255, 255, 255, 0.62);
+}
+/* 0 级（当前选中轮次峰值） */
+[data-testid="conversation-navigator"] ol:not(:has(> li:hover)):not(:has(> li[data-ag-wave-open="true"])) > li:has(> button[data-active="true"]) {
+  --ag-nav-bar-w: 24px;
+  --ag-nav-bar-h: 2.5px;
+  --ag-nav-bar-bg: #ffffff;
+  --ag-nav-bar-shadow: 0 0 8px rgba(255, 255, 255, 0.36);
+}
+
+/* 浅色模式下的阶梯刻度颜色适配 */
+html:not([data-ag-color-scheme="dark"]) [data-testid="conversation-navigator"] ol > li:hover,
+html:not([data-ag-color-scheme="dark"]) [data-testid="conversation-navigator"] ol:not(:has(> li:hover)) > li[data-ag-wave-open="true"],
+html:not([data-ag-color-scheme="dark"]) [data-testid="conversation-navigator"] ol:not(:has(> li:hover)):not(:has(> li[data-ag-wave-open="true"])) > li:has(> button[data-active="true"]) {
+  --ag-nav-bar-bg: #1f1f1f;
+  --ag-nav-bar-shadow: 0 0 6px rgba(26, 115, 232, 0.25);
+}
