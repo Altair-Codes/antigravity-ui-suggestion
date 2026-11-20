@@ -76,3 +76,17 @@ antigravity-ui-suggestion/
 ├── install-win.ps1            # Windows PowerShell 一键同步脚本
 └── README.md                  # 本说明文档
 ```
+
+---
+
+## 🤝 开源致谢与上游项目引用 (Upstream Credits & Acknowledgements)
+
+本套件基于以下优秀的开源项目进行整合、主题重塑、性能优化与跨平台适配，特此向原作者致谢：
+
+| 上游仓库 | 原作者 | 原始能力与本仓库二次优化内容 |
+| :--- | :--- | :--- |
+| **[sayakaho/Antigravity-Aura](https://github.com/sayakaho/Antigravity-Aura)** | [@sayakaho](https://github.com/sayakaho) (Aura Team) | 提供原生 Plugin + Sidecar 注入架构、多语言本地化引擎与实时性能看板（`Aura Dashboard`）。<br>**本仓库优化**：定制 Google Gemini 四色流体流光输入框与按钮、重构底部 4 枚彩色中文微胶囊、将面板改为 Gemini 深空灰蓝主题、补全漏翻词条，并修复了动态文本切换（如模型低/中/高档位）的 `WeakMap` 缓存不刷新 Bug。 |
+| **[arco651749/workspace-file-tree](https://github.com/arco651749/workspace-file-tree)** | [@arco651749](https://github.com/arco651749) | 提供右侧栏工作区目录树、文件分栏预览与拖拽 `@` 引用基础框架（`Workspace File Tree`）。<br>**本仓库优化**：重写为 **macOS 访达（Finder）四栏列表视图**（`名称 \| 修改日期 \| 大小 \| 种类`、32px 行高、18px 立体水蓝文件夹与彩色文稿角标、奇偶斑马纹行、底部路径面包屑与项目统计），并补齐了 macOS 原生剪贴板、主标签页打开、访达定位与废纸篓支持。 |
+| **[ZOU2850/antigravity-file-launcher](https://github.com/ZOU2850/antigravity-file-launcher)** | [@ZOU2850](https://github.com/ZOU2850) | 提供会话交付物与项目文件隔离发现、多维筛选、内嵌预览与防压缩收藏（`File Launcher`）。<br>**本仓库优化**：统一 Google Gemini 深浅色主题与中文命名、关闭每次回复后自动弹窗，并新增活跃会话 `transcript.jsonl` 增量签名缓存、目录树 TTL 缓存与 `/api/state` 快照缓存（热加载提速约 800 倍）及 macOS/POSIX 路径解析修复。 |
+| **[elviscjn-cjn/antigravity-context-viewer](https://github.com/elviscjn-cjn/antigravity-context-viewer)** | [@elviscjn-cjn](https://github.com/elviscjn-cjn) (ELVISCHEN) | 提供顶栏圆环模型配额、上下文监控与 `>_ CLI` 快捷启动；可通过其免改盘守护模式（`node cli.js watch`）与本套件提供的 CDP 环境零冲突共存。 |
+
