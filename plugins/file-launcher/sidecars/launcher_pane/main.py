@@ -2875,9 +2875,17 @@ class SidecarRequestHandler(BaseHTTPRequestHandler):
             conv_roots_map = {}
             for c_row in conversations:
                 cid_k = c_row.get("convId") or ""
-                pid_k = conv_project_map.get(cid_k) or c_row.get("agProjectId") or ""
+                inferred_proj = conv_project_map.get(cid_k)
+                inferred_path = ""
+                if isinstance(inferred_proj, dict):
+                    pid_k = inferred_proj.get("id") or c_row.get("agProjectId") or ""
+                    inferred_path = inferred_proj.get("path") or ""
+                else:
+                    pid_k = inferred_proj or c_row.get("agProjectId") or ""
                 roots_for_c = []
-                if pid_k and proj_path_by_id.get(pid_k):
+                if inferred_path:
+                    roots_for_c.append(inferred_path)
+                elif pid_k and isinstance(pid_k, str) and proj_path_by_id.get(pid_k):
                     roots_for_c.append(proj_path_by_id[pid_k])
                 for wp in workspace_paths:
                     if wp not in roots_for_c:

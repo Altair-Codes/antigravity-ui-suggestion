@@ -1082,6 +1082,50 @@ def extract_paths_from_tool_call(
     return out_paths
 
 
+_SEARCH_DIR_INDEX_CACHE: Dict[str, Any] = {}
+_SEARCH_DIR_INDEX_TTL = 20.0
+
+
+def _get_dir_name_index(root_dir: str) -> Tuple[Dict[str, List[str]], Dict[str, List[str]]]:
+    """
+    为单个项目目录建立文件名/目录名倒排索引并缓存 20 秒，避免 reconcile_missing_and_moved
+    对每个缺失文件重复 os.walk 导致 O(N*M) 慢查询。
+    """
+    root_norm = norm_path_str(root_dir)
+    now = time.time()
+    cached = _SEARCH_DIR_INDEX_CACHE.get(root_norm)
+    if cached and (now - cached[0]) < _SEARCH_DIR_INDEX_TTL:
+        return cached[1], cached[2]
+
+    files_idx: Dict[str, List[str]] = {}
+    dirs_idx: Dict[str, List[str]] = {}
+    skip_names = {"node_modules", ".git", "__pycache__", ".venv", "venv", "dist", "build", ".next", "target", "Pods"}
+    base_depth = root_norm.count(os.sep)
+    scanned_dirs = 0
+    for cur_root, dirs, files in os.walk(root_norm):
+        dirs[:] = [d for d in dirs if d not in skip_names and not d.startswith(".tmp")]
+        if cur_root.count(os.sep) - base_depth > 4:
+            dirs[:] = []
+            continue
+        scanned_dirs += 1
+        if scanned_dirs > 600:
+            dirs[:] = []
+            break
+        for d in dirs:
+            dn = d.lower() if os.name == "nt" else d
+            lst = dirs_idx.setdefault(dn, [])
+            if len(lst) < 5:
+                lst.append(norm_path_str(os.path.join(cur_root, d)))
+        for f in files:
+            fn = f.lower() if os.name == "nt" else f
+            lst = files_idx.setdefault(fn, [])
+            if len(lst) < 5:
+                lst.append(norm_path_str(os.path.join(cur_root, f)))
+
+    _SEARCH_DIR_INDEX_CACHE[root_norm] = (now, files_idx, dirs_idx)
+    return files_idx, dirs_idx
+
+
 def detect_moved_target(
     old_path: str,
     expected_size: Optional[int],
@@ -1091,57 +1135,44 @@ def detect_moved_target(
 ) -> Optional[str]:
     """
     当历史上记录的文件路径已不存在时，在关联项目/会话目录中按文件名（与文件大小/目录属性）查找移动后的新路径。
-    若找到唯一高置信度匹配则返回新路径，否则返回 None。
+    使用目录倒排索引缓存 O(1) 查找，避免重复扫盘。
     """
     base_name = os.path.basename(old_path)
     if not base_name:
         return None
     base_lower = base_name.lower() if os.name == "nt" else base_name
     exclude = exclude_paths or set()
+    old_key = path_key(old_path)
 
     matches: List[str] = []
-    skip_names = {"node_modules", ".git", "__pycache__", ".venv", "venv", "dist", "build"}
     for root_dir in search_dirs or []:
         if not root_dir or not os.path.isdir(root_dir):
             continue
-        root_norm = norm_path_str(root_dir)
-        # 限制扫描深度防遍历整个磁盘
-        base_depth = root_norm.count(os.sep)
-        for cur_root, dirs, files in os.walk(root_norm):
-            dirs[:] = [d for d in dirs if d not in skip_names and not d.startswith(".tmp")]
-            if cur_root.count(os.sep) - base_depth > 4:
-                dirs[:] = []
+        files_idx, dirs_idx = _get_dir_name_index(root_dir)
+        bucket = dirs_idx.get(base_lower) if is_dir else files_idx.get(base_lower)
+        if not bucket:
+            continue
+        for cand in bucket:
+            ck = path_key(cand)
+            if ck in exclude or ck == old_key:
                 continue
-            if is_dir:
-                for d in dirs:
-                    dn = d.lower() if os.name == "nt" else d
-                    if dn == base_lower:
-                        cand = norm_path_str(os.path.join(cur_root, d))
-                        if path_key(cand) not in exclude and path_key(cand) != path_key(old_path):
-                            matches.append(cand)
+            if not is_dir and expected_size is not None and expected_size > 0:
+                try:
+                    sz = os.path.getsize(cand)
+                    if sz == expected_size or abs(sz - expected_size) <= max(64, int(expected_size * 0.05)):
+                        matches.append(cand)
+                except OSError:
+                    pass
             else:
-                for f in files:
-                    fn = f.lower() if os.name == "nt" else f
-                    if fn == base_lower:
-                        cand = norm_path_str(os.path.join(cur_root, f))
-                        if path_key(cand) not in exclude and path_key(cand) != path_key(old_path):
-                            if expected_size is not None and expected_size > 0:
-                                try:
-                                    sz = os.path.getsize(cand)
-                                    # 大小完全相等，或仅细微偏差
-                                    if sz == expected_size or abs(sz - expected_size) <= max(64, int(expected_size * 0.05)):
-                                        matches.append(cand)
-                                except OSError:
-                                    pass
-                            else:
-                                matches.append(cand)
+                matches.append(cand)
             if len(matches) >= 3:
                 break
+        if len(matches) >= 3:
+            break
 
     if len(matches) == 1:
         return matches[0]
     if len(matches) > 1:
-        # 多同名候选时，取最近修改的一份，前提是 expected_size 完全匹配或仅有一份最近
         try:
             matches.sort(key=lambda p: os.path.getmtime(p), reverse=True)
             return matches[0]

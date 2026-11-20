@@ -10,16 +10,26 @@
 
   function resolveHostLuminanceTheme() {
     try {
-      const probe = document.createElement("span");
-      probe.style.cssText = "position:absolute;visibility:hidden;pointer-events:none;color:var(--background, #f7f7f8)";
-      (document.body || document.documentElement).appendChild(probe);
-      const c = getComputedStyle(probe).color;
-      probe.remove();
-      const nums = (c.match(/[\d.]+/g) || []).map(Number);
-      if (nums.length >= 3) {
-        const scale = c.startsWith("color(") ? 1 : 255;
-        const lum = 0.2126 * (nums[0] / scale) + 0.7152 * (nums[1] / scale) + 0.0722 * (nums[2] / scale);
-        return lum < 0.5 ? "dark" : "light";
+      const rootStyle = getComputedStyle(document.documentElement);
+      const rawBg =
+        rootStyle.getPropertyValue("--background").trim() ||
+        rootStyle.getPropertyValue("--vscode-editor-background").trim() ||
+        rootStyle.getPropertyValue("--card").trim();
+      if (rawBg) {
+        const probe = document.createElement("span");
+        probe.style.cssText = `position:absolute;visibility:hidden;pointer-events:none;color:${rawBg}`;
+        (document.body || document.documentElement).appendChild(probe);
+        const c = getComputedStyle(probe).color;
+        probe.remove();
+        const nums = (c.match(/[\d.]+/g) || []).map(Number);
+        if (nums.length >= 3) {
+          const scale = c.startsWith("color(") ? 1 : 255;
+          const lum = 0.2126 * (nums[0] / scale) + 0.7152 * (nums[1] / scale) + 0.0722 * (nums[2] / scale);
+          return lum < 0.5 ? "dark" : "light";
+        }
+      }
+      if (document.documentElement.classList.contains("dark") || (document.body && document.body.classList.contains("dark"))) {
+        return "dark";
       }
     } catch (e) {}
     return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
