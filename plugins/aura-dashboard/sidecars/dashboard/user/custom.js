@@ -51,13 +51,47 @@ try {
     window.__ag_suite_notice_timer = setTimeout(() => el.classList.remove("show"), 4200);
   }
 
-  // 1. 顶栏注入极简 >_ CLI 快捷启动按钮
+  // 1. 顶栏注入极简 >_ CLI 与 ⚙ 控制台 快捷按钮
+  function openAuraDashboardTab() {
+    // 若右侧边栏当前收起，先展开它
+    const hasSideBarTabs = Boolean(document.querySelector('[data-testid="side-panel-new-tab-button"]'));
+    if (!hasSideBarTabs) {
+      const toggleBtn = document.querySelector('[data-testid="toggle-aux-sidebar"]');
+      if (toggleBtn) toggleBtn.click();
+    }
+    // 优先切换已打开的 Aura 控制台标签页
+    const tabBtns = Array.from(document.querySelectorAll(".agy-aux-tab button"));
+    const existing = tabBtns.find((b) => /Aura 控制台|Aura Dashboard/i.test((b.innerText || "").trim()));
+    if (existing) {
+      existing.click();
+      return;
+    }
+    // 否则通过原生 URL query + popstate 打开 Aura 控制台
+    try {
+      const u = new URL(location.href);
+      u.searchParams.set("tab", "sidecar__aura-dashboard/dashboard__/");
+      history.pushState(history.state, "", u.toString());
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    } catch {}
+  }
+
   function ensureCliButton() {
-    if (document.getElementById("ag-suite-cli-btn")) return;
     const anchor =
       document.querySelector('[data-testid="titlebar-more-actions"]') ||
       document.querySelector('[data-testid="toggle-overview-panel"]');
     if (!anchor || !anchor.parentElement) return;
+
+    if (!document.getElementById("ag-suite-aura-btn")) {
+      const auraBtn = document.createElement("button");
+      auraBtn.id = "ag-suite-aura-btn";
+      auraBtn.type = "button";
+      auraBtn.title = "打开 Aura 控制台（模型额度 / 防幻觉护栏 / 周额度自动切号 / 主题设置）";
+      auraBtn.innerHTML = `<span class="ag-aura-ico">⚙</span><span>控制台</span>`;
+      auraBtn.addEventListener("click", () => openAuraDashboardTab());
+      anchor.parentElement.insertBefore(auraBtn, anchor);
+    }
+
+    if (document.getElementById("ag-suite-cli-btn")) return;
 
     const btn = document.createElement("button");
     btn.id = "ag-suite-cli-btn";
@@ -96,7 +130,8 @@ try {
         btn.disabled = false;
       }
     });
-    anchor.parentElement.insertBefore(btn, anchor);
+    const auraBtnEl = document.getElementById("ag-suite-aura-btn");
+    anchor.parentElement.insertBefore(btn, auraBtnEl || anchor);
   }
 
   // 2. 通过 Antigravity 原生 RetrieveUserQuotaSummary + GetUserStatus 同步每周/5h额度并评估自动切号

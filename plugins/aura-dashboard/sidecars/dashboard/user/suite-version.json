@@ -1,10 +1,10 @@
 {
-  "version": "1.2.1",
-  "publishedAt": "2026-11-20T18:45:00+08:00",
+  "version": "1.2.2",
+  "publishedAt": "2026-11-20T18:52:00+08:00",
   "repoUrl": "https://github.com/Songh0918/antigravity-ui-suggestion",
   "highlights": [
-    "修复 >_ CLI 启动时 oauth2.googleapis.com 超时：自动读取 macOS scutil / Windows 注册表系统代理并注入终端，直接继承当前账号免重复登录",
-    "新增每周额度阈值自动切号：当监控模型池（Gemini / Claude / Argon / 任意池）每周剩余额度 ≤ 设定百分比（如 10%）时，自动切换至账号备选库中的下一个账号",
-    "Aura 控制台概览页升级为「每周限额 + 5小时限额」双进度条与精确重置倒计时"
+    "顶栏 >_ CLI 旁新增极简「⚙ 控制台」快捷按钮，一键直达 Aura 控制台与套件设置",
+    "修复 macOS 未打开 Terminal 时点击 >_ CLI 弹出两个终端窗口的问题（严格只开 1 个窗口）",
+    "自动注入系统代理解决 agy CLI 超时，并内置每周额度阈值自动切号"
   ]
 }

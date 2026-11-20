@@ -428,7 +428,8 @@ html:not([data-ag-color-scheme="dark"]) [data-testid="conversation-navigator"] o
 /* ============================================================================
  * 6. 顶栏极简 >_ CLI 快捷按钮 & GitHub 扩展更新轻量提示卡片
  * ============================================================================ */
-#ag-suite-cli-btn {
+#ag-suite-cli-btn,
+#ag-suite-aura-btn {
   -webkit-app-region: no-drag;
   display: inline-flex;
   align-items: center;
@@ -448,18 +449,38 @@ html:not([data-ag-color-scheme="dark"]) [data-testid="conversation-navigator"] o
   transition: background-color 140ms ease, border-color 140ms ease, transform 120ms ease;
 }
 
+#ag-suite-aura-btn {
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+  border-color: rgba(197, 138, 249, 0.30);
+  background: rgba(155, 114, 203, 0.13);
+  color: #d7aefb;
+}
+
 #ag-suite-cli-btn:hover {
   background: rgba(66, 133, 244, 0.24);
   border-color: rgba(138, 180, 248, 0.56);
   color: #ffffff;
 }
 
-#ag-suite-cli-btn:active {
+#ag-suite-aura-btn:hover {
+  background: rgba(155, 114, 203, 0.26);
+  border-color: rgba(197, 138, 249, 0.60);
+  color: #ffffff;
+}
+
+#ag-suite-cli-btn:active,
+#ag-suite-aura-btn:active {
   transform: scale(0.96);
 }
 
 #ag-suite-cli-btn .ag-cli-chevron {
   color: #8ab4f8;
+}
+
+#ag-suite-aura-btn .ag-aura-ico {
+  color: #c58af9;
+  font-size: 12px;
+  line-height: 1;
 }
 
 html:not([data-ag-color-scheme="dark"]) #ag-suite-cli-btn {
@@ -470,6 +491,15 @@ html:not([data-ag-color-scheme="dark"]) #ag-suite-cli-btn {
 html:not([data-ag-color-scheme="dark"]) #ag-suite-cli-btn:hover {
   background: rgba(26, 115, 232, 0.18);
   color: #1557b0;
+}
+html:not([data-ag-color-scheme="dark"]) #ag-suite-aura-btn {
+  background: rgba(147, 52, 230, 0.08);
+  border-color: rgba(147, 52, 230, 0.26);
+  color: #7627bb;
+}
+html:not([data-ag-color-scheme="dark"]) #ag-suite-aura-btn:hover {
+  background: rgba(147, 52, 230, 0.16);
+  color: #5b1894;
 }
 
 #ag-suite-mini-notice {

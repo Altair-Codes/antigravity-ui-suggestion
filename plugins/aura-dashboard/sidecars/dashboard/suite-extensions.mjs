@@ -268,7 +268,22 @@ function launchAgyCli({ cwd, model, dryRun } = {}) {
       }
       const cliInvoke = [shellEscapePosix(cliPath), ...extraArgs.map(shellEscapePosix)].join(" ");
       const shellCmd = `cd ${shellEscapePosix(targetCwd)} && export ${exportsList.join(" ")} && unset NO_COLOR && ${cliInvoke}`;
-      const script = `tell application "Terminal"\n  activate\n  do script "${appleScriptEscape(shellCmd)}"\nend tell`;
+      const escapedCmd = appleScriptEscape(shellCmd);
+      const script = [
+        'set wasRunning to application "Terminal" is running',
+        'tell application "Terminal"',
+        '  activate',
+        '  if wasRunning then',
+        `    do script "${escapedCmd}"`,
+        '  else',
+        '    if (count of windows) > 0 then',
+        `      do script "${escapedCmd}" in front window`,
+        '    else',
+        `      do script "${escapedCmd}"`,
+        '    end if',
+        '  end if',
+        'end tell'
+      ].join("\n");
       const child = spawn("osascript", ["-e", script], { detached: true, stdio: "ignore" });
       child.unref();
       return {
