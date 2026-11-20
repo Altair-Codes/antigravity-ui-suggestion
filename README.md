@@ -55,10 +55,18 @@ powershell -ExecutionPolicy Bypass -File .\install-win.ps1
 | :--- | :--- |
 | **Google Gemini 四色流体输入框** | 采用 CSS `@property --gemini-angle` + `conic-gradient` 实现 Google Gemini 彩星四色（蓝 `#4285F4` → 紫 `#9B72CB` → 红 `#EA4335` → 黄 `#FBBC05` → 绿 `#34A853`）360° 连续滚动变色流光边框，发送按钮与语音按钮同步采用 Gemini 动态流动渐变，彻底去除原版橙红火漆残留。 |
 | **底部 Token 速度彩色微胶囊** | 去除原版左侧弯曲括号残影，重构为 4 枚 Google Gemini 配色中文微胶囊：<br>• **`● XX tok/s`**（谷歌蓝 `#8ab4f8` + 呼吸状态圆点）<br>• **`首字 X.Xs`**（星云紫 `#c58af9`）<br>• **`上下文 XXXk/512k`**（翡翠绿 `#81c995` / 预警黄 `#fdd663` / 高位红 `#f28b82` 自适应变色）<br>• **`输出 X.Xk`**（清爽冷灰蓝） |
-| **Aura 控制台** (`aura-dashboard`) | • 标签栏与菜单全中文命名（`Aura 控制台`），面板内部全面切换为 **Google Gemini 深空灰蓝主题**（`#131314` / `#1e1f20` / `#8ab4f8`）。<br>• 修复了切换模型思考档位（低/中/高）时底部按钮文字不刷新的 `WeakMap` 缓存 Bug。<br>• 补全账户弹窗、浏览器设置与图表趋势等漏翻中文词条。 |
+| **Aura 控制台** (`aura-dashboard`) | • 标签栏与菜单全中文命名（`Aura 控制台`），面板内部全面切换为 **Google Gemini 深空灰蓝主题**（`#131314` / `#1e1f20` / `#8ab4f8`）。<br>• **内建全平台防幻觉护栏规则**（`rules/AGENTS.md`）：整理 5 大工程护栏（未读禁猜、最小改动、问答/执行分离、`edit_file` 唯一锚点、诚实实测验证），在 Aura 控制台偏好设置可一键切换 `关闭 / 标准 / 严格`，macOS Intel / Apple Silicon / Windows 100% 生效。<br>• **集成 `>_ CLI` 快捷启动与模型额度池速览**：顶栏与面板内一键拉起本机 `agy` CLI 终端，概览页实时展示 Gemini / Claude / Argon 共享额度池百分比与重置倒计时。<br>• **GitHub 自动版本检测与一键更新推送**：每 6 小时静默检查 `version.json`，发布新版后向已安装用户弹出非侵入式更新提示，支持一键在线同步或忽略版本。<br>• **左侧对话轮次阶梯波浪导航栏**：常态平整收起为 `5px` 刻度，悬停 60ms 零延迟跟手呈阶梯波浪展开。<br>• 修复了切换模型思考档位（低/中/高）时底部按钮文字不刷新的 `WeakMap` 缓存 Bug，并补全漏翻词条。 |
 | **项目文件** (`workspace-file-tree`) | • 1:1 还原 **macOS 访达（Finder）四栏列表视图**（`名称 \| 修改日期 \| 大小 \| 种类`）。<br>• 加大至 `32px` 舒适行高、`13.5px` 字体、`18px` **macOS 立体水蓝渐变文件夹图标**与**彩色文稿角标图标**（`M`、`S`、`SH`、`TS`、`JS`、`PY` 等）。<br>• 奇偶行圆角斑马纹交替底色 + 底部访达文件夹路径面包屑 + 项目总数状态栏。<br>• 补齐 macOS / Windows 双端双击在主标签页打开、一键复制 `@引用`、在访达/资源管理器中定位、移至废纸篓/回收站。 |
-| **文件启动器** (`file-launcher`) | • 标签栏与菜单全中文命名（`文件启动器`），视觉配色对齐 Google Gemini。<br>• **彻底关闭每次 AI 回复后自动弹出侧边栏**，仅在手动点开时加载。<br>• **加载速度提升 800 倍（秒开）**：修复活跃会话 `not is_cur` 缓存失效问题，新增 `transcript.jsonl` 增量签名缓存、项目目录树 20s 缓存与 `/api/state` 快照缓存，热响应耗时从 `~770ms` 降至 **`< 1ms`**。 |
-| **热更新与版本升级不丢失** | 所有插件与配置均位于 `~/.gemini/` 用户目录下，Antigravity 客户端热刷新或大版本升级后会自动幂等自愈并重注入中文主题，无需重新配置。 |
+| **文件启动器** (`file-launcher`) | • 标签栏与菜单全中文命名（`文件启动器`），修复 `plugin://` 深色主题自适应为 Google Gemini `#131314`。<br>• **彻底关闭每次 AI 回复后自动弹出侧边栏**，仅在手动点开时加载。<br>• **修复 502 卡死 & 极致提速（冷启 158ms / 热响应 < 7ms）**：修复 `conv_project_map` 字典键崩溃、新增缺失文件目录倒排索引缓存与增量签名缓存。 |
+| **热更新与版本升级不丢失** | 所有插件、防幻觉规则与配置均位于 `~/.gemini/` 用户目录下，零二进制改盘，Antigravity 客户端热刷新或大版本升级后自动保持生效。 |
+
+---
+
+## 🔔 套件版本发布与推送更新提醒（给维护者）
+
+本仓库内置了基于 [`version.json`](./version.json) 的轻量级自动更新提醒机制：
+1. 每次优化主题或扩展代码后，只需修改根目录 [`version.json`](./version.json) 中的 `version`（例如改为 `"1.2.1"`）和 `highlights` 更新说明并 `git push` 到 `main` 分支。
+2. 所有已安装本套件的 macOS / Windows 用户在打开 Antigravity 时（每 6 小时静默检查一次，或在 Aura 控制台点击「检查更新」），会自动收到新版本提示卡片，可自由选择 **「立即一键更新」** 或 **「忽略此版本」**。
 
 ---
 
@@ -93,5 +101,5 @@ antigravity-ui-suggestion/
 | **[sayakaho/Antigravity-Aura](https://github.com/sayakaho/Antigravity-Aura)** | [@sayakaho](https://github.com/sayakaho) (Aura Team) | 提供原生 Plugin + Sidecar 注入架构、多语言本地化引擎与实时性能看板（`Aura Dashboard`）。<br>**本仓库优化**：定制 Google Gemini 四色流体流光输入框与按钮、重构底部 4 枚彩色中文微胶囊、将面板改为 Gemini 深空灰蓝主题、补全漏翻词条，并修复了动态文本切换（如模型低/中/高档位）的 `WeakMap` 缓存不刷新 Bug。 |
 | **[arco651749/workspace-file-tree](https://github.com/arco651749/workspace-file-tree)** | [@arco651749](https://github.com/arco651749) | 提供右侧栏工作区目录树、文件分栏预览与拖拽 `@` 引用基础框架（`Workspace File Tree`）。<br>**本仓库优化**：重写为 **macOS 访达（Finder）四栏列表视图**（`名称 \| 修改日期 \| 大小 \| 种类`、32px 行高、18px 立体水蓝文件夹与彩色文稿角标、奇偶斑马纹行、底部路径面包屑与项目统计），并补齐了 macOS 原生剪贴板、主标签页打开、访达定位与废纸篓支持。 |
 | **[ZOU2850/antigravity-file-launcher](https://github.com/ZOU2850/antigravity-file-launcher)** | [@ZOU2850](https://github.com/ZOU2850) | 提供会话交付物与项目文件隔离发现、多维筛选、内嵌预览与防压缩收藏（`File Launcher`）。<br>**本仓库优化**：统一 Google Gemini 深浅色主题与中文命名、关闭每次回复后自动弹窗，并新增活跃会话 `transcript.jsonl` 增量签名缓存、目录树 TTL 缓存与 `/api/state` 快照缓存（热加载提速约 800 倍）及 macOS/POSIX 路径解析修复。 |
-| **[elviscjn-cjn/antigravity-context-viewer](https://github.com/elviscjn-cjn/antigravity-context-viewer)** | [@elviscjn-cjn](https://github.com/elviscjn-cjn) (ELVISCHEN) | 提供顶栏圆环模型配额、上下文监控与 `>_ CLI` 快捷启动；可通过其免改盘守护模式（`node cli.js watch`）与本套件提供的 CDP 环境零冲突共存。 |
+| **[elviscjn-cjn/antigravity-context-viewer](https://github.com/elviscjn-cjn/antigravity-context-viewer)** & **PR #4 (@Jia131313)** | [@elviscjn-cjn](https://github.com/elviscjn-cjn) / [@Jia131313](https://github.com/Jia131313) | 提供防幻觉工程护栏提示词理念（`meter-enhance.js`）、`>_ CLI` 终端快捷启动与模型额度池监控思路。<br>**本仓库融合优化**：将其防幻觉提示词整理升级为跨平台原生插件规则（`plugins/aura-dashboard/rules/AGENTS.md`，无需二进制改盘，支持 macOS Intel / Apple Silicon 与 Windows），并将 `>_ CLI` 启动器与模型额度速览直接整合进 `Aura 控制台`。 |
 

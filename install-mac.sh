@@ -42,6 +42,11 @@ for f in config.json custom.css custom.js i18n.override.json; do
   cp "$HERE/plugin_data/aura-dashboard/$f" "$AURA_SIDECAR_DATA_DST/$f"
   cp "$HERE/plugin_data/aura-dashboard/$f" "$PLUGINS_DST/aura-dashboard/sidecars/dashboard/user/$f"
 done
+if [ -f "$HERE/version.json" ]; then
+  cp "$HERE/version.json" "$AURA_DATA_DST/suite-version.json"
+  cp "$HERE/version.json" "$AURA_SIDECAR_DATA_DST/suite-version.json"
+  cp "$HERE/version.json" "$PLUGINS_DST/aura-dashboard/sidecars/dashboard/user/suite-version.json"
+fi
 
 # 3. 自动将当前 Mac 的 node 与 python3 绝对路径写入 sidecar.json
 "$PYTHON_BIN" - "$NODE_BIN" "$PYTHON_BIN" <<'PY'

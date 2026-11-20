@@ -31,6 +31,12 @@ foreach ($f in @("config.json", "custom.css", "custom.js", "i18n.override.json")
   Copy-Item -Force $srcFile (Join-Path $AuraSidecarDataDst $f)
   Copy-Item -Force $srcFile (Join-Path $AuraUserSeedDst $f)
 }
+$VerFile = Join-Path $Here "version.json"
+if (Test-Path $VerFile) {
+  Copy-Item -Force $VerFile (Join-Path $AuraDataDst "suite-version.json")
+  Copy-Item -Force $VerFile (Join-Path $AuraSidecarDataDst "suite-version.json")
+  Copy-Item -Force $VerFile (Join-Path $AuraUserSeedDst "suite-version.json")
+}
 
 # 3. 将 sidecar.json 的 command 适配为 Windows 标准 node / python（UTF-8 无 BOM）
 $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
