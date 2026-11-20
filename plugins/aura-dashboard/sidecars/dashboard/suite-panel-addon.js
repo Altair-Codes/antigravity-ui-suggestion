@@ -191,6 +191,60 @@
         margin-top: 8px;
         width: 100%;
       }
+      .ag-as-order-list {
+        width: 100%;
+        margin-top: 8px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .ag-as-order-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 7px 10px;
+        border-radius: 9px;
+        background: rgba(255,255,255,0.03);
+        border: 1px solid var(--aura-border, rgba(255,255,255,0.08));
+        font-size: 12px;
+      }
+      .ag-as-order-item.is-next {
+        border-color: rgba(138, 180, 248, 0.36);
+        background: rgba(66, 133, 244, 0.08);
+      }
+      .ag-as-idx {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 24px;
+        height: 20px;
+        padding: 0 5px;
+        border-radius: 6px;
+        font-family: var(--aura-font-mono);
+        font-size: 11px;
+        font-weight: 700;
+        background: rgba(138, 180, 248, 0.16);
+        color: #a8c7fa;
+      }
+      .ag-as-mini-btn {
+        appearance: none;
+        border: 1px solid var(--aura-border, rgba(255,255,255,0.12));
+        background: rgba(255,255,255,0.04);
+        color: var(--aura-fg, #e3e3e3);
+        border-radius: 6px;
+        padding: 2px 7px;
+        font-size: 11px;
+        cursor: pointer;
+      }
+      .ag-as-mini-btn:hover:not(:disabled) {
+        border-color: rgba(138, 180, 248, 0.5);
+        color: #a8c7fa;
+      }
+      .ag-as-mini-btn:disabled {
+        opacity: 0.35;
+        cursor: default;
+      }
     `;
     document.head.appendChild(style);
   }
@@ -380,6 +434,7 @@
           <button id="ag-as-save-acct-btn" class="ag-suite-btn ghost" type="button">+ 保存当前账号到备选库</button>
         </div>
         <div id="ag-autoswitch-vault-info" class="ag-suite-sub" style="width:100%;margin-top:2px;">正在读取账号备选库...</div>
+        <div id="ag-as-order-list" class="ag-as-order-list"></div>
       </div>
 
       <div class="ag-suite-row">
@@ -437,11 +492,91 @@
     });
     syncGuardrails();
 
-    // 2. 每周额度阈值自动切号绑定
+    // 2. 每周额度阈值自动切号与切换顺序列表绑定
     const asEnabled = card.querySelector("#ag-as-enabled");
     const asPool = card.querySelector("#ag-as-pool");
     const asThreshold = card.querySelector("#ag-as-threshold");
     const asVaultInfo = card.querySelector("#ag-autoswitch-vault-info");
+    const asOrderList = card.querySelector("#ag-as-order-list");
+    let latestOrderedEmails = [];
+
+    const renderOrderList = (accounts, poolKey) => {
+      if (!asOrderList) return;
+      if (!Array.isArray(accounts) || accounts.length === 0) {
+        asOrderList.innerHTML = "";
+        return;
+      }
+      latestOrderedEmails = accounts.map((a) => a.email);
+      asOrderList.innerHTML = accounts
+        .map((a, idx) => {
+          const snap = a.lastWeekly || {};
+          const wPct =
+            poolKey && poolKey !== "any-weekly" && typeof snap[poolKey] === "number"
+              ? snap[poolKey]
+              : typeof snap["gemini-weekly"] === "number"
+                ? snap["gemini-weekly"]
+                : null;
+          const pctBadge = wPct !== null ? `<span class="ag-suite-sub" style="font-family:var(--aura-font-mono);">周余 ${wPct}%</span>` : "";
+          const curTag = a.isCurrent ? `<span class="ag-suite-badge ok">当前使用</span>` : "";
+          const nextTag = a.isNext ? `<span class="ag-suite-badge">下一顺位</span>` : "";
+          return `
+            <div class="ag-as-order-item${a.isNext ? " is-next" : ""}">
+              <div style="display:flex;align-items:center;gap:7px;min-width:0;flex:1;">
+                <span class="ag-as-idx">#${a.orderIndex || idx + 1}</span>
+                <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--aura-fg,#e3e3e3);font-weight:500;">${a.email}</span>
+                ${curTag}${nextTag}${pctBadge}
+              </div>
+              <div style="display:flex;align-items:center;gap:4px;flex-shrink:0;">
+                <button class="ag-as-mini-btn" type="button" data-move="up" data-idx="${idx}" ${idx === 0 ? "disabled" : ""} title="上移顺位">↑</button>
+                <button class="ag-as-mini-btn" type="button" data-move="down" data-idx="${idx}" ${idx === accounts.length - 1 ? "disabled" : ""} title="下移顺位">↓</button>
+                ${!a.isCurrent ? `<button class="ag-as-mini-btn" type="button" data-switch-email="${a.email}" title="立即切换至此账号">切换</button>` : ""}
+              </div>
+            </div>
+          `;
+        })
+        .join("");
+
+      asOrderList.querySelectorAll("button[data-move]").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          const idx = Number(btn.dataset.idx);
+          const dir = btn.dataset.move === "up" ? -1 : 1;
+          const targetIdx = idx + dir;
+          if (targetIdx < 0 || targetIdx >= latestOrderedEmails.length) return;
+          const nextOrder = [...latestOrderedEmails];
+          const [moved] = nextOrder.splice(idx, 1);
+          nextOrder.splice(targetIdx, 0, moved);
+          const res = await apiFetch("/api/suite-auto-switch", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ accountOrder: nextOrder })
+          });
+          const j = await res.json();
+          if (j.ok) {
+            showToast("已更新账号轮换顺序");
+            syncAutoSwitch();
+          }
+        });
+      });
+
+      asOrderList.querySelectorAll("button[data-switch-email]").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          const em = btn.dataset.switchEmail;
+          btn.disabled = true;
+          try {
+            const res = await apiFetch("/api/accounts/switch", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ email: em, reloadWindow: true })
+            });
+            const j = await res.json();
+            showToast(j.ok ? `已切换至 ${em}，正在刷新窗口...` : `切换失败：${j.error || ""}`);
+          } finally {
+            btn.disabled = false;
+          }
+        });
+      });
+    };
+
     const syncAutoSwitch = async () => {
       try {
         const res = await apiFetch("/api/suite-auto-switch", { method: "GET" });
@@ -454,16 +589,18 @@
         const overviewBadge = document.getElementById("ag-autoswitch-overview-badge");
         if (overviewBadge) {
           overviewBadge.style.display = cfg.enabled ? "inline-flex" : "none";
-          overviewBadge.textContent = `周额度 ≤ ${cfg.thresholdPct}% 自动切号`;
+          overviewBadge.textContent = j.nextTargetEmail
+            ? `周额度 ≤ ${cfg.thresholdPct}% → ${j.nextTargetEmail.split("@")[0]}`
+            : `周额度 ≤ ${cfg.thresholdPct}% 自动切号`;
         }
-        const accts = (j.accounts || []).map((a) => a.email).join("、");
         const lastLog = cfg.lastSwitchAt
-          ? ` · 上次自动切号：${cfg.lastSwitchFrom || ""} → ${cfg.lastSwitchTo || ""}（${cfg.lastTriggerReason || ""}）`
+          ? ` · 上次切号：${cfg.lastSwitchFrom || ""} → ${cfg.lastSwitchTo || ""}（${cfg.lastTriggerReason || ""}）`
           : "";
         asVaultInfo.textContent =
           j.vaultCount >= 2
-            ? `备选库已有 ${j.vaultCount} 个账号（${accts}），已满足自动切号条件${lastLog}`
-            : `备选库当前有 ${j.vaultCount} 个账号${accts ? "（" + accts + "）" : ""}。提示：请先点右侧「+ 保存当前账号到备选库」，再登录另一个账号并保存一次，即可全自动循环切号！${lastLog}`;
+            ? `轮换顺序已就绪（共 ${j.vaultCount} 个账号${j.nextTargetEmail ? "，下一顺位：" + j.nextTargetEmail : ""}），可用下方 ↑/↓ 自由调整切换顺位${lastLog}`
+            : `备选库当前有 ${j.vaultCount} 个账号。先点「+ 保存当前账号到备选库」，再登录第 2/3 个账号并各保存一次，即可按下方 #1 → #2 → #3 顺序自动轮换切号${lastLog}`;
+        renderOrderList(j.accounts || [], cfg.poolKey || "gemini-weekly");
       } catch {}
     };
     const saveAutoSwitch = async () => {

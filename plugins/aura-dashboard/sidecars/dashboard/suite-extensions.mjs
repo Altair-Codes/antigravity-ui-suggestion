@@ -60,6 +60,7 @@ const DEFAULT_AUTO_SWITCH_CFG = {
   thresholdPct: 10,
   cooldownMinutes: 10,
   reloadWindow: true,
+  accountOrder: [],
   lastSwitchAt: 0,
   lastSwitchFrom: "",
   lastSwitchTo: "",
@@ -480,10 +481,61 @@ export function initSuiteExtensions({
       ...(typeof patch?.poolKey === "string" && patch.poolKey.trim() ? { poolKey: patch.poolKey.trim() } : {}),
       ...(patch?.thresholdPct !== undefined ? { thresholdPct: Math.max(1, Math.min(95, Math.round(Number(patch.thresholdPct) || 10))) } : {}),
       ...(patch?.cooldownMinutes !== undefined ? { cooldownMinutes: Math.max(1, Math.min(180, Math.round(Number(patch.cooldownMinutes) || 10))) } : {}),
-      ...(typeof patch?.reloadWindow === "boolean" ? { reloadWindow: patch.reloadWindow } : {})
+      ...(typeof patch?.reloadWindow === "boolean" ? { reloadWindow: patch.reloadWindow } : {}),
+      ...(Array.isArray(patch?.accountOrder)
+        ? { accountOrder: [...new Set(patch.accountOrder.map((x) => String(x || "").trim()).filter(Boolean))] }
+        : {})
     };
     writeJsonSafe(autoSwitchFile, next);
     return next;
+  }
+
+  function buildOrderedAccounts(vaultAccounts, savedOrder) {
+    const byLower = new Map();
+    for (const a of vaultAccounts || []) {
+      if (a && a.email) byLower.set(a.email.toLowerCase(), a);
+    }
+    const ordered = [];
+    const seen = new Set();
+    for (const em of savedOrder || []) {
+      const k = String(em || "").toLowerCase();
+      if (byLower.has(k) && !seen.has(k)) {
+        ordered.push(byLower.get(k));
+        seen.add(k);
+      }
+    }
+    for (const a of vaultAccounts || []) {
+      if (!a || !a.email) continue;
+      const k = a.email.toLowerCase();
+      if (!seen.has(k)) {
+        ordered.push(a);
+        seen.add(k);
+      }
+    }
+    return ordered;
+  }
+
+  function pickNextCandidate(orderedAccounts, activeEmail, monitoredBucketId, thresholdPct, snaps, now) {
+    if (!Array.isArray(orderedAccounts) || orderedAccounts.length < 2) return null;
+    const activeLower = String(activeEmail || "").toLowerCase();
+    const curIdx = orderedAccounts.findIndex((a) => a.email.toLowerCase() === activeLower);
+    const rotated = [];
+    const startIdx = curIdx >= 0 ? curIdx + 1 : 0;
+    for (let i = 0; i < orderedAccounts.length; i++) {
+      const acc = orderedAccounts[(startIdx + i) % orderedAccounts.length];
+      if (acc.email.toLowerCase() !== activeLower) rotated.push(acc);
+    }
+    if (rotated.length === 0) return null;
+    // 严格按用户设定的切换顺序轮换，自动跳过近 30 分钟内已知也低于阈值的账号
+    for (const cand of rotated) {
+      const snap = snaps?.[cand.email];
+      if (snap && monitoredBucketId && now - (snap.updatedAt || 0) < 30 * 60 * 1000) {
+        const pct = snap[monitoredBucketId];
+        if (typeof pct === "number" && pct <= thresholdPct) continue;
+      }
+      return cand;
+    }
+    return null;
   }
 
   function getVaultSnapshot() {
@@ -560,29 +612,21 @@ export function initSuiteExtensions({
 
     const vault = getVaultSnapshot();
     const activeEmail = curEmail || vault.currentEmail;
-    const candidates = (vault.accounts || []).filter((a) => a && a.email && a.email.toLowerCase() !== String(activeEmail || "").toLowerCase());
-    if (candidates.length === 0) {
+    const orderedAccounts = buildOrderedAccounts(vault.accounts, cfg.accountOrder);
+    if (orderedAccounts.length < 2) {
       return { triggered: false, reason: "no_candidate_accounts", monitored };
     }
 
-    // 优先挑选已知周额度最高的候选账号（若未知则优先尝试）
-    const snaps = cfg.accountQuotaSnapshots || {};
-    candidates.sort((a, b) => {
-      const sa = snaps[a.email]?.[monitored.bucketId];
-      const sb = snaps[b.email]?.[monitored.bucketId];
-      const va = typeof sa === "number" ? sa : 101;
-      const vb = typeof sb === "number" ? sb : 101;
-      return vb - va;
-    });
-
-    const target = candidates[0];
-    // 若候选账号在近 30 分钟内也已知 <= 阈值，则避免死循环来回切换
-    const targetSnap = snaps[target.email];
-    if (targetSnap && now - (targetSnap.updatedAt || 0) < 30 * 60 * 1000) {
-      const targetPct = targetSnap[monitored.bucketId];
-      if (typeof targetPct === "number" && targetPct <= cfg.thresholdPct) {
-        return { triggered: false, reason: "all_candidates_below_threshold", monitored };
-      }
+    const target = pickNextCandidate(
+      orderedAccounts,
+      activeEmail,
+      monitored.bucketId,
+      cfg.thresholdPct,
+      cfg.accountQuotaSnapshots || {},
+      now
+    );
+    if (!target) {
+      return { triggered: false, reason: "all_candidates_below_threshold", monitored };
     }
 
     try {
@@ -769,14 +813,32 @@ export function initSuiteExtensions({
   function getAutoSwitchState() {
     const cfg = loadAutoSwitchConfig();
     const vault = getVaultSnapshot();
+    const activeEmail = vault.currentEmail || cachedQuota?.email || "";
+    const ordered = buildOrderedAccounts(vault.accounts, cfg.accountOrder);
+    const monitoredBucket = cfg.poolKey === "any-weekly" ? "" : cfg.poolKey;
+    const nextCand = pickNextCandidate(
+      ordered,
+      activeEmail,
+      monitoredBucket,
+      cfg.thresholdPct,
+      cfg.accountQuotaSnapshots || {},
+      Date.now()
+    );
+    const nextTargetEmail = nextCand ? nextCand.email : "";
     return {
       ok: true,
-      config: cfg,
-      vaultCount: vault.accounts.length,
-      currentEmail: vault.currentEmail || cachedQuota?.email || "",
-      accounts: vault.accounts.map((a) => ({
+      config: {
+        ...cfg,
+        accountOrder: ordered.map((a) => a.email)
+      },
+      vaultCount: ordered.length,
+      currentEmail: activeEmail,
+      nextTargetEmail,
+      accounts: ordered.map((a, idx) => ({
+        orderIndex: idx + 1,
         email: a.email,
-        isCurrent: Boolean(a.isCurrent || a.active || (vault.currentEmail && a.email === vault.currentEmail)),
+        isCurrent: Boolean(activeEmail && a.email.toLowerCase() === activeEmail.toLowerCase()),
+        isNext: Boolean(nextTargetEmail && a.email.toLowerCase() === nextTargetEmail.toLowerCase()),
         lastWeekly: cfg.accountQuotaSnapshots?.[a.email] || null
       }))
     };
