@@ -52,27 +52,50 @@ try {
   }
 
   // 1. 顶栏注入极简 >_ CLI 与 ⚙ 控制台 快捷按钮
-  function openAuraDashboardTab() {
-    // 若右侧边栏当前收起，先展开它
-    const hasSideBarTabs = Boolean(document.querySelector('[data-testid="side-panel-new-tab-button"]'));
-    if (!hasSideBarTabs) {
+  async function openAuraDashboardTab() {
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    const winW = window.innerWidth || 1440;
+    const isSidePanelCollapsed = () => {
+      const btn = document.querySelector('[data-testid="side-panel-new-tab-button"]');
+      if (!btn) return true;
+      const r = btn.getBoundingClientRect();
+      return r.width === 0 || r.left >= winW - 5;
+    };
+
+    // 1) 若右侧边栏收起，先展开它
+    if (isSidePanelCollapsed()) {
       const toggleBtn = document.querySelector('[data-testid="toggle-aux-sidebar"]');
-      if (toggleBtn) toggleBtn.click();
+      if (toggleBtn) {
+        toggleBtn.click();
+        await sleep(220);
+      }
     }
-    // 优先切换已打开的 Aura 控制台标签页
+
+    // 2) 若标签栏里已有「Aura 控制台」，直接切换过去
     const tabBtns = Array.from(document.querySelectorAll(".agy-aux-tab button"));
-    const existing = tabBtns.find((b) => /Aura 控制台|Aura Dashboard/i.test((b.innerText || "").trim()));
+    const existing = tabBtns.find((b) => /^Aura 控制台$|^Aura Dashboard$/i.test((b.innerText || "").trim()));
     if (existing) {
       existing.click();
       return;
     }
-    // 否则通过原生 URL query + popstate 打开 Aura 控制台
-    try {
-      const u = new URL(location.href);
-      u.searchParams.set("tab", "sidecar__aura-dashboard/dashboard__/");
-      history.pushState(history.state, "", u.toString());
-      window.dispatchEvent(new PopStateEvent("popstate"));
-    } catch {}
+
+    // 3) 通过原生「+ 新标签 → 扩展 → Aura 控制台」菜单无感打开
+    const newTabBtn = document.querySelector('[data-testid="side-panel-new-tab-button"]');
+    if (newTabBtn) {
+      newTabBtn.click();
+      await sleep(100);
+      const extCard = document.querySelector('[data-testid="new-tab-card-extensions"]');
+      if (extCard) {
+        extCard.click();
+        await sleep(120);
+        const menuItems = Array.from(document.querySelectorAll('[role="menuitem"], [role="option"]'));
+        const auraMenu = menuItems.find((el) => /Aura 控制台|Aura Dashboard/i.test((el.innerText || "").trim()));
+        if (auraMenu) {
+          auraMenu.click();
+          return;
+        }
+      }
+    }
   }
 
   function ensureCliButton() {
@@ -81,13 +104,17 @@ try {
       document.querySelector('[data-testid="toggle-overview-panel"]');
     if (!anchor || !anchor.parentElement) return;
 
+    window.__ag_open_aura_fn = openAuraDashboardTab;
+    const oldAuraBtn = document.getElementById("ag-suite-aura-btn");
+    if (oldAuraBtn && oldAuraBtn.dataset.v !== "2") oldAuraBtn.remove();
     if (!document.getElementById("ag-suite-aura-btn")) {
       const auraBtn = document.createElement("button");
       auraBtn.id = "ag-suite-aura-btn";
+      auraBtn.dataset.v = "2";
       auraBtn.type = "button";
       auraBtn.title = "打开 Aura 控制台（模型额度 / 防幻觉护栏 / 周额度自动切号 / 主题设置）";
       auraBtn.innerHTML = `<span class="ag-aura-ico">⚙</span><span>控制台</span>`;
-      auraBtn.addEventListener("click", () => openAuraDashboardTab());
+      auraBtn.addEventListener("click", () => window.__ag_open_aura_fn && window.__ag_open_aura_fn());
       anchor.parentElement.insertBefore(auraBtn, anchor);
     }
 
