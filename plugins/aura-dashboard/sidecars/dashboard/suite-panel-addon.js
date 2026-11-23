@@ -322,6 +322,19 @@
     const wrap = document.createElement("div");
     wrap.id = "ag-suite-overview-wrap";
     wrap.innerHTML = `
+      <div id="ag-suite-cdp-banner" class="ag-update-banner" style="border-color:rgba(253,214,99,0.38);background:linear-gradient(135deg,rgba(253,214,99,0.12),rgba(138,180,248,0.10));">
+        <div class="ag-suite-head" style="margin-bottom:0;flex-wrap:wrap;">
+          <div>
+            <div class="ag-suite-title">
+              <span>当前处于官方纯净签名模式（未注入主题）</span>
+              <span class="ag-suite-badge" style="background:rgba(253,214,99,0.16);color:#fdd663;border-color:rgba(253,214,99,0.35);">不修改 app.asar</span>
+            </div>
+            <div class="ag-suite-sub" style="margin-top:3px;">为保障官方一键热更新，已停止修改 app.asar；点击右侧即可带参重启启用主题（平时也可从「Antigravity Aura」启动）</div>
+          </div>
+          <button id="ag-btn-relaunch-cdp" class="ag-suite-btn primary" type="button">⚡ 主题模式重启</button>
+        </div>
+      </div>
+
       <div id="ag-suite-update-banner" class="ag-update-banner">
         <div class="ag-suite-head" style="margin-bottom:4px;">
           <div class="ag-suite-title">
@@ -414,6 +427,34 @@
         btn.disabled = false;
       }
     });
+
+    const refreshCdpBanner = async () => {
+      try {
+        const res = await apiFetch("/api/status", { method: "GET" });
+        if (!res.ok) return;
+        const j = await res.json();
+        const banner = wrap.querySelector("#ag-suite-cdp-banner");
+        if (banner) {
+          banner.classList.toggle("show", !j.connected);
+        }
+      } catch {}
+    };
+    wrap.querySelector("#ag-btn-relaunch-cdp")?.addEventListener("click", async (e) => {
+      const btn = e.currentTarget;
+      btn.disabled = true;
+      btn.textContent = "正在重启...";
+      try {
+        const res = await apiFetch("/api/suite-relaunch-cdp", { method: "POST" });
+        const j = await res.json();
+        showToast(j.ok ? "正在以无侵入主题模式重启 Antigravity..." : `重启失败：${j.error || "未知错误"}`);
+      } catch {
+        showToast("重启请求失败");
+        btn.disabled = false;
+        btn.textContent = "⚡ 主题模式重启";
+      }
+    });
+    refreshCdpBanner();
+    setInterval(refreshCdpBanner, 8000);
 
     const refreshQuota = async () => {
       try {

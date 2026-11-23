@@ -68,8 +68,115 @@ for p, cmd in targets:
 print("  • 已完成 3 个扩展的 macOS 启动路径自动适配")
 PY
 
-# 4. 预开启 app.asar 的 CDP 调试端口（仅需重启一次即可直接加载中文与 Gemini 流体主题）
-"$NODE_BIN" "$HERE/enable-cdp.mjs" || true
+# 4. 保护官方代码签名：不修改 app.asar（若存在旧版 .bak 则还原），改用无侵入启动器传参开启 CDP
+ASAR_DIR="/Applications/Antigravity.app/Contents/Resources"
+if [ -f "$ASAR_DIR/app.asar.bak" ]; then
+  mv -f "$ASAR_DIR/app.asar.bak" "$ASAR_DIR/app.asar" && echo "  • 已还原官方纯净 app.asar（保障官方热更新签名完整）"
+fi
+LAUNCHER="/Applications/Antigravity Aura.app"
+rm -rf "$LAUNCHER"
+mkdir -p "$LAUNCHER/Contents/MacOS" "$LAUNCHER/Contents/Resources"
+if [ -f "$ASAR_DIR/icon.icns" ]; then
+  cp "$ASAR_DIR/icon.icns" "$LAUNCHER/Contents/Resources/icon.icns"
+fi
+cat > "$LAUNCHER/Contents/Info.plist" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDevelopmentRegion</key>
+  <string>en</string>
+  <key>CFBundleDisplayName</key>
+  <string>Antigravity Aura</string>
+  <key>CFBundleExecutable</key>
+  <string>launch</string>
+  <key>CFBundleIconFile</key>
+  <string>icon.icns</string>
+  <key>CFBundleIdentifier</key>
+  <string>com.songh.antigravity-aura-launcher</string>
+  <key>CFBundleInfoDictionaryVersion</key>
+  <string>6.0</string>
+  <key>CFBundleName</key>
+  <string>Antigravity Aura</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleShortVersionString</key>
+  <string>1.0.0</string>
+  <key>CFBundleVersion</key>
+  <string>1</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>11.0</string>
+  <key>LSUIElement</key>
+  <true/>
+</dict>
+</plist>
+PLIST
+cat > "$LAUNCHER/Contents/MacOS/launch" <<'SH'
+#!/bin/sh
+# Antigravity Aura 无侵入 CDP 启动器（不修改 app.asar，完全保护官方热更新签名）
+LOG="/tmp/antigravity-aura-launcher.log"
+log() { printf '[%s] %s\n' "$(date '+%H:%M:%S')" "$*" >> "$LOG" 2>/dev/null || true; }
+
+APP="/Applications/Antigravity.app"
+[ -d "$APP" ] || APP="$HOME/Applications/Antigravity.app"
+PORT_FILE="$HOME/Library/Application Support/Antigravity/DevToolsActivePort"
+LOCK_FILE="$HOME/Library/Application Support/Antigravity/SingletonLock"
+
+RELAUNCH_PID=""
+FORCE_RELAUNCH=0
+for arg in "$@"; do
+  case "$arg" in
+    -psn_*) ;;
+    --relaunch) FORCE_RELAUNCH=1 ;;
+    --relaunch-pid=*) RELAUNCH_PID="${arg#--relaunch-pid=}"; FORCE_RELAUNCH=1 ;;
+  esac
+done
+
+get_main_pid() {
+  pgrep -f "^${APP}/Contents/MacOS/Antigravity($| )" 2>/dev/null | head -n 1
+}
+
+CUR_PID="$(get_main_pid)"
+log "Start: cur_pid=${CUR_PID:-none} relaunch_pid=${RELAUNCH_PID:-none} force=${FORCE_RELAUNCH}"
+
+if [ -n "$CUR_PID" ] && [ "$FORCE_RELAUNCH" -eq 0 ] && [ -f "$PORT_FILE" ]; then
+  exec /usr/bin/open -a "$APP"
+fi
+
+if [ -n "$CUR_PID" ] || [ -n "$RELAUNCH_PID" ]; then
+  TARGET_PID="${RELAUNCH_PID:-$CUR_PID}"
+  /usr/bin/osascript -e 'tell application "Antigravity" to quit' >/dev/null 2>&1 || true
+  i=0
+  while [ "$i" -lt 40 ]; do
+    if [ -n "$TARGET_PID" ] && ! kill -0 "$TARGET_PID" 2>/dev/null; then break; fi
+    if [ -z "$TARGET_PID" ] && [ -z "$(get_main_pid)" ]; then break; fi
+    sleep 0.2
+    i=$((i + 1))
+  done
+  if [ -n "$TARGET_PID" ] && kill -0 "$TARGET_PID" 2>/dev/null; then
+    kill -TERM "$TARGET_PID" 2>/dev/null || true
+    sleep 1
+  fi
+  j=0
+  while [ "$j" -lt 20 ]; do
+    [ ! -L "$LOCK_FILE" ] && [ ! -e "$LOCK_FILE" ] && break
+    sleep 0.15
+    j=$((j + 1))
+  done
+  sleep 0.8
+fi
+
+AFTER_PID="$(get_main_pid)"
+if [ -n "$AFTER_PID" ] && [ "$AFTER_PID" != "$RELAUNCH_PID" ]; then
+  exit 0
+fi
+
+log "Launching ${APP} with --remote-debugging-port=0"
+exec /usr/bin/open -a "$APP" --args --remote-debugging-port=0
+SH
+chmod +x "$LAUNCHER/Contents/MacOS/launch"
+codesign --force --sign - "$LAUNCHER" >/dev/null 2>&1 || true
+echo "  • 已创建无侵入启动器：$LAUNCHER（不改动 Antigravity.app 官方签名）"
 
 # 5. 如未安装官方 Antigravity CLI (agy)，自动安装并配置 PATH
 if ! command -v agy >/dev/null 2>&1 && [ ! -x "$HOME/.local/bin/agy" ]; then

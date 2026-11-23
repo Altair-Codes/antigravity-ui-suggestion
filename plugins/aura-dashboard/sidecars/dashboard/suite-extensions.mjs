@@ -877,6 +877,59 @@ export function initSuiteExtensions({
     };
   }
 
+  function relaunchAntigravityWithCdp() {
+    if (process.platform === "darwin") {
+      const appPath = fs.existsSync("/Applications/Antigravity.app")
+        ? "/Applications/Antigravity.app"
+        : path.join(os.homedir(), "Applications", "Antigravity.app");
+      const launcherApp = "/Applications/Antigravity Aura.app";
+      let oldPid = "";
+      try {
+        oldPid = execFileSync("pgrep", ["-f", `^${appPath}/Contents/MacOS/Antigravity($| )`], {
+          encoding: "utf8",
+          timeout: 1500,
+          stdio: ["ignore", "pipe", "ignore"]
+        }).trim().split(/\r?\n/)[0] || "";
+      } catch {}
+
+      // 优先通过 launchd (open -g -a "Antigravity Aura.app") 拉起重启流程：
+      // 进程完全脱离 Antigravity / language_server 进程树，避免退出瞬间被连带杀掉导致无法重开或竞态闪退
+      if (fs.existsSync(launcherApp)) {
+        const openArgs = ["-g", "-n", "-a", launcherApp, "--args", oldPid ? `--relaunch-pid=${oldPid}` : "--relaunch"];
+        const child = spawn("/usr/bin/open", openArgs, { detached: true, stdio: "ignore" });
+        child.unref();
+        return { ok: true, platform: "darwin", appPath, launcherApp, oldPid };
+      }
+
+      const sh = `
+sleep 0.5
+/usr/bin/osascript -e 'tell application "Antigravity" to quit' >/dev/null 2>&1 || true
+i=0
+while [ "$i" -lt 40 ]; do
+  if [ -n "${oldPid}" ] && ! kill -0 "${oldPid}" 2>/dev/null; then break; fi
+  sleep 0.2
+  i=$((i + 1))
+done
+sleep 1
+/usr/bin/open -a "${appPath}" --args --remote-debugging-port=0
+`;
+      const child = spawn("/usr/bin/nohup", ["/bin/sh", "-c", sh], { detached: true, stdio: "ignore" });
+      child.unref();
+      return { ok: true, platform: "darwin", appPath, oldPid };
+    }
+    if (process.platform === "win32") {
+      const ps = `Start-Sleep -Milliseconds 600; $p=(Get-Process -Name Antigravity -ErrorAction SilentlyContinue | Select-Object -First 1).Path; Stop-Process -Name Antigravity -ErrorAction SilentlyContinue; Start-Sleep -Milliseconds 1200; if ($p) { Start-Process -FilePath $p -ArgumentList '--remote-debugging-port=0' }`;
+      const child = spawn("powershell.exe", ["-NoProfile", "-WindowStyle", "Hidden", "-Command", ps], {
+        detached: true,
+        stdio: "ignore",
+        windowsHide: true
+      });
+      child.unref();
+      return { ok: true, platform: "win32" };
+    }
+    return { ok: false, error: `Unsupported platform: ${process.platform}` };
+  }
+
   // 启动带随机 Token 的本地 CORS 桥接服务，专供 Antigravity 宿主窗口 (custom.js) 直接调用
   const bridgeToken = crypto.randomBytes(16).toString("hex");
   let bridgeOrigin = "";
@@ -947,6 +1000,8 @@ export function initSuiteExtensions({
       } else if (urlObj.pathname === "/api/suite-reload" && req.method === "POST") {
         if (typeof reloadAll === "function") await reloadAll();
         result = { ok: true, reloaded: true };
+      } else if (urlObj.pathname === "/api/suite-relaunch-cdp" && req.method === "POST") {
+        result = relaunchAntigravityWithCdp();
       } else {
         status = 404;
       }
@@ -999,6 +1054,7 @@ export function initSuiteExtensions({
 
     Oe.api("/api/suite-last-route", () => getLastRouteState(), "GET");
     Oe.api("/api/suite-last-route", (e) => saveLastRouteState(parseBody(e)), "POST");
+    Oe.api("/api/suite-relaunch-cdp", () => relaunchAntigravityWithCdp(), "POST");
 
     Oe.api("/suite-panel-addon.js", () => {
       const src = panelAddonPath && fs.existsSync(panelAddonPath)

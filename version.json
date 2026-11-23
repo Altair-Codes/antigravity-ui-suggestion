@@ -1,10 +1,10 @@
 {
-  "version": "1.2.6",
-  "publishedAt": "2026-11-20T19:38:00+08:00",
+  "version": "1.2.7",
+  "publishedAt": "2026-11-23T14:48:00+08:00",
   "repoUrl": "https://github.com/Songh0918/antigravity-ui-suggestion",
   "highlights": [
-    "顶栏紧挨「>_ CLI」「⚙ 控制台」新增翡翠绿「↻ 更新」按钮，一键热重载样式并实时检查 GitHub 套件新版（发现新版自动亮起流光高亮）",
-    "Aura 控制台概览页最顶部同步置顶「↻ 热重载样式」「↑ 检查更新」「>_ 启动 agy CLI」三枚高频操作按钮",
-    "修复新机器/空白右侧边栏（无已打开标签页时）点击「⚙ 控制台」停留在新标签搜索页而未打开 Aura 控制台的问题"
+    "彻底保护 macOS 官方苹果代码签名：默认不再修改 app.asar，确保 Antigravity 官方热更新（如 2.33 → 2.34+）100% 顺利通过签名校验",
+    "新增无侵入「Antigravity Aura.app」启动器与控制台「⚡ 主题模式重启」按钮：通过 launchd 脱离进程树重启，精确等待旧 PID 与 SingletonLock 释放，杜绝重开闪退或无参启动",
+    "修复直接双击 Antigravity Aura.app 时 macOS -psn_* 参数干扰及已运行纯净实例无法自动切入主题模式的问题"
   ]
 }
