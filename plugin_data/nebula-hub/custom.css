@@ -150,6 +150,106 @@ html:not([data-ag-color-scheme="dark"]) #ag-live-metrics-pill::before {
   font-weight: 500 !important;
 }
 
+/* 星云中枢 v2.0：一体式流光玻璃遥测驾驶舱 (Nebula Cockpit Bar) */
+#ag-live-metrics-pill .nb-cockpit-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 22px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(22, 25, 36, 0.88) 0%, rgba(30, 33, 46, 0.88) 100%);
+  border: 1px solid rgba(138, 180, 248, 0.30);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(8px);
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 140ms ease;
+}
+
+#ag-live-metrics-pill:hover .nb-cockpit-bar {
+  border-color: rgba(168, 199, 250, 0.58);
+  box-shadow: 0 3px 14px rgba(66, 133, 244, 0.25), 0 0 12px -3px rgba(155, 114, 203, 0.28);
+}
+
+#ag-live-metrics-pill .nb-cp-seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 3.5px;
+  font-size: 11px;
+  color: #c4c7c5;
+  white-space: nowrap;
+}
+
+#ag-live-metrics-pill .nb-cp-seg small {
+  font-size: 10.5px;
+  opacity: 0.82;
+}
+
+#ag-live-metrics-pill .nb-cp-seg b {
+  font-family: "JetBrains Mono", "SF Mono", Menlo, monospace;
+  font-weight: 700;
+  font-size: 11.5px;
+}
+
+#ag-live-metrics-pill .nb-cp-ico {
+  font-size: 10.5px;
+  line-height: 1;
+}
+
+#ag-live-metrics-pill .nb-cp-div {
+  width: 1px;
+  height: 11px;
+  background: rgba(255, 255, 255, 0.13);
+  flex-shrink: 0;
+}
+
+#ag-live-metrics-pill .nb-cp-pulse {
+  width: 5.5px;
+  height: 5.5px;
+  border-radius: 50%;
+  background: #8ab4f8;
+  box-shadow: 0 0 6px #4285f4;
+  animation: geminiPulseDot 2.2s ease-in-out infinite;
+}
+
+#ag-live-metrics-pill .nb-cp-tps b { color: #8ab4f8; }
+#ag-live-metrics-pill .nb-cp-ttft b { color: #c58af9; }
+#ag-live-metrics-pill .nb-cp-ctx b { color: #81c995; }
+#ag-live-metrics-pill .nb-cp-ctx.ag-ctx-warn b { color: #fdd663 !important; }
+#ag-live-metrics-pill .nb-cp-ctx.ag-ctx-crit b { color: #f28b82 !important; }
+#ag-live-metrics-pill .nb-cp-out b { color: #d2e3fc; }
+
+#ag-live-metrics-pill .nb-cp-mini-track {
+  display: inline-block;
+  width: 26px;
+  height: 3.5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+  margin-left: 2px;
+  vertical-align: middle;
+}
+
+#ag-live-metrics-pill .nb-cp-mini-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: #81c995;
+}
+#ag-live-metrics-pill .nb-cp-mini-fill.ag-ctx-warn { background: #fdd663 !important; }
+#ag-live-metrics-pill .nb-cp-mini-fill.ag-ctx-crit { background: #f28b82 !important; }
+
+html:not([data-ag-color-scheme="dark"]) #ag-live-metrics-pill .nb-cockpit-bar {
+  background: linear-gradient(135deg, rgba(244, 247, 254, 0.94), rgba(236, 242, 254, 0.94));
+  border-color: rgba(26, 115, 232, 0.25);
+  box-shadow: 0 2px 8px rgba(26, 115, 232, 0.08);
+}
+html:not([data-ag-color-scheme="dark"]) #ag-live-metrics-pill .nb-cp-seg { color: #444746; }
+html:not([data-ag-color-scheme="dark"]) #ag-live-metrics-pill .nb-cp-div { background: rgba(0, 0, 0, 0.12); }
+html:not([data-ag-color-scheme="dark"]) #ag-live-metrics-pill .nb-cp-tps b { color: #1557b0; }
+html:not([data-ag-color-scheme="dark"]) #ag-live-metrics-pill .nb-cp-ttft b { color: #681da8; }
+html:not([data-ag-color-scheme="dark"]) #ag-live-metrics-pill .nb-cp-ctx b { color: #137333; }
+html:not([data-ag-color-scheme="dark"]) #ag-live-metrics-pill .nb-cp-out b { color: #1f1f1f; }
+
 #ag-live-metrics-pill .ag-m-chip {
   display: inline-flex;
   align-items: center;

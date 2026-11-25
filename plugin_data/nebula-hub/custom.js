@@ -74,9 +74,9 @@ try {
       }
     }
 
-    // 2) 若标签栏里已有「Aura 控制台」，直接切换过去
+    // 2) 若标签栏里已有「星云中枢」，直接切换过去
     const tabBtns = Array.from(document.querySelectorAll(".agy-aux-tab button"));
-    const existing = tabBtns.find((b) => /^Aura 控制台$|^Aura Dashboard$/i.test((b.innerText || "").trim()));
+    const existing = tabBtns.find((b) => /^星云中枢$|^Nebula Hub$|^Aura 控制台$|^Aura Dashboard$/i.test((b.innerText || "").trim()));
     if (existing) {
       existing.click();
       return;
@@ -96,13 +96,13 @@ try {
       }
     }
 
-    // 4) 点击「扩展」并在弹出的扩展菜单里精准点击「Aura 控制台」
+    // 4) 点击「扩展」并在弹出的扩展菜单里精准点击「星云中枢」
     if (isVisible(extCard)) {
       extCard.click();
       for (let i = 0; i < 8; i++) {
         await sleep(80);
         const menuItems = Array.from(document.querySelectorAll('[role="menuitem"], [role="option"]'));
-        const auraMenu = menuItems.find((el) => /Aura 控制台|Aura Dashboard/i.test((el.innerText || "").trim()));
+        const auraMenu = menuItems.find((el) => /星云中枢|Nebula Hub|Aura 控制台|Aura Dashboard/i.test((el.innerText || "").trim()));
         if (auraMenu) {
           auraMenu.click();
           return;
@@ -119,14 +119,14 @@ try {
 
     window.__ag_open_aura_fn = openAuraDashboardTab;
     const oldAuraBtn = document.getElementById("ag-suite-aura-btn");
-    if (oldAuraBtn && oldAuraBtn.dataset.v !== "2") oldAuraBtn.remove();
+    if (oldAuraBtn && oldAuraBtn.dataset.v !== "3") oldAuraBtn.remove();
     if (!document.getElementById("ag-suite-aura-btn")) {
       const auraBtn = document.createElement("button");
       auraBtn.id = "ag-suite-aura-btn";
-      auraBtn.dataset.v = "2";
+      auraBtn.dataset.v = "3";
       auraBtn.type = "button";
-      auraBtn.title = "打开 Aura 控制台（模型额度 / 防幻觉护栏 / 周额度自动切号 / 主题设置）";
-      auraBtn.innerHTML = `<span class="ag-aura-ico">⚙</span><span>控制台</span>`;
+      auraBtn.title = "打开星云中枢（模型额度池 / 周额度自动切号 / 防幻觉护栏 / Gemini 流光设置）";
+      auraBtn.innerHTML = `<span class="ag-aura-ico">✦</span><span>星云</span>`;
       auraBtn.addEventListener("click", () => window.__ag_open_aura_fn && window.__ag_open_aura_fn());
       anchor.parentElement.insertBefore(auraBtn, anchor);
     }
@@ -533,9 +533,10 @@ try {
     "mcp:figma_figma:create_design_system_rules": { zhName: "生成 Figma 设计系统规则", zhDesc: "为当前代码仓库生成 Figma 设计系统对接规则提示词。" },
 
     // Antigravity 内置核心技能与扩展技能
+    "nebula-theme": { zhName: "星云中枢控制", zhDesc: "控制、检查与配置 Antigravity 星云中枢（Google Gemini 流光主题、中英双语与斜杠汉化、一体式流光遥测舱、多账号自动切号与防幻觉护栏）。", custom: true },
     "agy-customizations": { zhName: "自定义系统指南", zhDesc: "Antigravity 自定义系统完整指南：涵盖技能、规则、插件、钩子与 MCP 服务的创建与加载优先级。" },
     "antigravity-guide": { zhName: "官方使用指南", zhDesc: "Google Antigravity (AGY) 综合指南与快速参考，涵盖 agy CLI、IDE、SDK、斜杠命令、快捷键与扩展配置。" },
-    "aura-theme": { zhName: "Aura 主题控制", zhDesc: "控制、检查与配置 Antigravity Aura 插件（主题配色、字体排版、中英双语、Token 遥测微胶囊、CDP 热重载与 API）。" },
+    "aura-theme": { zhName: "星云中枢控制", zhDesc: "控制、检查与配置 Antigravity 星云中枢（Google Gemini 流光主题、字体排版、中英双语、一体式遥测舱、CDP 热重载与 API）。", custom: true },
     "automation": { zhName: "自动化任务向导", zhDesc: "交互式设计并创建后台定时自动化任务（也可通过 /automation 命令触发）。" },
     "conversations": { zhName: "会话管理", zhDesc: "通过本地接口编程管理 Antigravity 会话：新建、列表、读取状态、重命名、归档、置顶、星标、分组或删除会话。" },
     "file-launcher": { zhName: "文件启动器", zhDesc: "打开文件启动器侧边栏或注册目标文件，支持右侧分栏直开预览、一键复制 @引用、批量操作、收藏防压缩及默认软件打开。" },

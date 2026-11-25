@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>星云中枢 · Nebula Hub</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="nb-shell">
+    <!-- 顶部：星云指挥舱顶栏 -->
+    <header class="nb-header">
+      <div class="nb-brand-row">
+        <div class="nb-brand-left">
+          <img src="/logo.svg" alt="Nebula" class="nb-logo" />
+          <div>
+            <div class="nb-title-wrap">
+              <h1 class="nb-title">星云中枢</h1>
+              <span class="nb-ver-pill" id="nb-ver-pill">v2.0.0</span>
+              <span class="nb-cdp-pill" id="nb-cdp-pill">● 检测中</span>
+            </div>
+            <p class="nb-subtitle">Nebula Hub · Google Gemini 流光视觉、模型额度自动轮换与算力遥测驾驶舱</p>
+          </div>
+        </div>
+        <div class="nb-quick-actions">
+          <button type="button" class="nb-btn ghost" id="nb-btn-top-reload" title="重新编译并向所有窗口热推送样式与脚本">↻ 热重载</button>
+          <button type="button" class="nb-btn ghost" id="nb-btn-top-check" title="检查 GitHub 远端套件更新">↑ 检查更新</button>
+          <button type="button" class="nb-btn primary" id="nb-btn-top-cli" title="在当前项目目录启动 agy CLI 并自动注入系统代理">&gt;_ 启动 CLI</button>
+        </div>
+      </div>
+
+      <!-- 状态横幅区：纯净模式提醒 / 新版本更新提醒 -->
+      <div id="nb-banner-cdp" class="nb-banner warn" style="display:none;">
+        <div class="nb-banner-main">
+          <div>
+            <div class="nb-banner-title">⚡ 当前处于官方纯净签名模式（尚未挂载星云流光主题）</div>
+            <div class="nb-banner-sub">为 100% 保护 macOS 官方热更新签名，已采用零改包模式；点击右侧即可带参重启切入星云主题模式。</div>
+          </div>
+          <button type="button" class="nb-btn primary" id="nb-btn-relaunch-cdp">⚡ 主题模式重启</button>
+        </div>
+      </div>
+
+      <div id="nb-banner-update" class="nb-banner info" style="display:none;">
+        <div class="nb-banner-main">
+          <div>
+            <div class="nb-banner-title">
+              <span>✨ 发现星云中枢套件新版本</span>
+              <span class="nb-ver-pill" id="nb-upd-ver-tag">v--</span>
+            </div>
+            <ul id="nb-upd-highlights" class="nb-upd-list"></ul>
+          </div>
+          <div class="nb-banner-btns">
+            <button type="button" class="nb-btn primary" id="nb-btn-banner-update">立即一键更新</button>
+            <button type="button" class="nb-btn ghost" id="nb-btn-banner-dismiss">忽略此版</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 三大舱位导航切换 -->
+      <nav class="nb-tabs" role="tablist">
+        <button type="button" class="nb-tab active" data-tab="cockpit">🚀 额度与算力舱</button>
+        <button type="button" class="nb-tab" data-tab="studio">🎨 视觉与流光舱</button>
+        <button type="button" class="nb-tab" data-tab="system">🛡 护栏与系统中枢</button>
+      </nav>
+    </header>
+
+    <!-- 舱位 1：额度与算力舱 -->
+    <main id="nb-view-cockpit" class="nb-view active">
+      <!-- 卡片 1：模型周额度与 5 小时限额实时监控 -->
+      <section class="nb-card">
+        <div class="nb-card-head">
+          <div class="nb-card-title-group">
+            <h2 class="nb-card-title">模型额度池实时监控</h2>
+            <span class="nb-badge" id="nb-quota-plan-badge">读取中...</span>
+            <span class="nb-badge ok" id="nb-autoswitch-active-badge" style="display:none;">自动轮换已开启</span>
+          </div>
+          <span class="nb-muted" id="nb-quota-updated-at">实时同步宿主配额</span>
+        </div>
+        <div id="nb-quota-grid" class="nb-quota-grid">
+          <div class="nb-empty-hint">正在从宿主窗口同步当前账号每周 / 5 小时模型配额池...</div>
+        </div>
+      </section>
+
+      <!-- 卡片 2：多账号顺位轮换与低额度自动切号 -->
+      <section class="nb-card">
+        <div class="nb-card-head">
+          <div class="nb-card-title-group">
+            <h2 class="nb-card-title">多账号备选金库与周额度自动切号</h2>
+            <span class="nb-badge" id="nb-vault-count-badge">0 个备选账号</span>
+          </div>
+          <div class="nb-inline-controls">
+            <button type="button" class="nb-btn ghost" id="nb-btn-save-current-acct">+ 保存当前账号入库</button>
+            <label class="nb-switch-label">
+              <input type="checkbox" id="nb-as-enabled" />
+              <span>启用低额度自动切号</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="nb-as-bar">
+          <span class="nb-muted">当监控池</span>
+          <select id="nb-as-pool" class="nb-select">
+            <option value="gemini-weekly">Gemini 核心池 (每周限额)</option>
+            <option value="3p-weekly">Claude / GPT (每周限额)</option>
+            <option value="gemini-argon-wtu-weekly">Gemini 4 Argon (每周限额)</option>
+            <option value="any-weekly">任意模型池 (最紧缩每周限额)</option>
+          </select>
+          <span class="nb-muted">剩余 ≤</span>
+          <input type="number" id="nb-as-threshold" class="nb-input-num" min="1" max="95" value="10" />
+          <span class="nb-muted">% 时自动按顺位切换</span>
+          <button type="button" class="nb-btn" id="nb-btn-as-save">保存策略</button>
+        </div>
+
+        <div class="nb-muted nb-as-summary" id="nb-as-summary">正在读取多账号备选金库...</div>
+        <div id="nb-as-order-list" class="nb-order-list"></div>
+      </section>
+
+      <!-- 卡片 3：SQLite 算力遥测与吞吐率分析 -->
+      <section class="nb-card">
+        <div class="nb-card-head">
+          <div class="nb-card-title-group">
+            <h2 class="nb-card-title">SQLite 会话算力与吞吐率遥测</h2>
+            <span class="nb-badge" id="nb-telemetry-scope-badge">原生 node:sqlite 引擎</span>
+          </div>
+          <div class="nb-seg" id="nb-range-seg">
+            <button type="button" data-range="session" class="active">当前会话</button>
+            <button type="button" data-range="global">全局近 30 天</button>
+          </div>
+        </div>
+
+        <!-- 4 枚核心算力 KPI -->
+        <div class="nb-kpi-grid">
+          <div class="nb-kpi-box">
+            <div class="nb-kpi-lbl">⚡ 流式生成速率 (TPS)</div>
+            <div class="nb-kpi-val" id="nb-kpi-tps">--</div>
+            <div class="nb-kpi-sub" id="nb-kpi-tps-sub">P50 / 端到端均值</div>
+          </div>
+          <div class="nb-kpi-box">
+            <div class="nb-kpi-lbl">⏱ 首字响应延迟 (TTFT)</div>
+            <div class="nb-kpi-val purple" id="nb-kpi-ttft">--</div>
+            <div class="nb-kpi-sub" id="nb-kpi-ttft-sub">平均推理耗时</div>
+          </div>
+          <div class="nb-kpi-box">
+            <div class="nb-kpi-lbl">🧠 上下文缓存命中率</div>
+            <div class="nb-kpi-val green" id="nb-kpi-cache">--</div>
+            <div class="nb-kpi-sub" id="nb-kpi-cache-sub">缓存读取 / 总输入</div>
+          </div>
+          <div class="nb-kpi-box">
+            <div class="nb-kpi-lbl">✦ 累计 Token 吞吐量</div>
+            <div class="nb-kpi-val" id="nb-kpi-tokens">--</div>
+            <div class="nb-kpi-sub" id="nb-kpi-tokens-sub">总请求与会话数</div>
+          </div>
+        </div>
+
+        <!-- 每日趋势与模型/工具分布双栏 -->
+        <div class="nb-split-grid">
+          <div class="nb-subcard">
+            <div class="nb-subcard-title" id="nb-chart-title">近期每日 Token 活跃趋势</div>
+            <div id="nb-daily-chart" class="nb-bar-chart"></div>
+          </div>
+          <div class="nb-subcard">
+            <div class="nb-subcard-title">模型算力与吞吐分布</div>
+            <div id="nb-models-list" class="nb-stat-list"></div>
+          </div>
+        </div>
+
+        <div class="nb-subcard" style="margin-top:10px;">
+          <div class="nb-subcard-title">高频工具调用排行</div>
+          <div id="nb-tools-list" class="nb-tools-chips"></div>
+        </div>
+      </section>
+    </main>
+
+    <!-- 舱位 2：视觉与流光舱 -->
+    <main id="nb-view-studio" class="nb-view">
+      <section class="nb-card">
+        <div class="nb-card-head">
+          <div class="nb-card-title-group">
+            <h2 class="nb-card-title">星云主题引擎与双语汉化</h2>
+            <span class="nb-badge">Google Gemini 四色流光</span>
+          </div>
+          <label class="nb-switch-label">
+            <input type="checkbox" id="nb-cfg-enabled" checked />
+            <span>启用星云视觉与汉化注入</span>
+          </label>
+        </div>
+
+        <div class="nb-form-row">
+          <div>
+            <div class="nb-row-title">界面语言与 120+ 斜杠技能双语模式</div>
+            <div class="nb-muted">开启简体中文后，斜杠菜单自动呈现「中文名称 (英文ID)」并为您的个人研发技能点亮 ★ 星标</div>
+          </div>
+          <div class="nb-seg" id="nb-cfg-lang-seg">
+            <button type="button" data-val="zh-CN" class="active">简体中文 (双语增强)</button>
+            <button type="button" data-val="default">English (原生英文)</button>
+          </div>
+        </div>
+
+        <div class="nb-form-row">
+          <div>
+            <div class="nb-row-title">星云视觉色彩预设</div>
+            <div class="nb-muted">专为 Antigravity 定制的 4 套原生色彩基调（已彻底移除旧版第三方仿制预设）</div>
+          </div>
+          <div class="nb-preset-grid" id="nb-preset-grid">
+            <button type="button" class="nb-preset-card active" data-dark="default" data-light="default">
+              <span class="nb-preset-dot" style="background:linear-gradient(135deg,#4285F4,#9B72CB,#EA4335,#34A853)"></span>
+              <div>
+                <div class="nb-preset-name">✦ 星云深空 (Nebula Deep)</div>
+                <div class="nb-preset-desc">Google Gemini #131314 深空灰蓝 + 四色流光</div>
+              </div>
+            </button>
+            <button type="button" class="nb-preset-card" data-dark="claude-dark" data-light="high-contrast">
+              <span class="nb-preset-dot" style="background:linear-gradient(135deg,#1e222a,#64748b)"></span>
+              <div>
+                <div class="nb-preset-name">◈ 曜石碳灰 (Obsidian Slate)</div>
+                <div class="nb-preset-desc">低视觉疲劳碳灰暗夜 + 柔和对比</div>
+              </div>
+            </button>
+            <button type="button" class="nb-preset-card" data-dark="vintage-dark" data-light="claude-desktop-purewhite">
+              <span class="nb-preset-dot" style="background:linear-gradient(135deg,#2a211d,#c084fc)"></span>
+              <div>
+                <div class="nb-preset-name">✴ 星尘暖曜 (Stardust Warm)</div>
+                <div class="nb-preset-desc">深邃暖调暗夜 / 极光纯白日间</div>
+              </div>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section class="nb-card">
+        <div class="nb-card-head">
+          <div class="nb-card-title-group">
+            <h2 class="nb-card-title">字体排版与一体式遥测舱配置</h2>
+          </div>
+        </div>
+
+        <div class="nb-form-row">
+          <div>
+            <div class="nb-row-title">西文与 UI 主字体</div>
+            <div class="nb-muted">用于英文正文、数字与界面标签排版</div>
+          </div>
+          <select id="nb-font-primary" class="nb-select" style="min-width:190px;">
+            <option value="default">系统默认 (System Default)</option>
+          </select>
+        </div>
+
+        <div class="nb-form-row">
+          <div>
+            <div class="nb-row-title">中文回退字体 (CJK)</div>
+            <div class="nb-muted">用于简体中文对话与技能说明渲染</div>
+          </div>
+          <select id="nb-font-fallback" class="nb-select" style="min-width:190px;">
+            <option value="default">系统默认 (PingFang SC / YaHei)</option>
+          </select>
+        </div>
+
+        <div class="nb-form-row">
+          <div>
+            <div class="nb-row-title">等宽代码字体 (Monospace)</div>
+            <div class="nb-muted">用于代码块、终端输出与一体式遥测仪表数值</div>
+          </div>
+          <select id="nb-font-mono" class="nb-select" style="min-width:190px;">
+            <option value="default">系统默认等宽 (SF Mono / Menlo)</option>
+          </select>
+        </div>
+
+        <div class="nb-form-row">
+          <div>
+            <div class="nb-row-title">对话正文字号</div>
+            <div class="nb-muted">实时调整聊天区域阅读字号 (13px ~ 20px)</div>
+          </div>
+          <div class="nb-seg" id="nb-font-size-seg">
+            <button type="button" data-size="13">13px</button>
+            <button type="button" data-size="14">14px</button>
+            <button type="button" data-size="15" class="active">15px</button>
+            <button type="button" data-size="16">16px</button>
+            <button type="button" data-size="17">17px</button>
+            <button type="button" data-size="18">18px</button>
+          </div>
+        </div>
+
+        <div class="nb-form-row">
+          <div>
+            <div class="nb-row-title">底部一体式流光遥测玻璃舱</div>
+            <div class="nb-muted">在输入框底部实时显示 ⚡速率 ｜ ⏱首字 ｜ 🧠上下文水位 ｜ ✦输出</div>
+          </div>
+          <label class="nb-switch-label">
+            <input type="checkbox" id="nb-cfg-telemetry" checked />
+            <span>显示一体式流光遥测舱</span>
+          </label>
+        </div>
+      </section>
+    </main>
+
+    <!-- 舱位 3：护栏与系统中枢 -->
+    <main id="nb-view-system" class="nb-view">
+      <section class="nb-card">
+        <div class="nb-card-head">
+          <div class="nb-card-title-group">
+            <h2 class="nb-card-title">星云防幻觉与工程纪律护栏 (rules/AGENTS.md)</h2>
+            <span class="nb-badge ok" id="nb-guardrail-badge">严格模式</span>
+          </div>
+        </div>
+
+        <div class="nb-form-row">
+          <div>
+            <div class="nb-row-title">AI 工程纪律护栏强度</div>
+            <div class="nb-muted" id="nb-guardrail-desc">未读禁猜・最小改动・问答与执行分离・edit_file 唯一锚点・诚实实测验证</div>
+          </div>
+          <div class="nb-seg" id="nb-guardrail-seg">
+            <button type="button" data-tier="off">关闭</button>
+            <button type="button" data-tier="standard">标准 (3项)</button>
+            <button type="button" data-tier="strict" class="active">严格 (5项推荐)</button>
+          </div>
+        </div>
+
+        <div class="nb-guardrail-pillars">
+          <div class="nb-pillar"><b>1. 证据优先・未读禁猜</b><span>修改或依赖任何代码配置前必须先实查真实源码或输出</span></div>
+          <div class="nb-pillar"><b>2. 外科手术式最小改动</b><span>严格收敛在任务范围内，不擅自重构无关模块或删注释</span></div>
+          <div class="nb-pillar"><b>3. 区分问答排查与执行</b><span>只读排查不改文件；明确修改指令端到端闭环验证</span></div>
+          <div class="nb-pillar"><b>4. 原生工具唯一锚点</b><span>并行读串行改，edit_file 必须包含 3-5 行唯一上下文</span></div>
+          <div class="nb-pillar"><b>5. 诚实实测验证直出结论</b><span>运行最窄范围构建/语法检查，严禁伪造输出日志</span></div>
+        </div>
+      </section>
+
+      <section class="nb-card">
+        <div class="nb-card-head">
+          <div class="nb-card-title-group">
+            <h2 class="nb-card-title">会话记忆、CLI 终端与在线热更新中心</h2>
+          </div>
+        </div>
+
+        <div class="nb-form-row">
+          <div>
+            <div class="nb-row-title">退出后重开自动恢复上次会话与侧边栏</div>
+            <div class="nb-muted" id="nb-last-route-desc">退出或热更新重启 Antigravity 时自动记忆并回到上次正在进行的对话页面</div>
+          </div>
+          <label class="nb-switch-label">
+            <input type="checkbox" id="nb-lr-enabled" checked />
+            <span>启用自动恢复</span>
+          </label>
+        </div>
+
+        <div class="nb-form-row">
+          <div>
+            <div class="nb-row-title">&gt;_ agy CLI 终端启动器（自动注入系统代理）</div>
+            <div class="nb-muted" id="nb-cli-desc">正在检测本机 agy CLI 路径与系统代理...</div>
+          </div>
+          <button type="button" class="nb-btn" id="nb-btn-sys-cli">打开 CLI 终端</button>
+        </div>
+
+        <div class="nb-form-row">
+          <div>
+            <div class="nb-row-title">GitHub 套件版本同步 (Songh0918/antigravity-ui-suggestion)</div>
+            <div class="nb-muted" id="nb-sys-update-desc">正在检测版本信息...</div>
+          </div>
+          <div class="nb-inline-controls">
+            <button type="button" class="nb-btn ghost" id="nb-btn-sys-check">检查更新</button>
+            <button type="button" class="nb-btn primary" id="nb-btn-sys-update" style="display:none;">立即一键更新</button>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div id="nb-toast" class="nb-toast"></div>
+  <script src="/app.js"></script>
+</body>
+</html>

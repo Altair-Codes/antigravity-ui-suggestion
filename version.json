@@ -1,10 +1,10 @@
 {
-  "version": "1.2.8",
-  "publishedAt": "2026-11-25T17:06:00+08:00",
+  "version": "2.0.0",
+  "publishedAt": "2026-11-25T17:30:00+08:00",
   "repoUrl": "https://github.com/Songh0918/antigravity-ui-suggestion",
   "highlights": [
-    "斜杠命令 (/) 与 120+ 技能全量双语汉化：统一呈现为「中文名称 (英文原名)」+ 中文精炼描述，悬停详情卡片同步汉化，兼容模糊搜索高亮与虚拟列表滚动",
-    "个人专属研发技能鎏金星标 & Gemini 流光菜单选中态：为个人工程技能（plan-task / develop-feature / diagnose-issue / security-audit 等）点亮「★」星标，斜杠菜单选中行注入 Gemini 蓝紫流光指示条",
-    "官方热更新后全自动激活 Aura 主题模式：Sidecar 启动时自动检测无 --remote-debugging-port 的纯净实例并无感切入主题模式，彻底告别热更新后手动重启"
+    "全新自研品牌「星云中枢 (Nebula Hub v2.0)」：彻底去 Aura 化，连同底层目录重塑为 nebula-hub，顶栏「✦ 星云」按钮与无侵入启动器 Antigravity Nebula.app 全面换新，自动无损迁移旧账号库",
+    "全新「三舱 Bento 网格」原生中文控制台 + Node 22 原生 node:sqlite 遥测引擎：彻底移除 688KB sql-wasm 与 191KB 旧版英文面板，划分为「🚀 额度与算力舱」「🎨 视觉与流光舱」「🛡 护栏与系统中枢」",
+    "底部「一体式流光玻璃舱」+ 斜杠 120+ 技能双语与「★」个人研发星标：单条圆角流光玻璃内部分段展示 ⚡速率｜⏱首字｜🧠上下文(含迷你进度条)｜✦输出，官方热更新后 2 秒全自动激活星云主题"
   ]
 }

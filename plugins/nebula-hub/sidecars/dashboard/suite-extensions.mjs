@@ -411,11 +411,36 @@ export function initSuiteExtensions({
   dataDir,
   pluginRoot,
   reloadAll,
-  panelAddonPath,
   accountVault,
   recordAccountSwitch,
   reloadHostWindow
 }) {
+  // 自动从旧版 aura-dashboard 平滑迁移用户配置与账号备选库数据
+  try {
+    const legacyDirs = [
+      path.join(os.homedir(), ".gemini", "antigravity", "plugin_data", "aura-dashboard"),
+      path.join(os.homedir(), ".gemini", "antigravity", "sidecar_data", "aura-dashboard", "dashboard")
+    ];
+    fs.mkdirSync(dataDir, { recursive: true });
+    const migrateFiles = [
+      "accounts_vault.json",
+      "account_timeline.json",
+      "suite-auto-switch.json",
+      "suite-last-route.json",
+      "suite-update-state.json"
+    ];
+    for (const lDir of legacyDirs) {
+      if (!fs.existsSync(lDir)) continue;
+      for (const f of migrateFiles) {
+        const srcF = path.join(lDir, f);
+        const dstF = path.join(dataDir, f);
+        if (fs.existsSync(srcF) && !fs.existsSync(dstF)) {
+          try { fs.copyFileSync(srcF, dstF); } catch {}
+        }
+      }
+    }
+  } catch {}
+
   const rulesPath = path.join(pluginRoot, "rules", "AGENTS.md");
   const versionFile = path.join(dataDir, "suite-version.json");
   const updateStateFile = path.join(dataDir, "suite-update-state.json");
@@ -699,7 +724,7 @@ export function initSuiteExtensions({
   }
 
   function getLocalVersionInfo() {
-    const fallback = { version: "1.2.1", publishedAt: "", repoUrl: REPO_URL, highlights: [] };
+    const fallback = { version: "2.0.0", publishedAt: "", repoUrl: REPO_URL, highlights: [] };
     const fromData = readJsonSafe(versionFile, null);
     if (fromData && fromData.version) return { ...fallback, ...fromData };
     const fromSeed = readJsonSafe(path.join(pluginRoot, "sidecars", "dashboard", "user", "suite-version.json"), null);
@@ -882,7 +907,9 @@ export function initSuiteExtensions({
       const appPath = fs.existsSync("/Applications/Antigravity.app")
         ? "/Applications/Antigravity.app"
         : path.join(os.homedir(), "Applications", "Antigravity.app");
-      const launcherApp = "/Applications/Antigravity Aura.app";
+      const launcherApp = fs.existsSync("/Applications/Antigravity Nebula.app")
+        ? "/Applications/Antigravity Nebula.app"
+        : "/Applications/Antigravity Aura.app";
       let oldPid = "";
       try {
         oldPid = execFileSync("pgrep", ["-f", `^${appPath}/Contents/MacOS/Antigravity($| )`], {
@@ -892,7 +919,7 @@ export function initSuiteExtensions({
         }).trim().split(/\r?\n/)[0] || "";
       } catch {}
 
-      // 优先通过 launchd (open -g -a "Antigravity Aura.app") 拉起重启流程：
+      // 优先通过 launchd (open -g -a "Antigravity Nebula.app") 拉起重启流程：
       // 进程完全脱离 Antigravity / language_server 进程树，避免退出瞬间被连带杀掉导致无法重开或竞态闪退
       if (fs.existsSync(launcherApp)) {
         const openArgs = ["-g", "-n", "-a", launcherApp, "--args", oldPid ? `--relaunch-pid=${oldPid}` : "--relaunch"];
