@@ -930,6 +930,56 @@ sleep 1
     return { ok: false, error: `Unsupported platform: ${process.platform}` };
   }
 
+  const autoCdpFile = path.join(dataDir, "suite-auto-cdp-relaunch.json");
+
+  function autoEnsureCdpModeOnStartup() {
+    if (process.platform !== "darwin") return;
+    try {
+      const auraCfg = readJsonSafe(path.join(dataDir, "config.json"), { enabled: true });
+      if (auraCfg && (auraCfg.enabled === false || auraCfg.autoRelaunchCdp === false)) {
+        return;
+      }
+      const appPath = fs.existsSync("/Applications/Antigravity.app")
+        ? "/Applications/Antigravity.app"
+        : path.join(os.homedir(), "Applications", "Antigravity.app");
+      if (!fs.existsSync(appPath)) return;
+
+      const curPid = execFileSync("pgrep", ["-f", `^${appPath}/Contents/MacOS/Antigravity($| )`], {
+        encoding: "utf8",
+        timeout: 1500,
+        stdio: ["ignore", "pipe", "ignore"]
+      }).trim().split(/\r?\n/)[0] || "";
+      if (!curPid) return;
+
+      const cmdLine = execFileSync("ps", ["-p", curPid, "-o", "command="], {
+        encoding: "utf8",
+        timeout: 1500,
+        stdio: ["ignore", "pipe", "ignore"]
+      }).trim();
+      if (!cmdLine || cmdLine.includes("--remote-debugging-port")) {
+        return;
+      }
+
+      const now = Date.now();
+      const prev = readJsonSafe(autoCdpFile, { lastPid: "", lastRelaunchAt: 0 });
+      if (String(prev?.lastPid || "") === String(curPid) || now - (Number(prev?.lastRelaunchAt) || 0) < 25000) {
+        return;
+      }
+
+      writeJsonSafe(autoCdpFile, {
+        lastPid: String(curPid),
+        lastRelaunchAt: now,
+        reason: "missing_remote_debugging_port_after_update_or_launch"
+      });
+      console.log(`[Aura Suite] Detected Antigravity (pid=${curPid}) running without --remote-debugging-port; auto-relaunching into Aura Theme mode...`);
+      relaunchAntigravityWithCdp();
+    } catch {}
+  }
+
+  setTimeout(() => {
+    autoEnsureCdpModeOnStartup();
+  }, 1500);
+
   // 启动带随机 Token 的本地 CORS 桥接服务，专供 Antigravity 宿主窗口 (custom.js) 直接调用
   const bridgeToken = crypto.randomBytes(16).toString("hex");
   let bridgeOrigin = "";
