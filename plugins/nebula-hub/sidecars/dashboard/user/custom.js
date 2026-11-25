@@ -217,11 +217,824 @@ try {
     anchor.parentElement.insertBefore(btn, auraBtnEl || anchor);
   }
 
-  // 2. 通过 Antigravity 原生 RetrieveUserQuotaSummary + GetUserStatus 同步每周/5h额度并评估自动切号
-  async function syncNativeModelQuotas() {
+  // 2. 通过 Antigravity 原生 RetrieveUserQuotaSummary + GetUserStatus 同步每周/5h额度、底栏实时胶囊与运行中只读查额度
+  const quotaState = (window.__NB_QUOTA_STATE__ = window.__NB_QUOTA_STATE__ || {
+    payload: null,
+    autoSwitch: null,
+    updatedAt: 0,
+    lastSyncAttemptAt: 0,
+    inFlight: false,
+    baselineByKey: {}
+  });
+
+  function escHtml(str) {
+    return String(str ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function formatResetCompact(iso) {
+    if (!iso) return "";
+    const t = Date.parse(iso);
+    if (!Number.isFinite(t)) return "";
+    const diff = t - Date.now();
+    if (diff <= 0) return "即将重置";
+    const mins = Math.floor(diff / 60000);
+    const hrs = Math.floor(mins / 60);
+    const days = Math.floor(hrs / 24);
+    if (days > 0) return `${days}天${hrs % 24}小时后重置`;
+    if (hrs > 0) return `${hrs}小时${mins % 60}分后重置`;
+    return `${mins}分钟后重置`;
+  }
+
+  function getActiveModelText() {
+    const btn = document.querySelector('[data-testid="model-selector-trigger"]');
+    if (!btn) return "";
+    const map = window.__ag_orig_text_map;
+    if (map && typeof document.createTreeWalker === "function" && typeof NodeFilter !== "undefined") {
+      try {
+        const tw = document.createTreeWalker(btn, NodeFilter.SHOW_TEXT);
+        const parts = [];
+        let n;
+        while ((n = tw.nextNode())) {
+          const orig = map.get(n);
+          parts.push(typeof orig === "string" ? orig : n.nodeValue || "");
+        }
+        const joined = parts.join(" ").trim();
+        if (joined) return joined;
+      } catch {}
+    }
+    return (btn.innerText || btn.textContent || "").trim();
+  }
+
+  function pickActiveQuotaGroup(groups) {
+    if (!Array.isArray(groups) || groups.length === 0) return null;
+    const modelTxt = getActiveModelText();
+    if (/claude|gpt|opus|sonnet/i.test(modelTxt)) {
+      return groups.find((g) => /3p|claude|gpt/i.test(g.weeklyBucketId || g.key || g.label || "")) || groups[0];
+    }
+    if (/argon/i.test(modelTxt)) {
+      return groups.find((g) => /argon/i.test(g.weeklyBucketId || g.key || g.label || "")) || groups[0];
+    }
+    return groups.find((g) => /gemini/i.test(g.weeklyBucketId || g.key || g.label || "") && !/argon/i.test(g.weeklyBucketId || g.key || g.label || "")) || groups[0];
+  }
+
+  function getGroupBaselineKey(email, group) {
+    const conv = location.pathname || "/";
+    return `${email || "anon"}::${conv}::${group.key || group.label || "pool"}`;
+  }
+
+  function recordQuotaBaseline(payload) {
+    if (!payload || !Array.isArray(payload.groups)) return;
+    for (const g of payload.groups) {
+      const k = getGroupBaselineKey(payload.email, g);
+      if (!quotaState.baselineByKey[k]) {
+        quotaState.baselineByKey[k] = {
+          weeklyPct: typeof g.weeklyPct === "number" ? g.weeklyPct : null,
+          fiveHourPct: typeof g.fiveHourPct === "number" ? g.fiveHourPct : null
+        };
+      }
+    }
+  }
+
+  function getGroupBurn(email, group) {
+    if (!group) return { weeklyBurn: 0, fiveHourBurn: 0, maxBurn: 0 };
+    const base = quotaState.baselineByKey[getGroupBaselineKey(email, group)];
+    if (!base) return { weeklyBurn: 0, fiveHourBurn: 0, maxBurn: 0 };
+    const weeklyBurn =
+      typeof base.weeklyPct === "number" && typeof group.weeklyPct === "number"
+        ? Math.max(0, base.weeklyPct - group.weeklyPct)
+        : 0;
+    const fiveHourBurn =
+      typeof base.fiveHourPct === "number" && typeof group.fiveHourPct === "number"
+        ? Math.max(0, base.fiveHourPct - group.fiveHourPct)
+        : 0;
+    return { weeklyBurn, fiveHourBurn, maxBurn: Math.max(weeklyBurn, fiveHourBurn) };
+  }
+
+  function quotaLevelClass(pct) {
+    if (pct === null || pct === undefined) return "nb-q-ok";
+    if (pct <= 15) return "nb-q-crit";
+    if (pct <= 40) return "nb-q-warn";
+    return "nb-q-ok";
+  }
+
+  let popoverHideTimer = null;
+  let popoverPinned = false;
+  let lastPopoverAnchor = null;
+  let lastPopoverLocked = false;
+
+  function isQuotaPopoverOpen() {
+    const pop = document.getElementById("nb-live-quota-popover");
+    return Boolean(pop && pop.classList.contains("show"));
+  }
+
+  function positionQuotaPopover(pop, anchorEl) {
+    if (!pop || !anchorEl) return;
+    const rect = anchorEl.getBoundingClientRect();
+    const popW = pop.offsetWidth || 312;
+    const popH = pop.offsetHeight || 220;
+    const pad = 10;
+    let left = rect.left;
+    if (left + popW > window.innerWidth - pad) {
+      left = Math.max(pad, window.innerWidth - popW - pad);
+    }
+    let top = rect.top - popH - 10;
+    if (top < pad) {
+      top = Math.min(window.innerHeight - popH - pad, rect.bottom + 10);
+    }
+    pop.style.left = `${Math.max(pad, Math.round(left))}px`;
+    pop.style.top = `${Math.max(pad, Math.round(top))}px`;
+  }
+
+  function renderQuotaPopoverContent(pop, isRunningLocked) {
+    const p = quotaState.payload;
+    const as = quotaState.autoSwitch;
+    const groups = Array.isArray(p?.groups) ? p.groups : [];
+    const activeGroup = pickActiveQuotaGroup(groups);
+    const activeKey = activeGroup ? activeGroup.key || activeGroup.label : "";
+
+    const lockBanner = isRunningLocked
+      ? `<div class="nb-qp-lock-banner"><span>🔒</span><span>智能体运行中不可切换模型 · 实时只读剩余额度</span></div>`
+      : "";
+
+    const accountText = p?.email
+      ? `${p.planName ? p.planName + " · " : ""}${p.email}`
+      : p?.planName || "正在读取账号额度";
+
+    const asTag =
+      as && as.config?.enabled
+        ? `<span class="nb-qp-as-tag">周余 ≤ ${as.config.thresholdPct}% → ${escHtml((as.nextTargetEmail || "自动切号").split("@")[0])}</span>`
+        : "";
+
+    const poolsHtml =
+      groups.length > 0
+        ? groups
+            .map((g) => {
+              const isAct = (g.key || g.label) === activeKey;
+              const wPct = typeof g.weeklyPct === "number" ? Math.max(0, Math.min(100, Math.round(g.weeklyPct))) : (typeof g.pct === "number" ? Math.round(g.pct) : null);
+              const hPct = typeof g.fiveHourPct === "number" ? Math.max(0, Math.min(100, Math.round(g.fiveHourPct))) : null;
+              const wLvl = quotaLevelClass(wPct);
+              const hLvl = quotaLevelClass(hPct);
+              const wReset = formatResetCompact(g.weeklyResetTime || g.resetTime);
+              const hReset = formatResetCompact(g.fiveHourResetTime);
+              const wUsed = wPct !== null ? Math.max(0, 100 - wPct) : null;
+              const hUsed = hPct !== null ? Math.max(0, 100 - hPct) : null;
+              return `
+                <div class="nb-qp-pool${isAct ? " is-active" : ""}">
+                  <div class="nb-qp-pool-head">
+                    <span class="nb-qp-pool-name">${escHtml(g.label)}${isAct ? `<span class="nb-qp-cur-tag">当前</span>` : ""}</span>
+                    <span class="nb-qp-pool-pct ${wLvl}">周余 <b>${wPct !== null ? wPct + "%" : "--"}</b>${wUsed !== null ? ` <small>(已用 ${wUsed}%)</small>` : ""}</span>
+                  </div>
+                  <div class="nb-qp-track"><div class="nb-qp-fill ${wLvl}" style="width:${wPct !== null ? wPct : 0}%"></div></div>
+                  ${wReset ? `<div class="nb-qp-reset">${escHtml(wReset)}</div>` : ""}
+                  ${
+                    hPct !== null
+                      ? `<div class="nb-qp-5h">
+                          <div class="nb-qp-pool-head">
+                            <span class="nb-qp-5h-lbl">5小时限额</span>
+                            <span class="nb-qp-pool-pct ${hLvl}">余 <b>${hPct}%</b>${hUsed !== null ? ` <small>(已用 ${hUsed}%)</small>` : ""}${hReset ? ` · ${escHtml(hReset)}` : ""}</span>
+                          </div>
+                          <div class="nb-qp-track mini"><div class="nb-qp-fill ${hLvl}" style="width:${hPct}%"></div></div>
+                        </div>`
+                      : ""
+                  }
+                </div>
+              `;
+            })
+            .join("")
+        : `<div class="nb-qp-empty">正在从 Antigravity 同步实时额度池，请稍候...</div>`;
+
+    const burn = getGroupBurn(p?.email, activeGroup);
+    const burnSummary =
+      burn.maxBurn > 0
+        ? `本会话消耗：${burn.weeklyBurn > 0 ? `周 -${burn.weeklyBurn}%` : ""}${burn.weeklyBurn > 0 && burn.fiveHourBurn > 0 ? " · " : ""}${burn.fiveHourBurn > 0 ? `5h -${burn.fiveHourBurn}%` : ""}`
+        : "本会话暂无明显配额扣减";
+    const syncTimeStr = quotaState.updatedAt
+      ? (() => {
+          const d = new Date(quotaState.updatedAt);
+          return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}`;
+        })()
+      : "--:--:--";
+
+    pop.innerHTML = `
+      ${lockBanner}
+      <div class="nb-qp-head">
+        <div class="nb-qp-acct">
+          <div class="nb-qp-title">${escHtml(accountText)}</div>
+          ${asTag}
+        </div>
+        <div class="nb-qp-actions">
+          <button type="button" class="nb-qp-icon-btn" data-nb-act="refresh" title="立即刷新实时额度">↻</button>
+          <button type="button" class="nb-qp-icon-btn" data-nb-act="open-hub" title="打开星云中枢控制台">✦</button>
+        </div>
+      </div>
+      <div class="nb-qp-pools">${poolsHtml}</div>
+      <div class="nb-qp-foot">
+        <span>${escHtml(burnSummary)}</span>
+        <span>同步于 ${syncTimeStr}</span>
+      </div>
+    `;
+
+    pop.querySelector('[data-nb-act="refresh"]')?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const btn = e.currentTarget;
+      btn.classList.add("spinning");
+      syncNativeModelQuotas(true).finally(() => {
+        if (btn.isConnected) btn.classList.remove("spinning");
+      });
+    });
+    pop.querySelector('[data-nb-act="open-hub"]')?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      hideQuotaPopover(true);
+      if (window.__ag_open_aura_fn) window.__ag_open_aura_fn();
+    });
+  }
+
+  function getModelTriggerBtn() {
+    return (
+      document.querySelector('#antigravity\\.agentSidePanelInputBox [data-testid="model-selector-trigger"]') ||
+      document.querySelector('[data-testid="model-selector-trigger"]')
+    );
+  }
+
+  function isElementVisible(el) {
+    if (!el || !el.isConnected) return false;
+    const st = getComputedStyle(el);
+    if (st.display === "none" || st.visibility === "hidden" || Number(st.opacity) === 0) return false;
+    const r = el.getBoundingClientRect();
+    return r.width > 20 && r.height > 20;
+  }
+
+  function getRawItemLabel(el) {
+    if (!el) return "";
+    const map = window.__ag_orig_text_map;
+    if (typeof document.createTreeWalker === "function" && typeof NodeFilter !== "undefined") {
+      try {
+        const tw = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+        const parts = [];
+        let n;
+        while ((n = tw.nextNode())) {
+          if (n.parentElement && n.parentElement.closest('[data-nb-injected="1"]')) continue;
+          const orig = map && map.get(n);
+          const txt = typeof orig === "string" ? orig : n.nodeValue || "";
+          if (txt.trim()) parts.push(txt.trim());
+        }
+        if (parts.length > 0) return parts.join(" ").replace(/\s+/g, " ").trim();
+      } catch {}
+    }
+    return (el.innerText || el.textContent || "").replace(/\s+/g, " ").trim();
+  }
+
+  function matchQuotaGroupForLabel(label, groups) {
+    if (!Array.isArray(groups) || groups.length === 0) return null;
+    const s = String(label || "").trim();
+    if (!s) return null;
+    const findGeminiCore = () =>
+      groups.find(
+        (g) =>
+          /gemini/i.test(g.weeklyBucketId || g.key || g.label || "") &&
+          !/argon/i.test(g.weeklyBucketId || g.key || g.label || "")
+      ) || groups[0];
+    if (/argon/i.test(s)) {
+      return (
+        groups.find((g) => /argon/i.test(g.weeklyBucketId || g.key || g.label || "")) ||
+        findGeminiCore()
+      );
+    }
+    if (/claude|gpt|sonnet|opus|haiku|\bo1\b|\bo3\b|\bo4\b|3p/i.test(s)) {
+      return (
+        groups.find((g) => /3p|claude|gpt/i.test(g.weeklyBucketId || g.key || g.label || "")) ||
+        null
+      );
+    }
+    if (/gemini|编排器|orchestrator|neon|carbon|hydrogen|flash/i.test(s)) {
+      return findGeminiCore();
+    }
+    return null;
+  }
+
+  function findOpenModelMenus() {
+    const raw = Array.from(
+      document.querySelectorAll(
+        '[role="menu"], [role="listbox"], [data-radix-menu-content], [data-radix-popper-content-wrapper]'
+      )
+    );
+    const visible = raw.filter((el) => isElementVisible(el));
+    const innerOnly = visible.filter(
+      (el) => !visible.some((other) => other !== el && el.contains(other))
+    );
+    return innerOnly.filter((menu) => {
+      const items = Array.from(
+        menu.querySelectorAll('[role="menuitem"], [role="menuitemradio"], [role="option"], button')
+      ).filter((row) => !row.closest('[data-nb-injected="1"]'));
+      if (items.length === 0) return false;
+      let modelHits = 0;
+      let hasUsageItem = false;
+      for (const row of items) {
+        const lbl = getRawItemLabel(row);
+        if (/查看用量|view usage/i.test(lbl)) hasUsageItem = true;
+        else if (/gemini|claude|gpt-oss|编排器|orchestrator/i.test(lbl)) modelHits++;
+      }
+      return modelHits >= 2 || (modelHits >= 1 && hasUsageItem);
+    });
+  }
+
+  function isModelMenuOpen() {
+    const btn = getModelTriggerBtn();
+    if (btn && (btn.getAttribute("aria-expanded") === "true" || btn.getAttribute("data-state") === "open")) {
+      return true;
+    }
+    return findOpenModelMenus().length > 0;
+  }
+
+  function showQuotaPopover(anchorEl, isRunningLocked, pinned = false) {
+    if (!anchorEl) return;
+    if (!isRunningLocked && isModelMenuOpen()) {
+      hideQuotaPopover(true);
+      return;
+    }
+    clearTimeout(popoverHideTimer);
+    lastPopoverAnchor = anchorEl;
+    lastPopoverLocked = Boolean(isRunningLocked);
+    if (pinned) popoverPinned = true;
+
+    let pop = document.getElementById("nb-live-quota-popover");
+    if (!pop) {
+      pop = document.createElement("div");
+      pop.id = "nb-live-quota-popover";
+      pop.addEventListener("mouseenter", () => clearTimeout(popoverHideTimer));
+      pop.addEventListener("mouseleave", () => {
+        if (!popoverPinned) scheduleHideQuotaPopover();
+      });
+      document.body.appendChild(pop);
+    }
+    renderQuotaPopoverContent(pop, lastPopoverLocked);
+    pop.classList.add("show");
+    positionQuotaPopover(pop, anchorEl);
+    if (!quotaState.payload && !quotaState.inFlight) {
+      syncNativeModelQuotas(true);
+    }
+  }
+
+  function hideQuotaPopover(force = false) {
+    if (popoverPinned && !force) return;
+    popoverPinned = false;
+    const pop = document.getElementById("nb-live-quota-popover");
+    if (pop) pop.classList.remove("show");
+  }
+
+  function scheduleHideQuotaPopover() {
+    if (popoverPinned) return;
+    clearTimeout(popoverHideTimer);
+    popoverHideTimer = setTimeout(() => hideQuotaPopover(false), 220);
+  }
+
+  function placeInjectedMenuBadge(row, badge) {
+    const children = Array.from(row.children);
+    const trailIdx = children.findIndex((ch) => {
+      if (ch === badge || ch.hasAttribute("data-nb-injected")) return false;
+      const tag = (ch.tagName || "").toLowerCase();
+      if (tag === "svg") return true;
+      if (ch.querySelector("svg") && (ch.textContent || "").trim() === "") return true;
+      return false;
+    });
+    if (trailIdx >= 0) {
+      badge.removeAttribute("data-nb-no-trail");
+      const anchor = children[trailIdx];
+      if (badge.parentElement !== row || badge.nextElementSibling !== anchor) {
+        row.insertBefore(badge, anchor);
+      }
+    } else {
+      badge.setAttribute("data-nb-no-trail", "1");
+      if (badge.parentElement !== row || row.lastElementChild !== badge) {
+        row.appendChild(badge);
+      }
+    }
+  }
+
+  function enhanceOpenModelMenu() {
+    const menus = findOpenModelMenus();
+    if (menus.length === 0) return;
+
+    if (isQuotaPopoverOpen()) hideQuotaPopover(true);
+    if (!quotaState.payload && !quotaState.inFlight) {
+      syncNativeModelQuotas(true);
+    }
+
+    const p = quotaState.payload;
+    const groups = Array.isArray(p?.groups) ? p.groups : [];
+    const activeGroup = pickActiveQuotaGroup(groups);
+    const burn = getGroupBurn(p?.email, activeGroup);
+
+    const headerSig = groups.length
+      ? `${p?.email || ""}|${burn.maxBurn}|${quotaState.updatedAt || 0}|` +
+        groups
+          .map((g) => `${g.key || g.label}:${g.weeklyPct ?? g.pct}:${g.fiveHourPct ?? ""}`)
+          .join(",")
+      : "syncing";
+
+    for (const menu of menus) {
+      // 1) 顶部各池额度速览条
+      let header = menu.querySelector(".nb-menu-qheader");
+      if (!header) {
+        header = document.createElement("div");
+        header.className = "nb-menu-qheader";
+        header.setAttribute("data-nb-injected", "1");
+        const stopMenuClose = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+        };
+        header.addEventListener("pointerdown", stopMenuClose);
+        header.addEventListener("mousedown", stopMenuClose);
+        header.addEventListener("click", (e) => {
+          stopMenuClose(e);
+          const refBtn = e.target.closest(".nb-menu-qrefresh");
+          if (refBtn) {
+            refBtn.classList.add("spinning");
+            syncNativeModelQuotas(true).finally(() => {
+              if (refBtn.isConnected) refBtn.classList.remove("spinning");
+            });
+          }
+        });
+
+        const firstChild = menu.firstElementChild;
+        const firstTxt = firstChild ? getRawItemLabel(firstChild) : "";
+        if (firstChild && /^(模型|Models?)$/i.test(firstTxt)) {
+          firstChild.insertAdjacentElement("afterend", header);
+        } else {
+          menu.prepend(header);
+        }
+      }
+
+      if (header.dataset.nbSig !== headerSig) {
+        header.dataset.nbSig = headerSig;
+        const chipsHtml =
+          groups.length > 0
+            ? groups
+                .map((g) => {
+                  const wPct =
+                    typeof g.weeklyPct === "number"
+                      ? Math.max(0, Math.min(100, Math.round(g.weeklyPct)))
+                      : typeof g.pct === "number"
+                      ? Math.round(g.pct)
+                      : null;
+                  const hPct =
+                    typeof g.fiveHourPct === "number"
+                      ? Math.max(0, Math.min(100, Math.round(g.fiveHourPct)))
+                      : null;
+                  const nums = [wPct, hPct].filter((v) => typeof v === "number");
+                  const minPct = nums.length ? Math.min(...nums) : null;
+                  const lvl = quotaLevelClass(minPct);
+                  const shortName = /argon/i.test(g.label || g.key || "")
+                    ? "Argon"
+                    : /claude|gpt|3p/i.test(g.label || g.key || "")
+                    ? "Claude/GPT"
+                    : "Gemini";
+                  const pctParts = [];
+                  if (wPct !== null) pctParts.push(`周 ${wPct}%`);
+                  if (hPct !== null) pctParts.push(`5h ${hPct}%`);
+                  const activeCls =
+                    activeGroup && (activeGroup.key || activeGroup.label) === (g.key || g.label)
+                      ? " is-active"
+                      : "";
+                  return `<span class="nb-menu-qchip ${lvl}${activeCls}">${escHtml(shortName)} <b>${escHtml(
+                    pctParts.join(" · ") || "--"
+                  )}</b></span>`;
+                })
+                .join("")
+            : `<span class="nb-menu-qchip">额度同步中...</span>`;
+        const burnHtml =
+          burn.maxBurn > 0 ? `<span class="nb-menu-qburn">-${burn.maxBurn}%</span>` : "";
+        header.innerHTML = `
+          <div class="nb-menu-qheader-pools">${chipsHtml}${burnHtml}</div>
+          <button type="button" class="nb-menu-qrefresh" title="刷新实时额度">↻</button>
+        `;
+      }
+
+      // 2) 每个模型行右侧周余徽章 + 查看用量行 5h 摘要
+      const rows = Array.from(
+        menu.querySelectorAll('[role="menuitem"], [role="menuitemradio"], [role="option"], button')
+      ).filter((row) => !row.closest('[data-nb-injected="1"]'));
+
+      for (const row of rows) {
+        const rawLabel = getRawItemLabel(row);
+        if (!rawLabel) continue;
+
+        if (/查看用量|view usage/i.test(rawLabel)) {
+          let txt = "同步中";
+          let lvl = "nb-q-ok";
+          let title = "正在同步实时剩余额度";
+          if (activeGroup) {
+            const wPct =
+              typeof activeGroup.weeklyPct === "number"
+                ? Math.round(activeGroup.weeklyPct)
+                : typeof activeGroup.pct === "number"
+                ? Math.round(activeGroup.pct)
+                : null;
+            const hPct =
+              typeof activeGroup.fiveHourPct === "number"
+                ? Math.round(activeGroup.fiveHourPct)
+                : null;
+            const nums = [wPct, hPct].filter((v) => typeof v === "number");
+            lvl = quotaLevelClass(nums.length ? Math.min(...nums) : null);
+            txt = hPct !== null ? `5h ${hPct}%` : wPct !== null ? `周 ${wPct}%` : "--";
+            title = `${activeGroup.label || "当前池"}：周余 ${wPct ?? "--"}% · 5h余 ${hPct ?? "--"}%`;
+          }
+          const sig = `usage|${txt}|${lvl}`;
+          let badge = row.querySelector(":scope > .nb-menu-qbadge");
+          if (!badge) {
+            badge = document.createElement("span");
+            badge.setAttribute("data-nb-injected", "1");
+          }
+          badge.className = `nb-menu-qbadge nb-menu-qbadge-usage ${lvl}`;
+          if (badge.dataset.nbSig !== sig) {
+            badge.dataset.nbSig = sig;
+            badge.textContent = txt;
+            badge.title = title;
+          }
+          placeInjectedMenuBadge(row, badge);
+          continue;
+        }
+
+        const matchedGroup = matchQuotaGroupForLabel(rawLabel, groups);
+        if (!matchedGroup) continue;
+
+        const wPct =
+          typeof matchedGroup.weeklyPct === "number"
+            ? Math.max(0, Math.min(100, Math.round(matchedGroup.weeklyPct)))
+            : typeof matchedGroup.pct === "number"
+            ? Math.round(matchedGroup.pct)
+            : null;
+        const hPct =
+          typeof matchedGroup.fiveHourPct === "number"
+            ? Math.max(0, Math.min(100, Math.round(matchedGroup.fiveHourPct)))
+            : null;
+        const nums = [wPct, hPct].filter((v) => typeof v === "number");
+        const lvl = quotaLevelClass(nums.length ? Math.min(...nums) : null);
+        const txt = wPct !== null ? `周 ${wPct}%` : hPct !== null ? `5h ${hPct}%` : "--";
+        const resetTxt = formatResetRemaining(matchedGroup.weeklyResetTime || matchedGroup.resetTime);
+        const title = `${matchedGroup.label || ""}：周余 ${wPct ?? "--"}% · 5h余 ${hPct ?? "--"}%${
+          resetTxt ? " · " + resetTxt : ""
+        }`;
+        const sig = `model|${txt}|${lvl}`;
+
+        let badge = row.querySelector(":scope > .nb-menu-qbadge");
+        if (!badge) {
+          badge = document.createElement("span");
+          badge.setAttribute("data-nb-injected", "1");
+        }
+        badge.className = `nb-menu-qbadge ${lvl}`;
+        if (badge.dataset.nbSig !== sig) {
+          badge.dataset.nbSig = sig;
+          badge.textContent = txt;
+          badge.title = title;
+        }
+        placeInjectedMenuBadge(row, badge);
+      }
+    }
+  }
+
+  let menuEnhanceRaf = 0;
+  function ensureModelMenuObserver() {
+    if (window.__nb_model_menu_obs_v2) return;
+    if (typeof MutationObserver !== "function" || !document.body) return;
+    try {
+      const obs = new MutationObserver((mutations) => {
+        const onlySelf = mutations.every((m) => {
+          const t = m.target;
+          return t instanceof Element && Boolean(t.closest('[data-nb-injected="1"]'));
+        });
+        if (onlySelf) return;
+        if (menuEnhanceRaf) return;
+        menuEnhanceRaf = requestAnimationFrame(() => {
+          menuEnhanceRaf = 0;
+          window.__NB_QUOTA_UI__?.enhanceOpenModelMenu?.();
+        });
+      });
+      obs.observe(document.body, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ["data-state", "aria-expanded", "style", "hidden"]
+      });
+      window.__nb_model_menu_obs_v2 = obs;
+    } catch {}
+  }
+
+  function syncModelTriggerQuotaLevel() {
+    const btn = getModelTriggerBtn();
+    if (!btn) return;
+    const groups = Array.isArray(quotaState.payload?.groups) ? quotaState.payload.groups : [];
+    const active = pickActiveQuotaGroup(groups);
+    let lvl = "ok";
+    if (active) {
+      const wPct =
+        typeof active.weeklyPct === "number"
+          ? Math.round(active.weeklyPct)
+          : typeof active.pct === "number"
+          ? Math.round(active.pct)
+          : null;
+      const hPct = typeof active.fiveHourPct === "number" ? Math.round(active.fiveHourPct) : null;
+      const nums = [wPct, hPct].filter((v) => typeof v === "number");
+      lvl = quotaLevelClass(nums.length ? Math.min(...nums) : null).replace("nb-q-", "");
+    }
+    if (btn.getAttribute("data-nb-quota-level") !== lvl) {
+      btn.setAttribute("data-nb-quota-level", lvl);
+    }
+  }
+
+  function renderLiveQuotaPill() {
+    const legacyPill = document.getElementById("nb-live-quota-pill");
+    if (legacyPill) legacyPill.remove();
+
+    syncModelTriggerQuotaLevel();
+
+    if (isQuotaPopoverOpen() && lastPopoverAnchor) {
+      const pop = document.getElementById("nb-live-quota-popover");
+      if (pop) {
+        renderQuotaPopoverContent(pop, lastPopoverLocked);
+        positionQuotaPopover(pop, lastPopoverAnchor);
+      }
+    }
+    enhanceOpenModelMenu();
+  }
+
+  function ensureLiveQuotaPill() {
+    const legacyPill = document.getElementById("nb-live-quota-pill");
+    if (legacyPill) legacyPill.remove();
+
+    syncModelTriggerQuotaLevel();
+
+    const btn = getModelTriggerBtn();
+    if (btn && !btn.__nb_model_quota_bound_v2) {
+      btn.__nb_model_quota_bound_v2 = true;
+      let hoverOpenTimer = null;
+
+      btn.addEventListener("mouseenter", () => {
+        clearTimeout(hoverOpenTimer);
+        if (getDisabledModelTrigger() || isModelMenuOpen()) return;
+        hoverOpenTimer = setTimeout(() => {
+          if (!getDisabledModelTrigger() && !isModelMenuOpen() && btn.matches(":hover")) {
+            window.__NB_QUOTA_UI__?.showQuotaPopover(btn, false, false);
+          }
+        }, 180);
+      });
+
+      const hideOnInteract = () => {
+        clearTimeout(hoverOpenTimer);
+        if (!getDisabledModelTrigger()) {
+          window.__NB_QUOTA_UI__?.hideQuotaPopover(true);
+        }
+      };
+      btn.addEventListener("pointerdown", hideOnInteract);
+      btn.addEventListener("click", hideOnInteract);
+
+      btn.addEventListener("mouseleave", () => {
+        clearTimeout(hoverOpenTimer);
+        const pop = document.getElementById("nb-live-quota-popover");
+        if (!(pop && pop.matches(":hover"))) {
+          window.__NB_QUOTA_UI__?.scheduleHideQuotaPopover();
+        }
+      });
+    }
+
+    ensureModelMenuObserver();
+    enhanceOpenModelMenu();
+  }
+
+  function getDisabledModelTrigger() {
+    const btn =
+      document.querySelector('#antigravity\\.agentSidePanelInputBox [data-testid="model-selector-trigger"]') ||
+      document.querySelector('[data-testid="model-selector-trigger"]');
+    if (!btn) return null;
+    const isDisabled =
+      Boolean(btn.disabled) ||
+      btn.getAttribute("aria-disabled") === "true" ||
+      Boolean(btn.closest('[aria-disabled="true"]'));
+    return isDisabled ? btn : null;
+  }
+
+  function isPointInRect(x, y, rect, pad = 2) {
+    return x >= rect.left - pad && x <= rect.right + pad && y >= rect.top - pad && y <= rect.bottom + pad;
+  }
+
+  let wasAgentRunning = false;
+  let lastMetricsSignature = "";
+  let turnSyncTimer = null;
+
+  function checkTurnCompletionAndRefresh() {
+    const stopBtn =
+      document.querySelector('button[data-testid="stop-button"]') ||
+      document.querySelector('#antigravity\\.agentSidePanelInputBox button[aria-label*="Stop" i]') ||
+      document.querySelector('#antigravity\\.agentSidePanelInputBox button[aria-label*="停止" i]');
+    const isRunning = Boolean(stopBtn) || Boolean(getDisabledModelTrigger());
+    const metricsEl = document.getElementById("ag-live-metrics-text");
+    const sig = metricsEl ? (metricsEl.textContent || "").trim() : "";
+
+    const finishedTurn = (wasAgentRunning && !isRunning) || (sig && lastMetricsSignature && sig !== lastMetricsSignature && !isRunning);
+    wasAgentRunning = isRunning;
+    if (sig) lastMetricsSignature = sig;
+
+    if (finishedTurn) {
+      clearTimeout(turnSyncTimer);
+      turnSyncTimer = setTimeout(() => {
+        if (Date.now() - quotaState.lastSyncAttemptAt >= 8000) {
+          syncNativeModelQuotas(false);
+        }
+      }, 1200);
+    }
+  }
+
+  window.__NB_QUOTA_UI__ = {
+    ensureLiveQuotaPill,
+    renderLiveQuotaPill,
+    checkTurnCompletionAndRefresh,
+    getDisabledModelTrigger,
+    isPointInRect,
+    showQuotaPopover,
+    hideQuotaPopover,
+    scheduleHideQuotaPopover,
+    isQuotaPopoverOpen: () => isQuotaPopoverOpen(),
+    syncQuota: (force) => syncNativeModelQuotas(force)
+  };
+
+  if (!window.__nb_quota_ui_hooks_v1) {
+    window.__nb_quota_ui_hooks_v1 = true;
+    let hoveringDisabledTrigger = false;
+
+    document.addEventListener(
+      "pointermove",
+      (e) => {
+        const ui = window.__NB_QUOTA_UI__;
+        if (!ui) return;
+        const disabledBtn = ui.getDisabledModelTrigger();
+        if (disabledBtn) {
+          const r = disabledBtn.getBoundingClientRect();
+          if (r.width > 0 && r.height > 0 && ui.isPointInRect(e.clientX, e.clientY, r, 3)) {
+            if (!hoveringDisabledTrigger || !ui.isQuotaPopoverOpen()) {
+              hoveringDisabledTrigger = true;
+              ui.showQuotaPopover(disabledBtn, true, false);
+            }
+            return;
+          }
+        }
+        if (hoveringDisabledTrigger) {
+          hoveringDisabledTrigger = false;
+          const pop = document.getElementById("nb-live-quota-popover");
+          const pill = document.getElementById("nb-live-quota-pill");
+          const overPop = pop && pop.matches(":hover");
+          const overPill = pill && pill.matches(":hover");
+          if (!overPop && !overPill) ui.scheduleHideQuotaPopover();
+        }
+      },
+      { passive: true }
+    );
+
+    document.addEventListener(
+      "click",
+      (e) => {
+        const ui = window.__NB_QUOTA_UI__;
+        if (!ui) return;
+        const pop = document.getElementById("nb-live-quota-popover");
+        const pill = document.getElementById("nb-live-quota-pill");
+        if (pop && pop.contains(e.target)) return;
+        if (pill && pill.contains(e.target)) return;
+
+        const disabledBtn = ui.getDisabledModelTrigger();
+        if (disabledBtn) {
+          const r = disabledBtn.getBoundingClientRect();
+          if (r.width > 0 && r.height > 0 && ui.isPointInRect(e.clientX, e.clientY, r, 3)) {
+            e.preventDefault();
+            e.stopPropagation();
+            ui.showQuotaPopover(disabledBtn, true, true);
+            ui.syncQuota(true);
+            return;
+          }
+        }
+        if (ui.isQuotaPopoverOpen()) ui.hideQuotaPopover(true);
+      },
+      true
+    );
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && window.__NB_QUOTA_UI__?.isQuotaPopoverOpen()) {
+        window.__NB_QUOTA_UI__.hideQuotaPopover(true);
+      }
+    });
+  }
+
+  async function syncNativeModelQuotas(force = false) {
     const b = window.__AG_SUITE_BRIDGE__;
     const csrf = window.__APP_CONFIG__ && window.__APP_CONFIG__.csrfToken;
     if (!b || !csrf) return;
+    const now = Date.now();
+    if (quotaState.inFlight) return;
+    if (!force && now - quotaState.lastSyncAttemptAt < 7000) return;
+    quotaState.inFlight = true;
+    quotaState.lastSyncAttemptAt = now;
     try {
       const reqOpts = {
         method: "POST",
@@ -299,21 +1112,36 @@ try {
         planName: (us.planStatus && us.planStatus.planInfo && us.planStatus.planInfo.planName) || (us.userTier && us.userTier.name) || "",
         groups
       };
-      const postRes = await fetch(`${b.origin}/api/suite-quota`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Suite-Token": b.token },
-        body: JSON.stringify(payload)
-      });
-      if (postRes.ok) {
-        const postJson = await postRes.json();
-        if (postJson && postJson.autoSwitch && postJson.autoSwitch.triggered) {
-          showMiniNotice(
-            `⚡ ${postJson.autoSwitch.reason}，已自动切换账号至 ${postJson.autoSwitch.toEmail}`,
-            false
-          );
-        }
+      quotaState.payload = payload;
+      quotaState.updatedAt = Date.now();
+      recordQuotaBaseline(payload);
+
+      const [postRes, asRes] = await Promise.allSettled([
+        fetch(`${b.origin}/api/suite-quota`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Suite-Token": b.token },
+          body: JSON.stringify(payload)
+        }).then((r) => (r.ok ? r.json() : null)),
+        fetch(`${b.origin}/api/suite-auto-switch`, {
+          method: "GET",
+          headers: { "X-Suite-Token": b.token }
+        }).then((r) => (r.ok ? r.json() : null))
+      ]);
+
+      if (asRes.status === "fulfilled" && asRes.value && asRes.value.ok) {
+        quotaState.autoSwitch = asRes.value;
       }
-    } catch {}
+      if (postRes.status === "fulfilled" && postRes.value && postRes.value.autoSwitch && postRes.value.autoSwitch.triggered) {
+        showMiniNotice(
+          `⚡ ${postRes.value.autoSwitch.reason}，已自动切换账号至 ${postRes.value.autoSwitch.toEmail}`,
+          false
+        );
+      }
+      ensureLiveQuotaPill();
+      renderLiveQuotaPill();
+    } catch {} finally {
+      quotaState.inFlight = false;
+    }
   }
 
   // 3. GitHub 扩展套件新版本非侵入式提醒气泡
@@ -496,18 +1324,176 @@ try {
     }
   }
 
+  function ensureComposerResponsiveObserver() {
+    const box =
+      document.getElementById("antigravity.agentSidePanelInputBox") ||
+      document.querySelector(".nb-cockpit-bar")?.closest('[id*="InputBox"]') ||
+      document.querySelector('[data-testid="model-selector-trigger"]')?.closest('[id*="InputBox"]');
+    if (!box) return;
+    if (box.hasAttribute("data-nb-composer-size")) {
+      box.removeAttribute("data-nb-composer-size");
+    }
+
+    const metricsPill = document.getElementById("ag-live-metrics-pill");
+    let container = metricsPill ? metricsPill.parentElement : null;
+    if (container && getComputedStyle(container).display === "contents") {
+      container = container.parentElement;
+    }
+
+    let lastSig = "";
+    const tiers = ["full", "no-labels", "core", "ctx-only", "hidden"];
+
+    const solveMetricsTier = (force = false) => {
+      const mPill = document.getElementById("ag-live-metrics-pill");
+      if (!mPill || !box.isConnected) return;
+      let leftGroup = mPill.parentElement;
+      if (leftGroup && getComputedStyle(leftGroup).display === "contents") {
+        leftGroup = leftGroup.parentElement;
+      }
+      if (!leftGroup) return;
+
+      const prevSep = (() => {
+        const s = mPill.previousElementSibling;
+        if (!s) return null;
+        if (s.querySelector("button") || (s.textContent || "").trim() !== "") return null;
+        return s.offsetWidth <= 6 ? s : null;
+      })();
+
+      if (mPill.style.display === "none") {
+        if (prevSep) prevSep.removeAttribute("data-nb-hide-sep");
+        return;
+      }
+
+      const cockpitBar =
+        mPill.querySelector(".nb-cockpit-bar") || mPill.querySelector("#ag-live-metrics-text");
+      if (!cockpitBar) return;
+
+      const triggerW = Math.round(getModelTriggerBtn()?.offsetWidth || 0);
+      const metricsLen = (mPill.textContent || "").length;
+      const sig = `${Math.round(leftGroup.clientWidth)}|${Math.round(box.clientWidth)}|${triggerW}|${metricsLen}`;
+      if (!force && sig === lastSig && box.hasAttribute("data-nb-metrics-tier")) return;
+      lastSig = sig;
+
+      if (prevSep) prevSep.removeAttribute("data-nb-hide-sep");
+
+      const pillStyle = getComputedStyle(mPill);
+      const beforeStyle = getComputedStyle(mPill, "::before");
+      const beforeExtra =
+        beforeStyle && beforeStyle.content && beforeStyle.content !== "none"
+          ? (parseFloat(beforeStyle.width) || 0) +
+            (parseFloat(beforeStyle.marginLeft) || 0) +
+            (parseFloat(beforeStyle.marginRight) || 0)
+          : 0;
+      const innerPad =
+        (parseFloat(pillStyle.paddingLeft) || 0) +
+        (parseFloat(pillStyle.paddingRight) || 0) +
+        beforeExtra;
+
+      let chosen = "hidden";
+      for (const tier of tiers) {
+        box.setAttribute("data-nb-metrics-tier", tier);
+        if (tier === "hidden") {
+          chosen = "hidden";
+          break;
+        }
+        const barRect = cockpitBar.getBoundingClientRect();
+        const pillRect = mPill.getBoundingClientRect();
+        const groupRect = leftGroup.getBoundingClientRect();
+        const fitsInner = cockpitBar.scrollWidth + innerPad <= Math.ceil(mPill.clientWidth) + 1;
+        const fitsBarRect = barRect.right <= pillRect.right + 0.5 && pillRect.width >= barRect.width - 1;
+        const fitsGroup =
+          leftGroup.clientWidth <= 0 ||
+          (leftGroup.scrollWidth <= Math.ceil(leftGroup.clientWidth) + 1 &&
+            barRect.right <= groupRect.right - 2);
+        if (fitsInner && fitsBarRect && fitsGroup) {
+          chosen = tier;
+          break;
+        }
+      }
+
+      if (box.getAttribute("data-nb-metrics-tier") !== chosen) {
+        box.setAttribute("data-nb-metrics-tier", chosen);
+      }
+      if (prevSep) {
+        if (chosen === "hidden") prevSep.setAttribute("data-nb-hide-sep", "1");
+        else prevSep.removeAttribute("data-nb-hide-sep");
+      }
+    };
+
+    let rafId = 0;
+    const scheduleSolve = (force = false) => {
+      if (rafId) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        rafId = 0;
+        solveMetricsTier(force);
+      });
+    };
+
+    if (window.__NB_QUOTA_UI__) {
+      window.__NB_QUOTA_UI__.syncComposerResponsiveLayout = scheduleSolve;
+      window.__NB_QUOTA_UI__.enhanceOpenModelMenu = enhanceOpenModelMenu;
+      window.__NB_QUOTA_UI__.matchQuotaGroupForLabel = matchQuotaGroupForLabel;
+    }
+
+    if (box.__nb_resize_obs_v1) {
+      try { box.__nb_resize_obs_v1.disconnect(); } catch {}
+      box.__nb_resize_obs_v1 = null;
+    }
+    if (box.__nb_resize_obs_v2) {
+      try { box.__nb_resize_obs_v2.disconnect(); } catch {}
+    }
+    if (box.__nb_metrics_mut_v2) {
+      try { box.__nb_metrics_mut_v2.disconnect(); } catch {}
+    }
+
+    if (typeof ResizeObserver === "function") {
+      try {
+        const ro = new ResizeObserver(() => scheduleSolve(false));
+        ro.observe(box);
+        if (container && container !== box) ro.observe(container);
+        box.__nb_resize_obs_v2 = ro;
+      } catch {}
+    }
+
+    const metricsTextEl = document.getElementById("ag-live-metrics-text");
+    if (metricsTextEl && typeof MutationObserver === "function") {
+      try {
+        const mo = new MutationObserver(() => scheduleSolve(false));
+        mo.observe(metricsTextEl, { childList: true, subtree: true, characterData: true });
+        box.__nb_metrics_mut_v2 = mo;
+      } catch {}
+    }
+
+    solveMetricsTier(true);
+  }
+
   if (!window.__ag_suite_host_timers_v1) {
     window.__ag_suite_host_timers_v1 = true;
     ensureCliButton();
-    setInterval(ensureCliButton, 2500);
+    ensureLiveQuotaPill();
+    ensureComposerResponsiveObserver();
+    setInterval(() => {
+      ensureCliButton();
+      window.__NB_QUOTA_UI__?.ensureLiveQuotaPill();
+      window.__NB_QUOTA_UI__?.checkTurnCompletionAndRefresh();
+      window.__NB_QUOTA_UI__?.enhanceOpenModelMenu?.();
+      window.__NB_QUOTA_UI__?.syncComposerResponsiveLayout?.();
+    }, 2500);
     initLastRoutePersistence();
-    setTimeout(syncNativeModelQuotas, 1200);
-    setInterval(syncNativeModelQuotas, 60000);
+    setTimeout(() => syncNativeModelQuotas(true), 800);
+    setTimeout(() => {
+      if (!quotaState.payload) syncNativeModelQuotas(true);
+      else syncNativeModelQuotas(false);
+    }, 3200);
+    setTimeout(() => syncNativeModelQuotas(false), 8000);
+    setInterval(() => syncNativeModelQuotas(false), 60000);
     setTimeout(checkUpdatesOnce, 4500);
   } else {
     ensureCliButton();
+    ensureLiveQuotaPill();
+    ensureComposerResponsiveObserver();
     initLastRoutePersistence();
-    syncNativeModelQuotas();
+    syncNativeModelQuotas(true);
   }
 })(typeof ctx !== "undefined" ? ctx : (typeof boot !== "undefined" ? boot : null));
 

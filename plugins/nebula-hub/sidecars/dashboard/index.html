@@ -74,7 +74,10 @@
             <span class="nb-badge" id="nb-quota-plan-badge">读取中...</span>
             <span class="nb-badge ok" id="nb-autoswitch-active-badge" style="display:none;">自动轮换已开启</span>
           </div>
-          <span class="nb-muted" id="nb-quota-updated-at">实时同步宿主配额</span>
+          <div class="nb-inline-controls" style="gap:8px;">
+            <span class="nb-muted" id="nb-quota-updated-at">实时同步宿主配额</span>
+            <button type="button" class="nb-btn ghost nb-btn-sm" id="nb-btn-refresh-quota">↻ 刷新配额</button>
+          </div>
         </div>
         <div id="nb-quota-grid" class="nb-quota-grid">
           <div class="nb-empty-hint">正在从宿主窗口同步当前账号每周 / 5 小时模型配额池...</div>
@@ -107,7 +110,13 @@
           </select>
           <span class="nb-muted">剩余 ≤</span>
           <input type="number" id="nb-as-threshold" class="nb-input-num" min="1" max="95" value="10" />
-          <span class="nb-muted">% 时自动按顺位切换</span>
+          <span class="nb-muted">% · 冷却</span>
+          <input type="number" id="nb-as-cooldown" class="nb-input-num" min="1" max="180" value="10" />
+          <span class="nb-muted">分钟</span>
+          <label class="nb-switch-label" style="margin-left:2px;">
+            <input type="checkbox" id="nb-as-reload" checked />
+            <span>切号后重载窗口</span>
+          </label>
           <button type="button" class="nb-btn" id="nb-btn-as-save">保存策略</button>
         </div>
 
@@ -115,58 +124,191 @@
         <div id="nb-as-order-list" class="nb-order-list"></div>
       </section>
 
-      <!-- 卡片 3：SQLite 算力遥测与吞吐率分析 -->
-      <section class="nb-card">
-        <div class="nb-card-head">
-          <div class="nb-card-title-group">
-            <h2 class="nb-card-title">SQLite 会话算力与吞吐率遥测</h2>
-            <span class="nb-badge" id="nb-telemetry-scope-badge">原生 node:sqlite 引擎</span>
-          </div>
-          <div class="nb-seg" id="nb-range-seg">
-            <button type="button" data-range="session" class="active">当前会话</button>
-            <button type="button" data-range="global">全局近 30 天</button>
+      <!-- 时间范围筛选条 -->
+      <div class="nb-range-bar-wrap">
+        <div class="nb-seg nb-range-seg" id="nb-range-seg" role="group" aria-label="时间范围">
+          <button type="button" data-range="session">当前会话</button>
+          <button type="button" data-range="today">今日</button>
+          <button type="button" data-range="yesterday">昨日</button>
+          <button type="button" data-range="this-week">本周</button>
+          <button type="button" data-range="this-month">本月</button>
+          <button type="button" data-range="last-7-days">近 7 天</button>
+          <button type="button" data-range="last-30-days" class="active">近 30 天</button>
+          <button type="button" data-range="custom">自定义</button>
+        </div>
+        <div id="nb-custom-range-row" class="nb-custom-range" style="display:none;">
+          <input type="date" id="nb-custom-start" class="nb-input-date" />
+          <span class="nb-muted">至</span>
+          <input type="date" id="nb-custom-end" class="nb-input-date" />
+          <button type="button" class="nb-btn ghost" id="nb-btn-apply-custom">应用</button>
+        </div>
+      </div>
+
+      <!-- 全局会话智能洞察总览 -->
+      <section class="nb-analytics-section">
+        <div class="nb-section-head">
+          <h2 class="nb-section-title">全局会话智能洞察</h2>
+          <div class="nb-inline-controls" style="gap:8px;">
+            <span class="nb-live-pill" id="nb-live-pill"><span class="nb-live-dot"></span><span>实时</span></span>
+            <button type="button" class="nb-btn ghost nb-btn-sm" id="nb-btn-refresh-analytics">↻ 刷新</button>
           </div>
         </div>
 
-        <!-- 4 枚核心算力 KPI -->
-        <div class="nb-kpi-grid">
-          <div class="nb-kpi-box">
-            <div class="nb-kpi-lbl">⚡ 流式生成速率 (TPS)</div>
-            <div class="nb-kpi-val" id="nb-kpi-tps">--</div>
-            <div class="nb-kpi-sub" id="nb-kpi-tps-sub">P50 / 端到端均值</div>
+        <!-- Hero Card：已处理总 Token 用量 -->
+        <div class="nb-card nb-hero-card">
+          <div class="nb-hero-top">
+            <div class="nb-hero-left">
+              <div class="nb-hero-label">已处理总 TOKEN 用量</div>
+              <div class="nb-hero-nums">
+                <span class="nb-hero-val" id="nb-hero-total">--</span>
+                <span class="nb-hero-approx" id="nb-hero-approx"></span>
+              </div>
+            </div>
+            <div class="nb-hero-breakdown" id="nb-hero-breakdown">
+              <div class="nb-hb-row"><span class="nb-hb-lbl"><i class="nb-dot" style="background:#6366f1"></i>输入:</span><span class="nb-hb-val" id="nb-hb-in">--</span><span class="nb-hb-pct" id="nb-hb-in-pct">--</span></div>
+              <div class="nb-hb-row"><span class="nb-hb-lbl"><i class="nb-dot" style="background:#10b981"></i>缓存读取:</span><span class="nb-hb-val" id="nb-hb-cache">--</span><span class="nb-hb-pct" id="nb-hb-cache-pct">--</span></div>
+              <div class="nb-hb-row"><span class="nb-hb-lbl"><i class="nb-dot" style="background:#a855f7"></i>思考过程:</span><span class="nb-hb-val" id="nb-hb-think">--</span><span class="nb-hb-pct" id="nb-hb-think-pct">--</span></div>
+              <div class="nb-hb-row"><span class="nb-hb-lbl"><i class="nb-dot" style="background:#60a5fa"></i>输出:</span><span class="nb-hb-val" id="nb-hb-out">--</span><span class="nb-hb-pct" id="nb-hb-out-pct">--</span></div>
+            </div>
           </div>
-          <div class="nb-kpi-box">
-            <div class="nb-kpi-lbl">⏱ 首字响应延迟 (TTFT)</div>
-            <div class="nb-kpi-val purple" id="nb-kpi-ttft">--</div>
-            <div class="nb-kpi-sub" id="nb-kpi-ttft-sub">平均推理耗时</div>
+          <div class="nb-hero-bar" id="nb-hero-bar"></div>
+        </div>
+
+        <!-- 主 KPI 双栏 -->
+        <div class="nb-kpi-2col">
+          <div class="nb-card nb-kpi-panel">
+            <div class="nb-kpi-panel-title">生成吞吐率与响应延迟</div>
+            <div class="nb-kpi-main-row">
+              <span class="nb-kpi-big" id="nb-kpi-tps">--</span>
+              <span class="nb-kpi-unit">tok/s</span>
+            </div>
+            <div class="nb-kpi-meta-rows">
+              <div class="nb-kpi-meta-row"><span>中位数速率 (P50):</span><b id="nb-kpi-p50">-- tok/s</b></div>
+              <div class="nb-kpi-meta-row"><span>单轮平均耗时:</span><b id="nb-kpi-turn-lat">--s</b></div>
+            </div>
           </div>
-          <div class="nb-kpi-box">
-            <div class="nb-kpi-lbl">🧠 上下文缓存命中率</div>
-            <div class="nb-kpi-val green" id="nb-kpi-cache">--</div>
-            <div class="nb-kpi-sub" id="nb-kpi-cache-sub">缓存读取 / 总输入</div>
-          </div>
-          <div class="nb-kpi-box">
-            <div class="nb-kpi-lbl">✦ 累计 Token 吞吐量</div>
-            <div class="nb-kpi-val" id="nb-kpi-tokens">--</div>
-            <div class="nb-kpi-sub" id="nb-kpi-tokens-sub">总请求与会话数</div>
+          <div class="nb-card nb-kpi-panel">
+            <div class="nb-kpi-panel-title">调用与交互轮次</div>
+            <div class="nb-kpi-main-row">
+              <span class="nb-kpi-big" id="nb-kpi-reqs">--</span>
+              <span class="nb-kpi-unit">次调用</span>
+            </div>
+            <div class="nb-kpi-meta-rows">
+              <div class="nb-kpi-meta-row"><span>用户对话轮次:</span><b id="nb-kpi-turns">-- 轮</b></div>
+              <div class="nb-kpi-meta-row"><span>单轮平均 Token:</span><b id="nb-kpi-tok-per-turn">--</b></div>
+            </div>
           </div>
         </div>
 
-        <!-- 每日趋势与模型/工具分布双栏 -->
-        <div class="nb-split-grid">
-          <div class="nb-subcard">
-            <div class="nb-subcard-title" id="nb-chart-title">近期每日 Token 活跃趋势</div>
-            <div id="nb-daily-chart" class="nb-bar-chart"></div>
+        <!-- 次级 KPI 三栏 -->
+        <div class="nb-kpi-3col">
+          <div class="nb-card nb-kpi-mini">
+            <div class="nb-kpi-mini-lbl">PROMPT 缓存节省率</div>
+            <div class="nb-kpi-mini-val" id="nb-kpi-cache">--</div>
           </div>
-          <div class="nb-subcard">
-            <div class="nb-subcard-title">模型算力与吞吐分布</div>
-            <div id="nb-models-list" class="nb-stat-list"></div>
+          <div class="nb-card nb-kpi-mini">
+            <div class="nb-kpi-mini-lbl">首字平均响应时间 (TTFT)</div>
+            <div class="nb-kpi-mini-val"><span id="nb-kpi-ttft">--</span><span class="nb-kpi-mini-unit">秒</span></div>
+          </div>
+          <div class="nb-card nb-kpi-mini">
+            <div class="nb-kpi-mini-lbl">
+              <span>商业 API 估算价值</span>
+              <button type="button" class="nb-info-btn" id="nb-cost-info-btn" aria-label="查看商业模型单价表">ⓘ</button>
+            </div>
+            <div class="nb-kpi-mini-val" id="nb-kpi-cost">$0.00</div>
           </div>
         </div>
 
-        <div class="nb-subcard" style="margin-top:10px;">
-          <div class="nb-subcard-title">高频工具调用排行</div>
-          <div id="nb-tools-list" class="nb-tools-chips"></div>
+        <!-- Token Activity Stacked Bar Chart -->
+        <div class="nb-card nb-chart-card">
+          <div class="nb-chart-head">
+            <span class="nb-chart-title" id="nb-activity-title">Token 活跃趋势（近 30 天）</span>
+            <div class="nb-chart-legend" id="nb-activity-legend">
+              <span class="nb-leg-item"><i class="nb-dot" style="background:#60a5fa"></i>输出 Token</span>
+              <span class="nb-leg-item"><i class="nb-dot" style="background:#6366f1"></i>输入 Token</span>
+              <span class="nb-leg-item"><i class="nb-dot" style="background:#10b981"></i>缓存读取</span>
+            </div>
+          </div>
+          <div id="nb-activity-chart" class="nb-svg-wrap"></div>
+        </div>
+      </section>
+
+      <!-- 模型 Token 用量分布 & 速率趋势 -->
+      <section class="nb-analytics-section">
+        <div class="nb-section-head">
+          <div>
+            <h2 class="nb-section-title">模型 Token 用量分布</h2>
+            <div class="nb-muted">按 AI 模型统计的 Token 消耗、API 等值折算、Prompt 缓存与调用量。</div>
+          </div>
+        </div>
+        <div class="nb-card" id="nb-models-card">
+          <div id="nb-models-summary" class="nb-dist-summary" style="display:none;"></div>
+          <div id="nb-models-list" class="nb-models-dist"></div>
+        </div>
+
+        <div class="nb-card nb-chart-card">
+          <div class="nb-chart-head">
+            <span class="nb-chart-title">模型生成速率趋势 <span class="nb-muted" style="font-weight:400;">（流式 · 端到端回退）</span></span>
+          </div>
+          <div id="nb-speed-legend" class="nb-chart-legend nb-speed-legend"></div>
+          <div id="nb-speed-trends-chart" class="nb-svg-wrap"></div>
+        </div>
+
+        <!-- Turn Latency vs. TTFT 散点图 -->
+        <div class="nb-card nb-chart-card">
+          <div class="nb-chart-head">
+            <span class="nb-chart-title" id="nb-scatter-title">单轮耗时与首字延迟分布</span>
+          </div>
+          <div id="nb-scatter-legend" class="nb-chart-legend nb-speed-legend"></div>
+          <div id="nb-latency-scatter-chart" class="nb-svg-wrap"></div>
+        </div>
+      </section>
+
+      <!-- 工具生态使用分布 -->
+      <section class="nb-analytics-section">
+        <div class="nb-section-head">
+          <div>
+            <h2 class="nb-section-title">工具生态使用分布</h2>
+            <div class="nb-muted">自主工具执行分布、终端命令调用与文件读写操作。</div>
+          </div>
+        </div>
+        <div class="nb-card" id="nb-tools-card">
+          <div class="nb-tools-summary">总调用次数：<b id="nb-tools-total">0</b></div>
+          <div id="nb-tools-list" class="nb-tools-dist"></div>
+        </div>
+      </section>
+
+      <!-- 工作区与项目分布 -->
+      <section class="nb-analytics-section">
+        <div class="nb-section-head">
+          <div>
+            <h2 class="nb-section-title">工作区与项目分布</h2>
+            <div class="nb-muted">各工作区与会话之间的 Token 消耗及会话量统计。</div>
+          </div>
+          <div class="nb-seg nb-mini-seg" id="nb-projects-scope-seg">
+            <button type="button" data-scope="follow" class="active">跟随时间范围</button>
+            <button type="button" data-scope="all-time">全量历史</button>
+          </div>
+        </div>
+        <div class="nb-card" id="nb-projects-card">
+          <div id="nb-projects-list"></div>
+        </div>
+      </section>
+
+      <!-- 账号 Token 用量分布 + 近 1 年配额活跃热力图 -->
+      <section class="nb-analytics-section">
+        <div class="nb-section-head">
+          <div>
+            <h2 class="nb-section-title">账号 Token 用量分布</h2>
+            <div class="nb-muted">已登录账号之间的 Token 消耗、会话量及时间线分布。</div>
+          </div>
+          <div class="nb-seg nb-mini-seg" id="nb-accounts-scope-seg">
+            <button type="button" data-scope="follow" class="active">跟随时间范围</button>
+            <button type="button" data-scope="all-time">全量历史</button>
+          </div>
+        </div>
+        <div class="nb-card" id="nb-accounts-card">
+          <div id="nb-accounts-list"></div>
         </div>
       </section>
     </main>
@@ -198,29 +340,71 @@
 
         <div class="nb-form-row">
           <div>
-            <div class="nb-row-title">星云视觉色彩预设</div>
-            <div class="nb-muted">专为 Antigravity 定制的 4 套原生色彩基调（已彻底移除旧版第三方仿制预设）</div>
+            <div class="nb-row-title">星云中枢面板外观</div>
+            <div class="nb-muted">控制当前右侧控制台面板的亮暗主题（支持自动跟随系统外观）</div>
           </div>
-          <div class="nb-preset-grid" id="nb-preset-grid">
-            <button type="button" class="nb-preset-card active" data-dark="default" data-light="default">
+          <div class="nb-seg" id="nb-panel-theme-seg">
+            <button type="button" data-panel-theme="auto" class="active">跟随系统</button>
+            <button type="button" data-panel-theme="dark">深空暗夜</button>
+            <button type="button" data-panel-theme="light">极光浅色</button>
+          </div>
+        </div>
+
+        <div class="nb-form-row">
+          <div style="width:100%;">
+            <div class="nb-row-title">暗夜模式预设 (Dark Mode Preset)</div>
+            <div class="nb-muted">系统处于暗色外观时激活的 Antigravity 宿主色彩主题</div>
+          </div>
+          <div class="nb-preset-grid" id="nb-preset-dark-grid">
+            <button type="button" class="nb-preset-card active" data-preset="default">
               <span class="nb-preset-dot" style="background:linear-gradient(135deg,#4285F4,#9B72CB,#EA4335,#34A853)"></span>
               <div>
-                <div class="nb-preset-name">✦ 星云深空 (Nebula Deep)</div>
-                <div class="nb-preset-desc">Google Gemini #131314 深空灰蓝 + 四色流光</div>
+                <div class="nb-preset-name">✦ 星云深空</div>
+                <div class="nb-preset-desc">Google Gemini #131314 深空灰蓝</div>
               </div>
             </button>
-            <button type="button" class="nb-preset-card" data-dark="claude-dark" data-light="high-contrast">
+            <button type="button" class="nb-preset-card" data-preset="claude-dark">
               <span class="nb-preset-dot" style="background:linear-gradient(135deg,#1e222a,#64748b)"></span>
               <div>
-                <div class="nb-preset-name">◈ 曜石碳灰 (Obsidian Slate)</div>
-                <div class="nb-preset-desc">低视觉疲劳碳灰暗夜 + 柔和对比</div>
+                <div class="nb-preset-name">◈ 曜石碳灰</div>
+                <div class="nb-preset-desc">低视觉疲劳碳灰暗夜</div>
               </div>
             </button>
-            <button type="button" class="nb-preset-card" data-dark="vintage-dark" data-light="claude-desktop-purewhite">
+            <button type="button" class="nb-preset-card" data-preset="vintage-dark">
               <span class="nb-preset-dot" style="background:linear-gradient(135deg,#2a211d,#c084fc)"></span>
               <div>
-                <div class="nb-preset-name">✴ 星尘暖曜 (Stardust Warm)</div>
-                <div class="nb-preset-desc">深邃暖调暗夜 / 极光纯白日间</div>
+                <div class="nb-preset-name">✴ 星尘暖曜</div>
+                <div class="nb-preset-desc">深邃暖调暗夜质感</div>
+              </div>
+            </button>
+          </div>
+        </div>
+
+        <div class="nb-form-row">
+          <div style="width:100%;">
+            <div class="nb-row-title">日间模式预设 (Light Mode Preset)</div>
+            <div class="nb-muted">系统处于浅色外观时激活的 Antigravity 宿主色彩主题</div>
+          </div>
+          <div class="nb-preset-grid" id="nb-preset-light-grid">
+            <button type="button" class="nb-preset-card active" data-preset="default">
+              <span class="nb-preset-dot" style="background:linear-gradient(135deg,#e8f0fe,#8ab4f8)"></span>
+              <div>
+                <div class="nb-preset-name">✦ 极光原生</div>
+                <div class="nb-preset-desc">Antigravity 现代浅色</div>
+              </div>
+            </button>
+            <button type="button" class="nb-preset-card" data-preset="high-contrast">
+              <span class="nb-preset-dot" style="background:linear-gradient(135deg,#f6f1e7,#d6cbb8)"></span>
+              <div>
+                <div class="nb-preset-name">☀ 高对比暖白</div>
+                <div class="nb-preset-desc">柔和护眼纸感对比</div>
+              </div>
+            </button>
+            <button type="button" class="nb-preset-card" data-preset="claude-desktop-purewhite">
+              <span class="nb-preset-dot" style="background:linear-gradient(135deg,#ffffff,#d0d7de)"></span>
+              <div>
+                <div class="nb-preset-name">❄ 极光纯白</div>
+                <div class="nb-preset-desc">净白极简工作台</div>
               </div>
             </button>
           </div>
@@ -230,18 +414,57 @@
       <section class="nb-card">
         <div class="nb-card-head">
           <div class="nb-card-title-group">
-            <h2 class="nb-card-title">字体排版与一体式遥测舱配置</h2>
+            <h2 class="nb-card-title">Google Gemini 流光边框实时调节</h2>
+            <span class="nb-badge">themeVars 零重启热生效</span>
+          </div>
+          <label class="nb-switch-label">
+            <input type="checkbox" id="nb-glow-enabled" checked />
+            <span>启用四色动态流光边框</span>
+          </label>
+        </div>
+
+        <div class="nb-form-row">
+          <div>
+            <div class="nb-row-title">流光旋转周期 (速度)</div>
+            <div class="nb-muted">数值越小流光旋转越快（范围 2.0s ~ 10.0s，默认 4.8s）</div>
+          </div>
+          <div class="nb-slider-wrap">
+            <input type="range" id="nb-glow-speed" class="nb-range-slider" min="2.0" max="10.0" step="0.2" value="4.8" />
+            <span class="nb-code-pill" id="nb-glow-speed-val">4.8s</span>
+          </div>
+        </div>
+
+        <div class="nb-form-row">
+          <div>
+            <div class="nb-row-title">流光边框粗细</div>
+            <div class="nb-muted">调整对话输入框外围流光环的常态描边厚度</div>
+          </div>
+          <div class="nb-seg" id="nb-glow-width-seg">
+            <button type="button" data-width="1px">1px 纤细</button>
+            <button type="button" data-width="1.5px" class="active">1.5px 标准</button>
+            <button type="button" data-width="2px">2px 醒目</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="nb-card">
+        <div class="nb-card-head">
+          <div class="nb-card-title-group">
+            <h2 class="nb-card-title">字体排版、输入框布局与一体式遥测舱</h2>
           </div>
         </div>
 
         <div class="nb-form-row">
           <div>
             <div class="nb-row-title">西文与 UI 主字体</div>
-            <div class="nb-muted">用于英文正文、数字与界面标签排版</div>
+            <div class="nb-muted">支持系统字体下拉选择或输入自定义字体名称</div>
           </div>
-          <select id="nb-font-primary" class="nb-select" style="min-width:190px;">
-            <option value="default">系统默认 (System Default)</option>
-          </select>
+          <div class="nb-font-ctrl">
+            <select id="nb-font-primary" class="nb-select" style="min-width:170px;">
+              <option value="default">系统默认 (System Default)</option>
+            </select>
+            <input type="text" id="nb-font-primary-custom" class="nb-input-text" placeholder="自定义字体 (可选)" />
+          </div>
         </div>
 
         <div class="nb-form-row">
@@ -249,9 +472,12 @@
             <div class="nb-row-title">中文回退字体 (CJK)</div>
             <div class="nb-muted">用于简体中文对话与技能说明渲染</div>
           </div>
-          <select id="nb-font-fallback" class="nb-select" style="min-width:190px;">
-            <option value="default">系统默认 (PingFang SC / YaHei)</option>
-          </select>
+          <div class="nb-font-ctrl">
+            <select id="nb-font-fallback" class="nb-select" style="min-width:170px;">
+              <option value="default">系统默认 (PingFang SC / YaHei)</option>
+            </select>
+            <input type="text" id="nb-font-fallback-custom" class="nb-input-text" placeholder="自定义中文字体 (可选)" />
+          </div>
         </div>
 
         <div class="nb-form-row">
@@ -259,15 +485,18 @@
             <div class="nb-row-title">等宽代码字体 (Monospace)</div>
             <div class="nb-muted">用于代码块、终端输出与一体式遥测仪表数值</div>
           </div>
-          <select id="nb-font-mono" class="nb-select" style="min-width:190px;">
-            <option value="default">系统默认等宽 (SF Mono / Menlo)</option>
-          </select>
+          <div class="nb-font-ctrl">
+            <select id="nb-font-mono" class="nb-select" style="min-width:170px;">
+              <option value="default">系统默认等宽 (SF Mono / Menlo)</option>
+            </select>
+            <input type="text" id="nb-font-mono-custom" class="nb-input-text" placeholder="自定义等宽字体 (可选)" />
+          </div>
         </div>
 
         <div class="nb-form-row">
           <div>
             <div class="nb-row-title">对话正文字号</div>
-            <div class="nb-muted">实时调整聊天区域阅读字号 (13px ~ 20px)</div>
+            <div class="nb-muted">实时调整聊天区域阅读字号 (13px ~ 18px)</div>
           </div>
           <div class="nb-seg" id="nb-font-size-seg">
             <button type="button" data-size="13">13px</button>
@@ -288,6 +517,56 @@
             <input type="checkbox" id="nb-cfg-telemetry" checked />
             <span>显示一体式流光遥测舱</span>
           </label>
+        </div>
+
+        <div class="nb-form-row">
+          <div>
+            <div class="nb-row-title">遥测数据刷新频率</div>
+            <div class="nb-muted">控制底部遥测舱与 SQLite 增量同步轮询间隔</div>
+          </div>
+          <div class="nb-seg" id="nb-telemetry-interval-seg">
+            <button type="button" data-interval="1000">1s 极速</button>
+            <button type="button" data-interval="2000" class="active">2s 默认</button>
+            <button type="button" data-interval="3000">3s 均衡</button>
+            <button type="button" data-interval="5000">5s 节能</button>
+          </div>
+        </div>
+
+        <div class="nb-form-row">
+          <div style="width:100%;">
+            <div class="nb-row-title">输入框排版与注入引擎模块</div>
+            <div class="nb-muted">按需开启或关闭紧凑布局与底层增强模块</div>
+          </div>
+          <div class="nb-toggles-grid">
+            <label class="nb-toggle-tile">
+              <input type="checkbox" id="nb-composer-collinear" />
+              <div><b>底栏单行紧凑同排</b><span>模型选择器与工具栏紧凑单行排布</span></div>
+            </label>
+            <label class="nb-toggle-tile">
+              <input type="checkbox" id="nb-composer-waxseal" />
+              <div><b>输入框微浮雕质感</b><span>增加轻柔内嵌高光微浮雕边线</span></div>
+            </label>
+            <label class="nb-toggle-tile">
+              <input type="checkbox" id="nb-composer-hidearrows" />
+              <div><b>隐藏跳转箭头</b><span>精简输入框角落冗余跳转指示箭头</span></div>
+            </label>
+            <label class="nb-toggle-tile">
+              <input type="checkbox" id="nb-mod-deadlock" checked />
+              <div><b>界面死锁自愈 (deadlockHealer)</b><span>自动恢复偶发卡死的加载态按钮</span></div>
+            </label>
+            <label class="nb-toggle-tile">
+              <input type="checkbox" id="nb-mod-customcss" checked />
+              <div><b>注入流光主题样式 (customCss)</b><span>启用四色流光边框与阶梯导航条</span></div>
+            </label>
+            <label class="nb-toggle-tile">
+              <input type="checkbox" id="nb-mod-customjs" checked />
+              <div><b>注入增强脚本 (customJs)</b><span>启用顶栏快捷按钮、额度同步与斜杠汉化</span></div>
+            </label>
+            <label class="nb-toggle-tile">
+              <input type="checkbox" id="nb-mod-activity" checked />
+              <div><b>会话活动摘要 (activitySummary)</b><span>在对话摘要区显示实时遥测概览</span></div>
+            </label>
+          </div>
         </div>
       </section>
     </main>
@@ -363,6 +642,7 @@
     </main>
   </div>
 
+  <div id="nb-popover-tooltip" class="nb-popover-host" style="display:none;"></div>
   <div id="nb-toast" class="nb-toast"></div>
   <script src="/app.js"></script>
 </body>

@@ -7,8 +7,13 @@ import { spawn, execFile, execFileSync } from "node:child_process";
 
 const REPO_URL = "https://github.com/Songh0918/antigravity-ui-suggestion";
 const REPO_GIT_URL = `${REPO_URL}.git`;
-const REMOTE_VERSION_URL = "https://raw.githubusercontent.com/Songh0918/antigravity-ui-suggestion/main/version.json";
+const DEFAULT_UPDATE_BRANCH = "new-ui-project";
 const UPDATE_CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 小时
+
+function buildRemoteVersionUrl(branch = DEFAULT_UPDATE_BRANCH) {
+  const safeBranch = String(branch || DEFAULT_UPDATE_BRANCH).trim() || DEFAULT_UPDATE_BRANCH;
+  return `https://raw.githubusercontent.com/Songh0918/antigravity-ui-suggestion/${encodeURIComponent(safeBranch)}/version.json`;
+}
 
 const GUARDRAIL_TEMPLATES = {
   strict: `# 防幻觉与工程纪律护栏规则 (Anti-Hallucination & Engineering Guardrails)
@@ -368,7 +373,8 @@ function launchAgyCli({ cwd, model, dryRun } = {}) {
   }
 }
 
-async function fetchRemoteVersionJson() {
+async function fetchRemoteVersionJson(branch = DEFAULT_UPDATE_BRANCH) {
+  const remoteUrl = buildRemoteVersionUrl(branch);
   const proxyEnv = detectSystemProxyEnv();
   const childEnv = { ...process.env };
   if (proxyEnv.HTTPS_PROXY) childEnv.HTTPS_PROXY = proxyEnv.HTTPS_PROXY;
@@ -380,7 +386,7 @@ async function fetchRemoteVersionJson() {
     const out = await new Promise((resolve, reject) => {
       execFile(
         process.platform === "win32" ? "curl.exe" : "curl",
-        ["-fsSL", "--max-time", "4", `${REMOTE_VERSION_URL}?t=${Date.now()}`],
+        ["-fsSL", "--max-time", "4", `${remoteUrl}?t=${Date.now()}`],
         { encoding: "utf8", env: childEnv, timeout: 4500, windowsHide: true },
         (err, stdout) => {
           if (err) reject(err);
@@ -396,7 +402,7 @@ async function fetchRemoteVersionJson() {
   try {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 4000);
-    const resp = await fetch(`${REMOTE_VERSION_URL}?t=${Date.now()}`, { signal: ctrl.signal });
+    const resp = await fetch(`${remoteUrl}?t=${Date.now()}`, { signal: ctrl.signal });
     clearTimeout(timer);
     if (resp.ok) {
       const parsed = await resp.json();
@@ -573,6 +579,96 @@ export function initSuiteExtensions({
     return ordered;
   }
 
+  function findAccountSnapshot(snaps, email) {
+    if (!snaps || typeof snaps !== "object" || !email) return null;
+    if (snaps[email]) return snaps[email];
+    const target = String(email).toLowerCase();
+    for (const [k, v] of Object.entries(snaps)) {
+      if (k.toLowerCase() === target) return v;
+    }
+    return null;
+  }
+
+  function resolveEffectivePoolSnapshot(snap, poolKey, now = Date.now()) {
+    if (!snap || typeof snap !== "object") return null;
+    const poolsObj = snap.pools && typeof snap.pools === "object" ? snap.pools : null;
+    if (poolsObj) {
+      const entries = Object.values(poolsObj).filter((p) => p && typeof p.weeklyPct === "number");
+      let matched = null;
+      if (!poolKey || poolKey === "any-weekly") {
+        // 挑选有效余量最低的池子
+        const normalized = entries.map((p) => {
+          const resetMs = p.weeklyResetTime ? Date.parse(p.weeklyResetTime) : NaN;
+          const recovered = Number.isFinite(resetMs) && now > resetMs;
+          return { ...p, effectivePct: recovered ? 100 : p.weeklyPct, resetRecovered: recovered };
+        });
+        normalized.sort((a, b) => a.effectivePct - b.effectivePct);
+        return normalized[0] || null;
+      }
+      matched = poolsObj[poolKey];
+      if (!matched) {
+        if (poolKey === "gemini-weekly") matched = entries.find((e) => /gemini/i.test(e.key || "") && !/argon/i.test(e.key || ""));
+        else if (poolKey === "3p-weekly") matched = entries.find((e) => /3p|claude|gpt/i.test(e.key || "") || /claude|gpt/i.test(e.label || ""));
+        else if (poolKey === "gemini-argon-wtu-weekly") matched = entries.find((e) => /argon/i.test(e.key || "") || /argon/i.test(e.label || ""));
+      }
+      if (matched && typeof matched.weeklyPct === "number") {
+        const resetMs = matched.weeklyResetTime ? Date.parse(matched.weeklyResetTime) : NaN;
+        const recovered = Number.isFinite(resetMs) && now > resetMs;
+        return {
+          ...matched,
+          pct: recovered ? 100 : matched.weeklyPct,
+          rawPct: matched.weeklyPct,
+          resetRecovered: recovered
+        };
+      }
+    }
+    if (poolKey && typeof snap[poolKey] === "number") {
+      return { key: poolKey, pct: snap[poolKey], rawPct: snap[poolKey], resetRecovered: false };
+    }
+    return null;
+  }
+
+  function formatAccountPools(snap, now = Date.now()) {
+    if (!snap || typeof snap !== "object") return [];
+    const poolsObj = snap.pools && typeof snap.pools === "object" ? snap.pools : null;
+    if (poolsObj) {
+      return Object.values(poolsObj)
+        .filter((p) => p && typeof p.weeklyPct === "number")
+        .map((p) => {
+          const resetMs = p.weeklyResetTime ? Date.parse(p.weeklyResetTime) : NaN;
+          const resetRecovered = Number.isFinite(resetMs) && now > resetMs;
+          return {
+            key: p.key || "",
+            label: p.label || p.key || "",
+            weeklyPct: p.weeklyPct,
+            effectiveWeeklyPct: resetRecovered ? 100 : p.weeklyPct,
+            resetRecovered,
+            weeklyResetTime: p.weeklyResetTime || "",
+            fiveHourPct: typeof p.fiveHourPct === "number" ? p.fiveHourPct : null
+          };
+        });
+    }
+    const labelMap = {
+      "gemini-weekly": "Gemini 核心池",
+      "3p-weekly": "Claude / GPT",
+      "gemini-argon-wtu-weekly": "Gemini 4 Argon"
+    };
+    const out = [];
+    for (const [k, v] of Object.entries(snap)) {
+      if (k === "updatedAt" || k === "pools" || typeof v !== "number") continue;
+      out.push({
+        key: k,
+        label: labelMap[k] || k,
+        weeklyPct: v,
+        effectiveWeeklyPct: v,
+        resetRecovered: false,
+        weeklyResetTime: "",
+        fiveHourPct: null
+      });
+    }
+    return out;
+  }
+
   function pickNextCandidate(orderedAccounts, activeEmail, monitoredBucketId, thresholdPct, snaps, now) {
     if (!Array.isArray(orderedAccounts) || orderedAccounts.length < 2) return null;
     const activeLower = String(activeEmail || "").toLowerCase();
@@ -584,12 +680,12 @@ export function initSuiteExtensions({
       if (acc.email.toLowerCase() !== activeLower) rotated.push(acc);
     }
     if (rotated.length === 0) return null;
-    // 严格按用户设定的切换顺序轮换，自动跳过近 30 分钟内已知也低于阈值的账号
+    // 严格按用户设定的切换顺序轮换；跳过近 30 分钟内已知低余额且尚未到每周重置时间的账号
     for (const cand of rotated) {
-      const snap = snaps?.[cand.email];
+      const snap = findAccountSnapshot(snaps, cand.email);
       if (snap && monitoredBucketId && now - (snap.updatedAt || 0) < 30 * 60 * 1000) {
-        const pct = snap[monitoredBucketId];
-        if (typeof pct === "number" && pct <= thresholdPct) continue;
+        const eff = resolveEffectivePoolSnapshot(snap, monitoredBucketId, now);
+        if (eff && !eff.resetRecovered && typeof eff.pct === "number" && eff.pct <= thresholdPct) continue;
       }
       return cand;
     }
@@ -640,13 +736,22 @@ export function initSuiteExtensions({
     const cfg = loadAutoSwitchConfig();
     const curEmail = String(quotaPayload?.email || "").trim();
 
-    // 记录当前账号各模型池的周额度快照，方便切号时优先挑余额高的账号
+    // 记录当前账号各模型池的完整每周/5h快照与重置时间，方便自动重置判定与切号挑选
     if (curEmail && Array.isArray(quotaPayload?.groups)) {
       const snap = { ...(cfg.accountQuotaSnapshots || {}) };
-      const emailSnap = { updatedAt: Date.now() };
+      const emailSnap = { updatedAt: Date.now(), pools: {} };
       for (const g of quotaPayload.groups) {
         const k = g.weeklyBucketId || g.key;
-        if (k && typeof g.weeklyPct === "number") emailSnap[k] = g.weeklyPct;
+        if (!k) continue;
+        if (typeof g.weeklyPct === "number") emailSnap[k] = g.weeklyPct;
+        emailSnap.pools[k] = {
+          key: k,
+          label: g.label || k,
+          weeklyPct: typeof g.weeklyPct === "number" ? g.weeklyPct : (typeof g.pct === "number" ? g.pct : null),
+          weeklyResetTime: g.weeklyResetTime || g.resetTime || "",
+          fiveHourPct: typeof g.fiveHourPct === "number" ? g.fiveHourPct : null,
+          fiveHourResetTime: g.fiveHourResetTime || ""
+        };
       }
       snap[curEmail] = emailSnap;
       cfg.accountQuotaSnapshots = snap;
@@ -724,7 +829,7 @@ export function initSuiteExtensions({
   }
 
   function getLocalVersionInfo() {
-    const fallback = { version: "2.0.0", publishedAt: "", repoUrl: REPO_URL, highlights: [] };
+    const fallback = { version: "2.0.0", publishedAt: "", repoUrl: REPO_URL, branch: DEFAULT_UPDATE_BRANCH, highlights: [] };
     const fromData = readJsonSafe(versionFile, null);
     if (fromData && fromData.version) return { ...fallback, ...fromData };
     const fromSeed = readJsonSafe(path.join(pluginRoot, "sidecars", "dashboard", "user", "suite-version.json"), null);
@@ -734,6 +839,7 @@ export function initSuiteExtensions({
 
   async function checkSuiteUpdate({ force = false } = {}) {
     const local = getLocalVersionInfo();
+    const branch = String(local.branch || DEFAULT_UPDATE_BRANCH).trim() || DEFAULT_UPDATE_BRANCH;
     const state = readJsonSafe(updateStateFile, { dismissedVersion: "", lastCheckedAt: 0, lastRemote: null });
     const now = Date.now();
 
@@ -743,7 +849,7 @@ export function initSuiteExtensions({
       cachedRemote = state.lastRemote;
       lastRemoteCheckAt = state.lastCheckedAt;
     } else {
-      const fetched = await fetchRemoteVersionJson();
+      const fetched = await fetchRemoteVersionJson(branch);
       if (fetched) {
         cachedRemote = fetched;
         lastRemoteCheckAt = now;
@@ -764,6 +870,7 @@ export function initSuiteExtensions({
       ok: true,
       currentVersion: local.version,
       latestVersion,
+      branch,
       hasUpdate,
       shouldNotify: hasUpdate && dismissedVersion !== latestVersion,
       dismissedVersion,
@@ -780,6 +887,8 @@ export function initSuiteExtensions({
       return { ok: false, error: "正在同步更新中，请稍候..." };
     }
     updateInProgress = true;
+    const local = getLocalVersionInfo();
+    const branch = String(local.branch || DEFAULT_UPDATE_BRANCH).trim() || DEFAULT_UPDATE_BRANCH;
     const tmpDir = path.join(os.tmpdir(), `ag-ui-sync-${Date.now()}`);
     const proxyEnv = detectSystemProxyEnv();
     const gitEnv = { ...process.env };
@@ -789,7 +898,7 @@ export function initSuiteExtensions({
 
     try {
       await new Promise((resolve, reject) => {
-        execFile("git", ["clone", "--depth", "1", REPO_GIT_URL, tmpDir], { env: gitEnv, timeout: 45000, windowsHide: true }, (err, stdout, stderr) => {
+        execFile("git", ["clone", "--depth", "1", "--branch", branch, REPO_GIT_URL, tmpDir], { env: gitEnv, timeout: 45000, windowsHide: true }, (err, stdout, stderr) => {
           if (err) reject(new Error(stderr || err.message));
           else resolve(stdout);
         });
@@ -874,32 +983,69 @@ export function initSuiteExtensions({
     const activeEmail = vault.currentEmail || cachedQuota?.email || "";
     const ordered = buildOrderedAccounts(vault.accounts, cfg.accountOrder);
     const monitoredBucket = cfg.poolKey === "any-weekly" ? "" : cfg.poolKey;
+    const now = Date.now();
     const nextCand = pickNextCandidate(
       ordered,
       activeEmail,
       monitoredBucket,
       cfg.thresholdPct,
       cfg.accountQuotaSnapshots || {},
-      Date.now()
+      now
     );
     const nextTargetEmail = nextCand ? nextCand.email : "";
+    const cooldownMs = (cfg.cooldownMinutes || 10) * 60 * 1000;
+    const cooldownRemainingSec =
+      cfg.lastSwitchAt && now - cfg.lastSwitchAt < cooldownMs
+        ? Math.ceil((cooldownMs - (now - cfg.lastSwitchAt)) / 1000)
+        : 0;
+    const monitored = cachedQuota ? extractMonitoredWeeklyPct(cachedQuota, cfg.poolKey) : null;
     return {
       ok: true,
       config: {
         ...cfg,
         accountOrder: ordered.map((a) => a.email)
       },
+      monitoredPct: monitored ? monitored.pct : null,
+      monitoredLabel: monitored ? monitored.label : "",
+      cooldownRemainingSec,
       vaultCount: ordered.length,
       currentEmail: activeEmail,
       nextTargetEmail,
-      accounts: ordered.map((a, idx) => ({
-        orderIndex: idx + 1,
-        email: a.email,
-        isCurrent: Boolean(activeEmail && a.email.toLowerCase() === activeEmail.toLowerCase()),
-        isNext: Boolean(nextTargetEmail && a.email.toLowerCase() === nextTargetEmail.toLowerCase()),
-        lastWeekly: cfg.accountQuotaSnapshots?.[a.email] || null
-      }))
+      accounts: ordered.map((a, idx) => {
+        const acctSnap = findAccountSnapshot(cfg.accountQuotaSnapshots, a.email);
+        return {
+          orderIndex: idx + 1,
+          email: a.email,
+          isCurrent: Boolean(activeEmail && a.email.toLowerCase() === activeEmail.toLowerCase()),
+          isNext: Boolean(nextTargetEmail && a.email.toLowerCase() === nextTargetEmail.toLowerCase()),
+          lastWeekly: acctSnap,
+          snapshotUpdatedAt: acctSnap?.updatedAt || 0,
+          pools: formatAccountPools(acctSnap, now)
+        };
+      })
     };
+  }
+
+  function findDarwinAntigravityProcess(appPath) {
+    try {
+      const appBin = path.join(appPath, "Contents", "MacOS", "Antigravity");
+      const out = execFileSync("/bin/ps", ["-axo", "pid=,command="], {
+        encoding: "utf8",
+        timeout: 2000,
+        stdio: ["ignore", "pipe", "ignore"]
+      });
+      for (const rawLine of out.split(/\r?\n/)) {
+        const line = rawLine.trim();
+        if (!line) continue;
+        const m = line.match(/^(\d+)\s+(.+)$/);
+        if (!m) continue;
+        const cmd = m[2];
+        if (cmd === appBin || cmd.startsWith(appBin + " ")) {
+          return { pid: m[1], cmdLine: cmd };
+        }
+      }
+    } catch {}
+    return null;
   }
 
   function relaunchAntigravityWithCdp() {
@@ -910,14 +1056,8 @@ export function initSuiteExtensions({
       const launcherApp = fs.existsSync("/Applications/Antigravity Nebula.app")
         ? "/Applications/Antigravity Nebula.app"
         : "/Applications/Antigravity Aura.app";
-      let oldPid = "";
-      try {
-        oldPid = execFileSync("pgrep", ["-f", `^${appPath}/Contents/MacOS/Antigravity($| )`], {
-          encoding: "utf8",
-          timeout: 1500,
-          stdio: ["ignore", "pipe", "ignore"]
-        }).trim().split(/\r?\n/)[0] || "";
-      } catch {}
+      const proc = findDarwinAntigravityProcess(appPath);
+      const oldPid = proc?.pid || "";
 
       // 优先通过 launchd (open -g -a "Antigravity Nebula.app") 拉起重启流程：
       // 进程完全脱离 Antigravity / language_server 进程树，避免退出瞬间被连带杀掉导致无法重开或竞态闪退
@@ -971,19 +1111,10 @@ sleep 1
         : path.join(os.homedir(), "Applications", "Antigravity.app");
       if (!fs.existsSync(appPath)) return;
 
-      const curPid = execFileSync("pgrep", ["-f", `^${appPath}/Contents/MacOS/Antigravity($| )`], {
-        encoding: "utf8",
-        timeout: 1500,
-        stdio: ["ignore", "pipe", "ignore"]
-      }).trim().split(/\r?\n/)[0] || "";
-      if (!curPid) return;
-
-      const cmdLine = execFileSync("ps", ["-p", curPid, "-o", "command="], {
-        encoding: "utf8",
-        timeout: 1500,
-        stdio: ["ignore", "pipe", "ignore"]
-      }).trim();
-      if (!cmdLine || cmdLine.includes("--remote-debugging-port")) {
+      const proc = findDarwinAntigravityProcess(appPath);
+      const curPid = proc?.pid || "";
+      const cmdLine = proc?.cmdLine || "";
+      if (!curPid || !cmdLine || cmdLine.includes("--remote-debugging-port")) {
         return;
       }
 
@@ -998,9 +1129,11 @@ sleep 1
         lastRelaunchAt: now,
         reason: "missing_remote_debugging_port_after_update_or_launch"
       });
-      console.log(`[Aura Suite] Detected Antigravity (pid=${curPid}) running without --remote-debugging-port; auto-relaunching into Aura Theme mode...`);
+      console.log(`[Nebula Hub] Detected Antigravity (pid=${curPid}) running without --remote-debugging-port; auto-relaunching into Nebula Theme mode...`);
       relaunchAntigravityWithCdp();
-    } catch {}
+    } catch (err) {
+      console.warn("[Nebula Hub] autoEnsureCdpModeOnStartup failed:", err?.message || err);
+    }
   }
 
   setTimeout(() => {

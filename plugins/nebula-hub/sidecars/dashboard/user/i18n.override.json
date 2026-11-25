@@ -64,5 +64,6 @@
   "Ask a quick question without interrupting the main conversation.": "在不打断当前主对话流程的情况下快速穿插提问。",
   "Turn the current work into a trackable Notion database.": "将当前工作内容转换为可追踪的 Notion 数据库。",
   "Turn the current work into a durable Notion page.": "将当前工作内容保存为持久化的 Notion 文档页面。",
-  "Provides a prompt to generate design system rules for this repo.": "为当前代码仓库生成 Figma 设计系统对接规则提示词。"
+  "Provides a prompt to generate design system rules for this repo.": "为当前代码仓库生成 Figma 设计系统对接规则提示词。",
+  "Model cannot be changed while the agent is running": "智能体运行中不可切换模型（悬停查看实时剩余额度）"
 }

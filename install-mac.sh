@@ -148,14 +148,24 @@ for arg in "$@"; do
 done
 
 get_main_pid() {
-  pgrep -f "^${APP}/Contents/MacOS/Antigravity($| )" 2>/dev/null | head -n 1
+  /bin/ps -axo pid=,command= 2>/dev/null | /usr/bin/awk -v bin="${APP}/Contents/MacOS/Antigravity" '{
+    pid=$1
+    sub(/^[[:space:]]*[0-9]+[[:space:]]+/, "")
+    if ($0 == bin || index($0, bin " ") == 1) { print pid; exit }
+  }'
 }
 
 CUR_PID="$(get_main_pid)"
 log "Start: cur_pid=${CUR_PID:-none} relaunch_pid=${RELAUNCH_PID:-none} force=${FORCE_RELAUNCH}"
 
-if [ -n "$CUR_PID" ] && [ "$FORCE_RELAUNCH" -eq 0 ] && [ -f "$PORT_FILE" ]; then
-  exec /usr/bin/open -a "$APP"
+if [ -n "$CUR_PID" ] && [ "$FORCE_RELAUNCH" -eq 0 ]; then
+  CUR_CMD="$(/bin/ps -p "$CUR_PID" -o command= 2>/dev/null || true)"
+  case "$CUR_CMD" in
+    *--remote-debugging-port*)
+      log "Already running with CDP (pid=${CUR_PID}); focusing window"
+      exec /usr/bin/open -a "$APP"
+      ;;
+  esac
 fi
 
 if [ -n "$CUR_PID" ] || [ -n "$RELAUNCH_PID" ]; then
@@ -170,7 +180,12 @@ if [ -n "$CUR_PID" ] || [ -n "$RELAUNCH_PID" ]; then
   done
   if [ -n "$TARGET_PID" ] && kill -0 "$TARGET_PID" 2>/dev/null; then
     kill -TERM "$TARGET_PID" 2>/dev/null || true
-    sleep 1
+    k=0
+    while [ "$k" -lt 15 ]; do
+      if ! kill -0 "$TARGET_PID" 2>/dev/null; then break; fi
+      sleep 0.2
+      k=$((k + 1))
+    done
   fi
   j=0
   while [ "$j" -lt 20 ]; do
