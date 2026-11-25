@@ -1,179 +1,33 @@
-<div align="center">
+# 星云中枢 (`nebula-hub` v2.0.0)
 
-<img src="assets/logo.png" alt="Antigravity Aura" width="88" height="88" />
+**星云中枢 (Nebula Hub)** 是为 Google Antigravity 桌面端打造的原生插件与 Sidecar 驾驶舱，由 `Songh0918` 面向全中文研发场景重写与重塑（仓库：[`Songh0918/antigravity-ui-suggestion`](https://github.com/Songh0918/antigravity-ui-suggestion)）。
 
-# Antigravity Aura
+---
 
-**Theme presets, custom font stacks, and local SQLite performance analytics for Google Antigravity, built on the native Plugin + Sidecar API.**
+## 核心特性
 
-[![Version](https://img.shields.io/badge/version-0.3.3-7A1F1A.svg)](https://github.com/sayakaho/Antigravity-Aura/releases)
-[![Release CI](https://github.com/sayakaho/Antigravity-Aura/actions/workflows/release.yml/badge.svg)](https://github.com/sayakaho/Antigravity-Aura/actions/workflows/release.yml)
-[![Node](https://img.shields.io/badge/node-%3E%3D18.0.0-339933.svg)](https://nodejs.org/)
-[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey.svg)](https://github.com/sayakaho/Antigravity-Aura)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+1. **全自研「三舱 Bento 网格」原生中文控制台**（[`sidecars/dashboard/index.html`](./sidecars/dashboard/index.html) / [`app.js`](./sidecars/dashboard/app.js)）
+   - **🚀 额度与算力舱**：实时同步 Gemini / Claude / Argon 每周与 5 小时剩余额度，支持多账号备选金库管理、顺位轮换与低额度自动切号，并通过 Node 22 原生 `node:sqlite` 解析会话与近 30 天吞吐率、首字延迟（TTFT）与缓存命中率。
+   - **🎨 视觉与流光舱**：内置星云深空、曜石碳灰、星尘暖曜 3 套主题预设、系统字体排版选择器、字号微调及一体式遥测舱开关。
+   - **🛡 护栏与系统中枢**：一键切换 5 项防幻觉工程纪律护栏（`关闭` / `标准` / `严格`，同步写入 [`rules/AGENTS.md`](./rules/AGENTS.md)）、退出自动恢复上次会话页面、`>_ agy CLI` 代理注入启动及 GitHub 在线更新检查。
 
-English | [简体中文](README.zh-CN.md)
+2. **一体式流光玻璃遥测舱 (`.nb-cockpit-bar`)**
+   - 在输入框底栏集中呈现 `⚡ 速率 tok/s` ｜ `⏱ 首字延迟` ｜ `🧠 上下文水位 (内嵌进度条)` ｜ `✦ 输出 Token`，点击即可直达星云中枢面板。
 
-[Features](#features) · [Screenshots](#screenshots) · [Installation](#installation) · [Configuration](#configuration) · [Architecture](#architecture) · [Credits](#credits)
+3. **斜杠命令 (`/`) 与 120+ 技能全量双语引擎**
+   - 自动将内置命令、MCP 提示词与全部技能格式化为 **`中文名称 (英文原名)`** 并翻译描述与悬停卡片，为个人专属研发技能点亮 **`★`** 鎏金星标，同时完整保留英文模糊过滤高亮与指令注入能力。
 
-</div>
+4. **零侵入保护官方热更新**
+   - macOS 下不修改 `Antigravity.app` 核心包与签名，配合 `Antigravity Nebula.app` 启动器与 `autoEnsureCdpModeOnStartup()`，在官方热更新重开后 2 秒内自动恢复星云主题模式。
 
-## Overview
+---
 
-**Antigravity Aura** runs inside Google Antigravity's native Plugin + Sidecar lifecycle without external OS daemons. On startup, the sidecar automatically checks host CDP readiness (safely backing up and idempotently patching `app.asar` to enable `--remote-debugging-port=0` if needed), attaches to active windows over CDP for live style and script injection, and adaptively reads the local SQLite conversation store via native drivers or built-in WASM fallback to serve an analytics and preferences panel in the Auxiliary Pane.
+## 常用 Sidecar HTTP API
 
-## Screenshots
-
-### Workspace
-
-![Antigravity Aura Workspace](assets/screenshot-workspace.png)
-
-### Auxiliary Pane
-
-<table>
-  <tr>
-    <th width="50%">Analytics</th>
-    <th width="50%">Preferences</th>
-  </tr>
-  <tr>
-    <td valign="top" align="center">
-      <img src="assets/screenshot-analytics.png" alt="Analytics Dashboard" width="100%" />
-    </td>
-    <td valign="top" align="center">
-      <img src="assets/screenshot-preferences.png" alt="Preferences" width="100%" />
-    </td>
-  </tr>
-</table>
-
-## Features
-
-- **Real-Time Telemetry & Local Analytics**: Track live generation metrics and historical usage directly from your local Antigravity conversations.
-  - **Inline Telemetry Capsule**: Displays the latest response's speed (`tok/s`), TTFT, context usage, and output tokens on the composer bar. Hover for thinking vs. response breakdown, cache hit rate, and compaction headroom; click to toggle the side panel.
-  - **Analytics Dashboard**: Filter by the active session or time range (`Today`, `Last 7 Days`, `Last 30 Days`, `Custom`) to track token efficiency, Gemini API equivalent costs, per-model speed and latency trends, and tool or workspace breakdowns.
-  - **Account Quota & Capacity Heatmap**: Inspect per-account token consumption and plan tiers alongside a 1-year capacity activity heatmap and rolling 5h / 7d quota bucket estimates.
-  - **Google Account Switcher & Vault**: Switch between authenticated Google accounts directly within the sidebar or panel, showing authentic user avatars, emails, and plan tiers backed by safe credential vault storage.
-- **Claude-Inspired Themes & Typography**: Cohesive light and dark palettes paired with clean multilingual text rendering.
-  - **Independent Light & Dark Presets**: Configure separate themes for light (`Claude Light`, `Pure Light`, `Native Default`) and dark (`Claude Dark`, `Vintage Deep`, `Native Default`) appearances that follow your OS theme automatically.
-  - **Dedicated Font Stacks**: Enumerates locally installed fonts with separate controls for Latin UI sans, CJK fallback, monospace code blocks, and chat reading size.
-- **Multilingual Localization, Composer Polish & Live Reload**: Switch both the host UI and the Aura panel cleanly across English, Simplified Chinese (`zh-CN`), Japanese (`ja-JP`), and Korean (`ko-KR`) with custom dictionary overrides, refine bottom composer toolbar alignment and optional wax-seal focus styling, and apply panel changes or `custom.css` / `custom.js` hooks live across open windows without restarting.
-- **Host Auto-Healing, Tamper Guard & Developer Flag Injection**: Automatically ensures zero-config CDP injection on launch (with `.bak` backup), resolves stuck settings dialogs, restores broken window zoom shortcuts, hardens `window.__APP_CONFIG__` and `nativeStorage` against remote experiment resets, and reliably unlocks Antigravity's native Developer Mode and Labs panels with clear client/server boundary guidance.
-
-## Requirements
-
-| Dependency | Requirement | Scope |
-| :--- | :--- | :--- |
-| **Google Antigravity** | Native Plugin + Sidecar support (CDP auto-healed on first launch if disabled) | Runtime |
-| **Node.js** | `>= 18.0.0` (native acceleration on Node 22+, automatic WASM fallback on older versions) or **Bun** | Runtime |
-| **Bun** | `>= 1.2` | Build & test |
-| **OS** | macOS, Windows, or Linux | Runtime & build |
-
-## Installation
-
-### Install with Antigravity
-
-Copy this repository URL and send it to **Antigravity** in chat to have it install and enable the plugin for you:
-
-```text
-Install the Antigravity Aura plugin from https://github.com/sayakaho/Antigravity-Aura
-```
-
-Restart Antigravity after installation completes to load the plugin.
-
-### Release Archive
-
-1. Grab the latest `aura-dashboard-v*.zip` from [GitHub Releases](https://github.com/sayakaho/Antigravity-Aura/releases).
-2. Extract the archive so `plugin.json` sits directly inside:
-   ```text
-   ~/.gemini/config/plugins/aura-dashboard
-   ```
-3. Restart Antigravity. Click the telemetry capsule in the composer bar or open **⋮ → Extensions → Aura Dashboard**.
-
-### Build from Source
-
-```bash
-git clone https://github.com/sayakaho/Antigravity-Aura.git
-cd Antigravity-Aura
-
-bun install
-bun run typecheck
-bun test
-bun run build
-bun run link:plugin
-```
-
-Manage the plugin via the Antigravity CLI:
-
-```bash
-agy plugin validate ./dist
-agy plugin enable aura-dashboard
-agy plugin disable aura-dashboard
-```
-
-## Configuration
-
-Themes, typography, polling intervals, and experimental flags can be updated live in **Auxiliary Pane → Preferences**.
-
-On first launch, Antigravity initializes a persistent data directory at `~/.gemini/antigravity/plugin_data/aura-dashboard/`. Files in this directory are preserved across plugin updates:
-
-| File | Description |
-| :--- | :--- |
-| `config.json` | Main plugin configuration |
-| `custom.css` | User stylesheet appended when `modules.customCss` is enabled |
-| `custom.js` | Top-level window script executed when `modules.customJs` is enabled |
-| `i18n.override.json` | Custom key-value overrides merged over the active locale dictionary |
-| `account_timeline.json` / `quota_calibration.json` | Auto-managed runtime state for account timelines and differential quota calibration |
-
-## Architecture
-
-```text
-Antigravity Host
-   │
-   ├──► Sidecar Server — dist/sidecars/dashboard/main.mjs
-   │       ├── Zero-config host app.asar auto-healer (with .bak backup)
-   │       ├── Local SQLite/Protobuf parser & Language Server quota/account telemetry
-   │       ├── Config validation & injection bundle compiler
-   │       ├── CDP target discovery & hot CSS/JS injection
-   │       └── HTTP server for the Auxiliary Pane Webview
-   │
-   └──► Host Window — Injected Runtime
-           ├── Modular theme stylesheets, font stacks & composer layout
-           ├── WeakMap multilingual localizer (zh-CN / ja-JP / ko-KR) & host fixes
-           └── Inline telemetry capsule, Google account switcher & experimental flag sync
-```
-
-<details>
-<summary>Repository Structure</summary>
-
-```text
-Antigravity-Aura/
-├── .github/workflows/release.yml   # CI verification & release packaging
-├── assets/                         # Plugin icon and preview screenshots
-├── scripts/                        # Build and plugin symlink scripts
-├── skills/aura-theme/SKILL.md      # Bundled skill manifest, config schema & HTTP API reference
-├── src/
-│   ├── injection/                  # In-window runtime, modular styles/, locales/, and host fixes
-│   ├── panel/                      # Auxiliary Pane Webview frontend & panel i18n
-│   ├── presets/                    # Default templates for persistent user config
-│   ├── server/                     # Sidecar backend, host healer, SQLite/Protobuf parser, and CDP client
-│   ├── shared/                     # Shared pricing registry, TPS calculation, and schema validation
-│   └── types/                      # TypeScript contracts and Sidecar SDK declarations
-├── tests/                          # Unit tests
-├── LICENSE
-├── package.json
-├── plugin.json                     # Antigravity plugin manifest
-└── tsconfig.json
-```
-
-</details>
-
-See [`skills/aura-theme/SKILL.md`](skills/aura-theme/SKILL.md) for config schemas, customization hooks, and HTTP API endpoints.
-
-## Credits
-
-This project draws design foundations from [**Anarcadia/chuanban-antigravity-theme-patch**](https://github.com/Anarcadia/chuanban-antigravity-theme-patch) by **船板 ([@Anarcadia](https://github.com/Anarcadia))**, specifically referencing:
-
-- Warm-paper light color palette and font stack pairing
-- Initial Simplified Chinese UI localization dictionary
-- Inline composer metrics capsule concept
-
-Released under the [MIT](LICENSE) license.
+- `GET /api/status`：查看 CDP 连接状态、已挂载窗口数与当前一体式遥测快照
+- `GET / POST /api/config`：读取或热更新星云视觉、字体、语言与遥测开关配置
+- `POST /api/reload`：重新加载 `user/*` 并通过 CDP 热推送到所有窗口
+- `GET /api/analytics/overview` & `/api/analytics/session`：获取全局近 30 天或当前会话的 `node:sqlite` 算力遥测数据
+- `GET / POST /api/suite-quota` & `/api/suite-auto-switch`：读取/更新模型额度缓存与多账号顺位自动切号策略
+- `GET / POST /api/suite-guardrails`：查询或切换防幻觉工程护栏等级（`off` / `standard` / `strict`）
+- `POST /api/suite-relaunch-cdp`：通过 `Antigravity Nebula.app` 无感重启并切入主题模式
