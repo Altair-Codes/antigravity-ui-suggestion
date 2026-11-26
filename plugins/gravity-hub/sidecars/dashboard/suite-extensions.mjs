@@ -5,14 +5,14 @@ import http from "node:http";
 import crypto from "node:crypto";
 import { spawn, execFile, execFileSync } from "node:child_process";
 
-const REPO_URL = "https://github.com/Songh0918/antigravity-ui-suggestion";
+const REPO_URL = "https://github.com/Altair-Codes/antigravity-ui-suggestion";
 const REPO_GIT_URL = `${REPO_URL}.git`;
 const DEFAULT_UPDATE_BRANCH = "main";
 const UPDATE_CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 小时
 
 function buildRemoteVersionUrl(branch = DEFAULT_UPDATE_BRANCH) {
   const safeBranch = String(branch || DEFAULT_UPDATE_BRANCH).trim() || DEFAULT_UPDATE_BRANCH;
-  return `https://raw.githubusercontent.com/Songh0918/antigravity-ui-suggestion/${encodeURIComponent(safeBranch)}/version.json`;
+  return `https://raw.githubusercontent.com/Altair-Codes/antigravity-ui-suggestion/${encodeURIComponent(safeBranch)}/version.json`;
 }
 
 const GUARDRAIL_TEMPLATES = {
@@ -665,7 +665,7 @@ export function initSuiteExtensions({
     const raw = readJsonSafe(autoCompactFile, {});
     return {
       ok: true,
-      enabled: raw?.enabled !== false,
+      enabled: raw?.enabled === true,
       thresholdK: normalizeThresholdK(raw?.thresholdK, 500),
       cooldownMinutes: normalizeCompactCooldownMin(raw?.cooldownMinutes, 5),
       lastCompactAt: Number(raw?.lastCompactAt) || 0,
@@ -1209,7 +1209,7 @@ export function initSuiteExtensions({
   }
 
   function getLocalVersionInfo() {
-    const fallback = { version: "2.1.4", publishedAt: "", repoUrl: REPO_URL, branch: DEFAULT_UPDATE_BRANCH, highlights: [] };
+    const fallback = { version: "2.1.5", publishedAt: "", repoUrl: REPO_URL, branch: DEFAULT_UPDATE_BRANCH, highlights: [] };
     const fromData = readJsonSafe(versionFile, null);
     if (fromData && fromData.version) return { ...fallback, ...fromData };
     const fromSeed = readJsonSafe(path.join(pluginRoot, "sidecars", "dashboard", "user", "suite-version.json"), null);

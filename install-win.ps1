@@ -1,7 +1,7 @@
 ﻿$ErrorActionPreference = "Stop"
 $Here = Split-Path -Parent $MyInvocation.MyCommand.Path
 
-Write-Host "🚀 正在安装 Antigravity 引力套件 (Gravity Suite v2.1.4 · 纯 Node.js 全中文三扩展 Windows)..." -ForegroundColor Cyan
+Write-Host "🚀 正在安装 Antigravity 引力套件 (Gravity Suite v2.1.5 · 纯 Node.js 全中文三扩展 Windows)..." -ForegroundColor Cyan
 
 $nodeCmd = Get-Command "node" -ErrorAction SilentlyContinue
 if (-not $nodeCmd) {
@@ -75,14 +75,14 @@ $targets = @(
   (Join-Path $PluginsDst "gravity-explorer\sidecars\panel\sidecar.json"),
   (Join-Path $PluginsDst "gravity-vault\sidecars\dock\sidecar.json")
 )
-node -e '
+@'
 const fs = require("node:fs");
-for (const p of process.argv.slice(1)) {
+for (const p of process.argv.slice(2)) {
   const data = JSON.parse(fs.readFileSync(p, "utf8"));
   data.command = "node";
   fs.writeFileSync(p, JSON.stringify(data, null, 2) + "\n", "utf8");
 }
-' @targets
+'@ | node - @targets
 Write-Host "  • 已完成 3 个纯 Node.js 扩展的 Windows 启动配置校验"
 
 # 4. 为 app.asar 开启 CDP 调试端口（容错：若安装在 Program Files 无写权限则不阻塞快捷方式注入）
@@ -183,4 +183,4 @@ $agLogs = Join-Path $env:APPDATA "Antigravity\logs"
 Write-Host "  • 启动日志路径: $bootLog" -ForegroundColor Gray
 Write-Host "  • 客户端日志目录: $agLogs" -ForegroundColor Gray
 
-Write-Host "`n✅ 引力套件 (Gravity Suite v2.1.4) 安装完成！现在只需关闭一次 Antigravity 窗口，全量汉化与 Gemini 五色流光即刻生效！" -ForegroundColor Green
+Write-Host "`n✅ 引力套件 (Gravity Suite v2.1.5) 安装完成！现在只需关闭一次 Antigravity 窗口，全量汉化与 Gemini 五色流光即刻生效！" -ForegroundColor Green

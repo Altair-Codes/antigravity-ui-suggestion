@@ -1,14 +1,14 @@
 {
   "name": "gravity-explorer",
   "displayName": "引力目录",
-  "version": "2.1.4",
+  "version": "2.1.5",
   "description": "macOS 访达四栏列表风格全自研项目目录树，支持轻量代码/Markdown/表格/图片分栏预览、原生标签直开与拖拽 @引用。",
   "logo": "assets/logo.svg",
-  "homepage": "https://github.com/Songh0918/antigravity-ui-suggestion",
-  "repository": "https://github.com/Songh0918/antigravity-ui-suggestion",
+  "homepage": "https://github.com/Altair-Codes/antigravity-ui-suggestion",
+  "repository": "https://github.com/Altair-Codes/antigravity-ui-suggestion",
   "author": {
-    "name": "Songh0918",
-    "url": "https://github.com/Songh0918"
+    "name": "Altair-Codes",
+    "url": "https://github.com/Altair-Codes"
   },
   "suggestedPrompts": [
     "打开引力目录浏览当前工作区文件结构",

@@ -2743,7 +2743,7 @@
         const acCheck = document.getElementById("nb-ac-enabled");
         const acThreshold = document.getElementById("nb-ac-threshold");
         const acDesc = document.getElementById("nb-ac-desc");
-        if (acCheck) acCheck.checked = acRes.enabled !== false;
+        if (acCheck) acCheck.checked = acRes.enabled === true;
         if (acThreshold) acThreshold.value = String(acRes.thresholdK || 500);
         if (acDesc) {
           if (acRes.lastCompactAt > 0) {
@@ -2851,7 +2851,7 @@
     if (sysDesc) {
       sysDesc.textContent = info.hasUpdate
         ? `发现新版本 v${info.latestVersion}（当前 v${info.currentVersion}），可一键同步更新`
-        : `当前已是最新版本 v${info.currentVersion} · Songh0918/antigravity-ui-suggestion`;
+        : `当前已是最新版本 v${info.currentVersion} · Altair-Codes/antigravity-ui-suggestion`;
     }
     if (sysUpdBtn) {
       sysUpdBtn.style.display = info.hasUpdate ? "inline-flex" : "none";

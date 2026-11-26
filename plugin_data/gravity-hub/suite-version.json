@@ -1,11 +1,11 @@
 {
-  "version": "2.1.4",
-  "publishedAt": "2026-11-26T15:42:00+08:00",
-  "repoUrl": "https://github.com/Songh0918/antigravity-ui-suggestion",
+  "version": "2.1.5",
+  "publishedAt": "2026-11-26T17:15:00+08:00",
+  "repoUrl": "https://github.com/Altair-Codes/antigravity-ui-suggestion",
   "branch": "main",
   "highlights": [
-    "Windows 三扩展启动兼容性加固：为引力目录与引力文库补齐 sidecar_sdk 兜底加载，并为引力文库增加 node:sqlite 动态降级兼容",
-    "统一启动诊断日志与安装自检：三扩展统一写入 sidecar_data/gravity-suite-boot.log，install-win.ps1 新增试启动、代理绕过与日志路径检测",
-    "权限容错提升：enable-cdp.mjs 遇到 Program Files 无写权限时友好跳过并交由快捷方式接管，不再中断安装"
+    "自动上下文压缩 (/compact) 默认改为关闭，并修复双重插入导致误发 /compact/compact 的问题，支持在引力中枢按需开启",
+    "仓库与在线更新源全面切换至 Altair-Codes/antigravity-ui-suggestion，并修复 Windows PowerShell 5.1 安装脚本双引号解析报错",
+    "新增 1080p 脱敏宣传视频、动态预览 GIF 与 6 张核心功能截图，全面升级 README 图文介绍"
   ]
 }

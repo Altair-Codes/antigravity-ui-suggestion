@@ -2056,13 +2056,14 @@ try {
 
   // 4.5 监听当前对话实时上下文水位，空闲且超出设定阈值（默认 500k）时自动发送 /compact
   const autoCompactState = (window.__NB_AUTO_COMPACT__ = window.__NB_AUTO_COMPACT__ || {
-    cfg: { enabled: true, thresholdK: 500, cooldownMinutes: 5 },
+    cfg: { enabled: false, thresholdK: 500, cooldownMinutes: 5 },
     cfgLoadedAt: 0,
     idleSince: 0,
     inFlight: false,
     lastTriggerByCascade: {},
     lastTriggeredSigByCascade: {}
   });
+  autoCompactState.cfgLoadedAt = 0;
 
   async function refreshAutoCompactConfig(force = false) {
     const now = Date.now();
@@ -2075,7 +2076,7 @@ try {
         const j = await r.json();
         if (j && j.ok) {
           autoCompactState.cfg = {
-            enabled: j.enabled !== false,
+            enabled: j.enabled === true,
             thresholdK: Math.max(100, Math.min(1000, Number(j.thresholdK) || 500)),
             cooldownMinutes: Math.max(1, Math.min(60, Number(j.cooldownMinutes) || 5))
           };
@@ -2162,7 +2163,8 @@ try {
       try {
         inserted = document.execCommand("insertText", false, "/compact");
       } catch {}
-      if (!inserted || !(ed.innerText || "").includes("/compact")) {
+      await sleep(80);
+      if (!inserted && !(ed.innerText || "").trim()) {
         try {
           ed.dispatchEvent(
             new InputEvent("beforeinput", {
@@ -2172,6 +2174,7 @@ try {
               cancelable: true
             })
           );
+          await sleep(80);
         } catch {}
       }
 
@@ -2190,8 +2193,12 @@ try {
         await sleep(140);
       }
 
-      // 若选中斜杠命令后仍停留在输入框等待发送，则点击发送按钮或触发 Enter 提交
-      if ((ed.innerText || "").trim().length > 0) {
+      // 若选中斜杠命令后仍停留在输入框等待发送，校验文本严格为 /compact 才提交，防止误发重复文本
+      const curTxt = (ed.innerText || "").trim();
+      if (curTxt.length > 0) {
+        if (!/^\/compact$/i.test(curTxt)) {
+          return;
+        }
         const sendBtn = findComposerSendButton(box);
         if (sendBtn && !sendBtn.disabled) {
           sendBtn.click();
