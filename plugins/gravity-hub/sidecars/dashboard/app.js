@@ -142,6 +142,7 @@
     panelThemePref = pref || "auto";
     const resolved = panelThemePref === "auto" ? (sysLightQuery && sysLightQuery.matches ? "light" : "dark") : panelThemePref;
     document.documentElement.dataset.theme = resolved;
+    document.documentElement.style.colorScheme = resolved;
     document.querySelectorAll("#nb-panel-theme-seg button").forEach((b) => {
       b.classList.toggle("active", b.dataset.panelTheme === panelThemePref);
     });
@@ -2204,8 +2205,13 @@
           card.classList.toggle("active", card.dataset.preset === lightPreset);
         });
 
-        // 流光边框 themeVars 回显
+        // 流光边框与全局外观 themeVars 回显
         const tv = c.themeVars || {};
+        const savedAppearance = tv["--ag-suite-appearance"];
+        if (savedAppearance === "auto" || savedAppearance === "dark" || savedAppearance === "light") {
+          lsSet("nb.panel.theme", savedAppearance);
+          applyPanelTheme(savedAppearance);
+        }
         const glowOff = tv["--nb-glow-play-state"] === "paused";
         const glowEnEl = document.getElementById("nb-glow-enabled");
         if (glowEnEl) glowEnEl.checked = !glowOff;
@@ -2299,7 +2305,22 @@
       const pref = btn.dataset.panelTheme || "auto";
       lsSet("nb.panel.theme", pref);
       applyPanelTheme(pref);
-      showToast(pref === "auto" ? "引力中枢面板已设为跟随系统外观" : pref === "light" ? "已切换至极光浅色面板" : "已切换至深空暗夜面板");
+      const toastMsg =
+        pref === "auto"
+          ? "已同步切换 Antigravity 与引力中枢为跟随系统外观"
+          : pref === "light"
+          ? "已同步切换 Antigravity 与引力中枢为极光浅色"
+          : "已同步切换 Antigravity 与引力中枢为深空暗夜";
+      patchConfig(
+        {
+          themeVars: {
+            ...(currentConfig?.themeVars || {}),
+            "--ag-suite-appearance": pref,
+            "--ag-suite-appearance-seq": String(Date.now())
+          }
+        },
+        toastMsg
+      );
     });
   });
 

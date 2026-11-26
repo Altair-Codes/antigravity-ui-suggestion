@@ -1,4 +1,5 @@
 :root {
+  color-scheme: dark;
   --nb-bg: #131314;
   --nb-card: #1e1f20;
   --nb-card-alt: #252628;
@@ -73,6 +74,21 @@
 
 * {
   box-sizing: border-box;
+}
+
+html,
+body,
+* {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+html::-webkit-scrollbar,
+body::-webkit-scrollbar,
+*::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 body {
@@ -1251,7 +1267,7 @@ body {
   grid-auto-columns: minmax(9px, 1fr);
   gap: 2.5px;
   overflow-x: auto;
-  scrollbar-width: thin;
+  scrollbar-width: none;
   padding: 3px 1px;
 }
 
@@ -1591,6 +1607,7 @@ body {
  * 极光浅色主题完整适配 (html[data-theme="light"])
  * ============================================================================ */
 html[data-theme="light"] {
+  color-scheme: light;
   --nb-bg: #f6f8fa;
   --nb-card: #ffffff;
   --nb-card-alt: #f1f3f4;

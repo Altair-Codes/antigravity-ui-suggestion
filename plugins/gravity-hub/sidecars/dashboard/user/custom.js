@@ -2110,6 +2110,92 @@ try {
     refreshAutoCompactConfig(true);
     syncNativeModelQuotas(true);
   }
+  // 4b. 全局外观联动：将引力中枢的「跟随系统 / 深空暗夜 / 极光浅色」实时同步至 Antigravity 原生 themeModeProvider
+  const APPEARANCE_SEQ_STORAGE_KEY = "nb_last_applied_appearance_seq";
+  const APPEARANCE_MODE_MAP = { auto: 1, system: 1, light: 2, dark: 3 };
+
+  function findAntigravityThemeModeProvider() {
+    if (window.__nb_theme_mode_provider && typeof window.__nb_theme_mode_provider.pushUpdate === "function") {
+      return window.__nb_theme_mode_provider;
+    }
+    try {
+      const rootEl = document.getElementById("root") || document.body?.firstElementChild;
+      if (!rootEl) return null;
+      const fiberKey = Object.keys(rootEl).find((k) => k.startsWith("__reactContainer$") || k.startsWith("__reactFiber$"));
+      if (!fiberKey) return null;
+      const visited = new Set();
+      const stack = [rootEl[fiberKey]];
+      while (stack.length && visited.size < 5000) {
+        const node = stack.pop();
+        if (!node || visited.has(node)) continue;
+        visited.add(node);
+        const val = node.memoizedProps?.value;
+        if (val && typeof val === "object" && val.themeModeProvider && typeof val.themeModeProvider.pushUpdate === "function") {
+          window.__nb_theme_mode_provider = val.themeModeProvider;
+          return val.themeModeProvider;
+        }
+        if (node.child) stack.push(node.child);
+        if (node.sibling) stack.push(node.sibling);
+      }
+    } catch {}
+    return null;
+  }
+
+  function applyHostAppearance(mode) {
+    const key = String(mode || "").trim().toLowerCase();
+    const targetMode = APPEARANCE_MODE_MAP[key];
+    if (!targetMode) return false;
+    const provider = findAntigravityThemeModeProvider();
+    if (!provider) return false;
+    const curState = typeof provider.getState === "function" ? provider.getState() : undefined;
+    if (curState !== targetMode) {
+      provider.pushUpdate(targetMode);
+    }
+    setTimeout(() => {
+      try {
+        if (typeof window.__ag_sync_color_scheme_fn === "function") {
+          window.__ag_sync_color_scheme_fn();
+        }
+      } catch {}
+    }, 80);
+    return true;
+  }
+
+  function syncHostAppearanceFromThemeVars(retry = 0) {
+    try {
+      const st = document.documentElement.style;
+      const mode = st.getPropertyValue("--ag-suite-appearance").trim();
+      const seq = st.getPropertyValue("--ag-suite-appearance-seq").trim();
+      if (!mode || !seq) return;
+      try {
+        if (localStorage.getItem(APPEARANCE_SEQ_STORAGE_KEY) === seq) return;
+      } catch {}
+      const provider = findAntigravityThemeModeProvider();
+      if (!provider) {
+        if (retry < 10) {
+          setTimeout(() => syncHostAppearanceFromThemeVars(retry + 1), 250);
+        }
+        return;
+      }
+      try { localStorage.setItem(APPEARANCE_SEQ_STORAGE_KEY, seq); } catch {}
+      applyHostAppearance(mode);
+    } catch {}
+  }
+
+  if (window.__NB_QUOTA_UI__) {
+    window.__NB_QUOTA_UI__.applyHostAppearance = applyHostAppearance;
+    window.__NB_QUOTA_UI__.syncHostAppearanceFromThemeVars = syncHostAppearanceFromThemeVars;
+  }
+
+  syncHostAppearanceFromThemeVars(0);
+
+  if (!window.__nb_appearance_obs_v1) {
+    window.__nb_appearance_obs_v1 = true;
+    try {
+      const appObs = new MutationObserver(() => syncHostAppearanceFromThemeVars(0));
+      appObs.observe(document.documentElement, { attributes: true, attributeFilter: ["style"] });
+    } catch {}
+  }
 })(typeof ctx !== "undefined" ? ctx : (typeof boot !== "undefined" ? boot : null));
 
 // 5. 斜杠命令 (/) 与技能弹窗菜单全量汉化：格式化为「中文名 (英文名)」+ 中文描述
