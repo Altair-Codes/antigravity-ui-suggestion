@@ -1786,13 +1786,14 @@ try {
       );
     }
 
-    // 挂钩遥测渲染：每次实时数字刷新后立即重算尺寸档位，并检查是否需要自动执行 /compact
+    // 挂钩遥测渲染：每次实时数字刷新后立即重算尺寸档位、记录吞吐样本并检查是否需要自动执行 /compact
     if (typeof window.__ag_render_metrics === "function" && !window.__ag_render_metrics.__nbWrapped) {
       const origRender = window.__ag_render_metrics;
       const wrapped = function (...args) {
         const ret = origRender.apply(this, args);
         ensureComposerResponsiveObserver();
         scheduleSolve(true);
+        window.__NB_QUOTA_UI__?.recordLiveTpsSample?.();
         window.__NB_QUOTA_UI__?.checkAndTriggerAutoCompact?.();
         return ret;
       };
@@ -2182,17 +2183,209 @@ try {
     } catch {}
   }
 
+  // 4c. 实时 Token 吞吐极值监控（峰值 / 最低 / 平均）+ 可开关悬浮窗与后端同步
+  const TPS_MONITOR_STORAGE_KEY = "nb_tps_monitor_v1";
+  const TPS_RESET_SEQ_KEY = "nb_tps_reset_seq_v1";
+  const tpsMonitorLocal = (window.__NB_TPS_MONITOR_STATE__ = window.__NB_TPS_MONITOR_STATE__ || (() => {
+    const base = { peakTps: 0, minTps: 0, sumTps: 0, avgTps: 0, sampleCount: 0, lastTps: 0, lastSig: "", updatedAt: 0 };
+    try {
+      const raw = localStorage.getItem(TPS_MONITOR_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object") {
+          const sampleCount = Math.max(0, Math.round(Number(parsed.sampleCount) || 0));
+          const sumTps = Math.max(0, Number(parsed.sumTps) || 0);
+          const peakTps = Math.max(0, Math.round(Number(parsed.peakTps) || 0));
+          const minTps = Math.max(0, Math.round(Number(parsed.minTps) || 0));
+          const avgTps = sampleCount > 0 ? Math.round(sumTps / sampleCount) : 0;
+          return {
+            peakTps,
+            minTps,
+            sumTps,
+            avgTps,
+            sampleCount,
+            lastTps: Math.max(0, Math.round(Number(parsed.lastTps) || 0)),
+            lastSig: typeof parsed.lastSig === "string" ? parsed.lastSig : "",
+            updatedAt: Number(parsed.updatedAt) || 0
+          };
+        }
+      }
+    } catch {}
+    return base;
+  })());
+
+  function persistLocalTpsMonitor() {
+    try {
+      localStorage.setItem(TPS_MONITOR_STORAGE_KEY, JSON.stringify(tpsMonitorLocal));
+    } catch {}
+  }
+
+  function isTpsMonitorEnabled() {
+    try {
+      const val = document.documentElement.style.getPropertyValue("--ag-tps-monitor").trim().toLowerCase();
+      return val !== "off";
+    } catch {
+      return true;
+    }
+  }
+
+  function resetLocalTpsMonitor(seqValue) {
+    tpsMonitorLocal.peakTps = 0;
+    tpsMonitorLocal.minTps = 0;
+    tpsMonitorLocal.sumTps = 0;
+    tpsMonitorLocal.avgTps = 0;
+    tpsMonitorLocal.sampleCount = 0;
+    tpsMonitorLocal.lastTps = 0;
+    tpsMonitorLocal.lastSig = "";
+    tpsMonitorLocal.updatedAt = Date.now();
+    persistLocalTpsMonitor();
+    if (seqValue) {
+      try { localStorage.setItem(TPS_RESET_SEQ_KEY, String(seqValue)); } catch {}
+    }
+    syncTpsTooltipRow();
+  }
+
+  function checkTpsMonitorResetFromThemeVars() {
+    try {
+      const seq = document.documentElement.style.getPropertyValue("--ag-tps-monitor-reset").trim();
+      if (!seq) return;
+      let prevSeq = "";
+      try { prevSeq = localStorage.getItem(TPS_RESET_SEQ_KEY) || ""; } catch {}
+      if (seq !== prevSeq) {
+        resetLocalTpsMonitor(seq);
+      }
+    } catch {}
+  }
+
+  function syncTpsTooltipRow() {
+    try {
+      const tip = document.getElementById("ag-live-metrics-tooltip");
+      if (!tip) return;
+      ensureTooltipTpsObserver(tip);
+      const enabled = isTpsMonitorEnabled();
+      const existing = document.getElementById("nb-tt-tps-monitor-row");
+      if (!enabled || tpsMonitorLocal.sampleCount <= 0) {
+        if (existing) existing.remove();
+        return;
+      }
+      const nextHtml =
+        `<span class="ag-tt-lbl">吞吐极值 (${tpsMonitorLocal.sampleCount}次)</span>` +
+        `<span class="ag-tt-val">` +
+        `<span class="ag-tt-num" style="color:#34a853">峰 ${tpsMonitorLocal.peakTps}</span>` +
+        ` <span class="ag-tt-dot">·</span> ` +
+        `<span class="ag-tt-num">均 ${tpsMonitorLocal.avgTps}</span>` +
+        ` <span class="ag-tt-dot">·</span> ` +
+        `<span class="ag-tt-num" style="color:#fbbc05">低 ${tpsMonitorLocal.minTps}</span>` +
+        ` <span class="ag-tt-muted">tok/s</span>` +
+        `</span>`;
+      if (existing) {
+        if (existing.innerHTML !== nextHtml) {
+          tip.__nbUpdatingTps = true;
+          existing.innerHTML = nextHtml;
+          tip.__nbUpdatingTps = false;
+        }
+        return;
+      }
+      const row = document.createElement("div");
+      row.className = "ag-tt-row";
+      row.id = "nb-tt-tps-monitor-row";
+      row.innerHTML = nextHtml;
+      const footer = tip.querySelector(".ag-tt-footer");
+      tip.__nbUpdatingTps = true;
+      if (footer && footer.parentElement === tip) {
+        tip.insertBefore(row, footer);
+      } else {
+        tip.appendChild(row);
+      }
+      tip.__nbUpdatingTps = false;
+    } catch {}
+  }
+
+  function ensureTooltipTpsObserver(tip) {
+    if (!tip || tip.__nb_tps_tt_obs) return;
+    tip.__nb_tps_tt_obs = true;
+    try {
+      const mo = new MutationObserver(() => {
+        if (tip.__nbUpdatingTps) return;
+        if (isTpsMonitorEnabled() && tpsMonitorLocal.sampleCount > 0 && !document.getElementById("nb-tt-tps-monitor-row")) {
+          syncTpsTooltipRow();
+        }
+      });
+      mo.observe(tip, { childList: true });
+    } catch {}
+  }
+
+  function recordLiveTpsSample() {
+    try {
+      checkTpsMonitorResetFromThemeVars();
+      if (!isTpsMonitorEnabled()) {
+        syncTpsTooltipRow();
+        return getTpsMonitorSnapshot();
+      }
+      const m = window.__ag_last_metrics;
+      let tps = Math.round(Number(m?.displayTps) || 0);
+      if (tps <= 0) {
+        const pillNum = document.querySelector("#ag-live-metrics-pill .nb-cp-tps b")?.textContent?.trim();
+        tps = Math.round(Number(pillNum) || 0);
+      }
+      const sig = String(m?.sig || "");
+      if (Number.isFinite(tps) && tps > 0 && tps < 50000 && (!sig || sig !== tpsMonitorLocal.lastSig)) {
+        const now = Date.now();
+        tpsMonitorLocal.peakTps = Math.max(tpsMonitorLocal.peakTps || 0, tps);
+        tpsMonitorLocal.minTps = tpsMonitorLocal.minTps > 0 ? Math.min(tpsMonitorLocal.minTps, tps) : tps;
+        tpsMonitorLocal.sumTps = (tpsMonitorLocal.sumTps || 0) + tps;
+        tpsMonitorLocal.sampleCount = (tpsMonitorLocal.sampleCount || 0) + 1;
+        tpsMonitorLocal.avgTps = Math.round(tpsMonitorLocal.sumTps / tpsMonitorLocal.sampleCount);
+        tpsMonitorLocal.lastTps = tps;
+        if (sig) tpsMonitorLocal.lastSig = sig;
+        tpsMonitorLocal.updatedAt = now;
+        persistLocalTpsMonitor();
+
+        const b = window.__AG_SUITE_BRIDGE__;
+        if (b && b.origin && b.token) {
+          fetch(`${b.origin}/api/suite-tps-monitor`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Suite-Token": b.token },
+            body: JSON.stringify({ sample: { tps, sig, ts: now } })
+          }).catch(() => {});
+        }
+      }
+      syncTpsTooltipRow();
+    } catch {}
+    return getTpsMonitorSnapshot();
+  }
+
+  function getTpsMonitorSnapshot() {
+    return {
+      enabled: isTpsMonitorEnabled(),
+      peakTps: tpsMonitorLocal.peakTps,
+      minTps: tpsMonitorLocal.minTps,
+      avgTps: tpsMonitorLocal.avgTps,
+      sampleCount: tpsMonitorLocal.sampleCount,
+      lastTps: tpsMonitorLocal.lastTps,
+      updatedAt: tpsMonitorLocal.updatedAt
+    };
+  }
+
   if (window.__NB_QUOTA_UI__) {
     window.__NB_QUOTA_UI__.applyHostAppearance = applyHostAppearance;
     window.__NB_QUOTA_UI__.syncHostAppearanceFromThemeVars = syncHostAppearanceFromThemeVars;
+    window.__NB_QUOTA_UI__.getTpsMonitorState = getTpsMonitorSnapshot;
+    window.__NB_QUOTA_UI__.recordLiveTpsSample = recordLiveTpsSample;
+    window.__NB_QUOTA_UI__.resetTpsMonitor = () => resetLocalTpsMonitor(String(Date.now()));
   }
 
   syncHostAppearanceFromThemeVars(0);
+  recordLiveTpsSample();
 
   if (!window.__nb_appearance_obs_v1) {
     window.__nb_appearance_obs_v1 = true;
     try {
-      const appObs = new MutationObserver(() => syncHostAppearanceFromThemeVars(0));
+      const appObs = new MutationObserver(() => {
+        syncHostAppearanceFromThemeVars(0);
+        checkTpsMonitorResetFromThemeVars();
+        syncTpsTooltipRow();
+      });
       appObs.observe(document.documentElement, { attributes: true, attributeFilter: ["style"] });
     } catch {}
   }

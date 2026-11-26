@@ -1,7 +1,7 @@
 ﻿$ErrorActionPreference = "Stop"
 $Here = Split-Path -Parent $MyInvocation.MyCommand.Path
 
-Write-Host "🚀 正在安装 Antigravity 引力套件 (Gravity Suite v2.1.0 · 纯 Node.js 全中文三扩展 Windows)..." -ForegroundColor Cyan
+Write-Host "🚀 正在安装 Antigravity 引力套件 (Gravity Suite v2.1.1 · 纯 Node.js 全中文三扩展 Windows)..." -ForegroundColor Cyan
 
 if (-not (Get-Command "node" -ErrorAction SilentlyContinue)) {
   Write-Error "❌ 未检测到 Node.js (>=20，推荐 v22+)，请先安装并加入 PATH。"
@@ -103,4 +103,4 @@ if (-not (Get-Command "agy" -ErrorAction SilentlyContinue)) {
   try { irm https://antigravity.google/cli/install.ps1 | iex } catch {}
 }
 
-Write-Host "✅ 引力套件 (Gravity Suite v2.1.0) 安装完成！现在只需关闭一次 Antigravity 窗口，全量汉化与 Gemini 四色流光即刻生效！" -ForegroundColor Green
+Write-Host "✅ 引力套件 (Gravity Suite v2.1.1) 安装完成！现在只需关闭一次 Antigravity 窗口，全量汉化与 Gemini 五色流光即刻生效！" -ForegroundColor Green

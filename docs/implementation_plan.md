@@ -1,8 +1,8 @@
-# 引力套件 (`Gravity Suite v2.1.0`) 架构与五色 OKLab 渐变系统设计
+# 引力套件 (`Gravity Suite v2.1.1`) 架构与五色 OKLab 渐变系统设计
 
 ## 一、整体定位与套件组成
 
-**引力套件 (`Gravity Suite v2.1.0`)** 面向 Google Antigravity 桌面端打造，完全基于原生 **Node.js 22+（ESM + `node:sqlite`）** 运行，所有插件与配置均存放在用户目录 `~/.gemini/` 下，完整保留官方客户端代码签名与热更新能力。
+**引力套件 (`Gravity Suite v2.1.1`)** 面向 Google Antigravity 桌面端打造，完全基于原生 **Node.js 22+（ESM + `node:sqlite`）** 运行，所有插件与配置均存放在用户目录 `~/.gemini/` 下，完整保留官方客户端代码签名与热更新能力。
 
 | 扩展标识 | 中文名称 | 核心职责 |
 | :--- | :--- | :--- |

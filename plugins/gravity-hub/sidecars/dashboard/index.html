@@ -16,7 +16,7 @@
           <div>
             <div class="nb-title-wrap">
               <h1 class="nb-title">引力中枢</h1>
-              <span class="nb-ver-pill" id="nb-ver-pill">v2.1.0</span>
+              <span class="nb-ver-pill" id="nb-ver-pill">v2.1.1</span>
               <span class="nb-cdp-pill" id="nb-cdp-pill">● 检测中</span>
             </div>
             <p class="nb-subtitle">Gravity Hub · Google Gemini 流光视觉、模型额度自动轮换与算力遥测驾驶舱</p>
@@ -194,11 +194,35 @@
         <!-- 主 KPI 双栏 -->
         <div class="nb-kpi-2col">
           <div class="nb-card nb-kpi-panel">
-            <div class="nb-kpi-panel-title">生成吞吐率与响应延迟</div>
+            <div class="nb-kpi-panel-head">
+              <div class="nb-kpi-panel-title">生成吞吐率与响应延迟</div>
+              <div class="nb-inline-controls" style="gap:6px;">
+                <label class="nb-switch-label nb-tps-toggle">
+                  <input type="checkbox" id="nb-tps-monitor-toggle" checked />
+                  <span>吞吐监控</span>
+                </label>
+                <button type="button" class="nb-btn ghost nb-btn-xs" id="nb-btn-tps-reset" title="重置实时吞吐采样记录">重置</button>
+              </div>
+            </div>
             <div class="nb-kpi-main-row">
               <span class="nb-kpi-big" id="nb-kpi-tps">--</span>
-              <span class="nb-kpi-unit">tok/s</span>
+              <span class="nb-kpi-unit">tok/s (平均)</span>
             </div>
+            <div class="nb-tps-stats-3col" id="nb-tps-monitor-grid">
+              <div class="nb-tps-stat-box is-peak">
+                <span class="nb-tps-stat-lbl">峰值吞吐</span>
+                <span class="nb-tps-stat-val" id="nb-kpi-tps-peak">-- tok/s</span>
+              </div>
+              <div class="nb-tps-stat-box is-avg">
+                <span class="nb-tps-stat-lbl">平均吞吐</span>
+                <span class="nb-tps-stat-val" id="nb-kpi-tps-avg">-- tok/s</span>
+              </div>
+              <div class="nb-tps-stat-box is-min">
+                <span class="nb-tps-stat-lbl">最低吞吐</span>
+                <span class="nb-tps-stat-val" id="nb-kpi-tps-min">-- tok/s</span>
+              </div>
+            </div>
+            <div class="nb-tps-note nb-muted" id="nb-tps-monitor-note">正在同步实时吞吐极值监控...</div>
             <div class="nb-kpi-meta-rows">
               <div class="nb-kpi-meta-row"><span>中位数速率 (P50):</span><b id="nb-kpi-p50">-- tok/s</b></div>
               <div class="nb-kpi-meta-row"><span>单轮平均耗时:</span><b id="nb-kpi-turn-lat">--s</b></div>
@@ -650,6 +674,17 @@
           <label class="nb-switch-label">
             <input type="checkbox" id="nb-cfg-telemetry" checked />
             <span>显示一体式流光遥测舱</span>
+          </label>
+        </div>
+
+        <div class="nb-form-row">
+          <div>
+            <div class="nb-row-title">Token 吞吐极值监控（峰值 / 最低 / 平均）</div>
+            <div class="nb-muted">实时采样记录每次生成的峰值、最低与平均吞吐速度（tok/s），并在驾驶舱与底部悬浮窗同步展示</div>
+          </div>
+          <label class="nb-switch-label">
+            <input type="checkbox" id="nb-cfg-tps-monitor" checked />
+            <span>开启吞吐监控</span>
           </label>
         </div>
 

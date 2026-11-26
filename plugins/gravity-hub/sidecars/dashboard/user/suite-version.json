@@ -1,11 +1,11 @@
 {
-  "version": "2.1.0",
-  "publishedAt": "2026-11-26T09:45:00+08:00",
+  "version": "2.1.1",
+  "publishedAt": "2026-11-26T11:00:00+08:00",
   "repoUrl": "https://github.com/Songh0918/antigravity-ui-suggestion",
   "branch": "main",
   "highlights": [
-    "Google 五色高精度 OKLab 流光渐变系统：保留蓝/紫/红/黄/绿 5 大核心锚点，每段 10 细分生成 41 节点线性色带与 51 节点青色闭环色带，消除色彩断层并支持温和呼吸光效与减弱动画降级",
-    "统一品牌「引力套件 (Gravity Suite v2.1.0)」：引力中枢 (gravity-hub) + 引力目录 (gravity-explorer) + 引力文库 (gravity-vault)，全面基于纯 Node.js 22+（ESM + 原生 node:sqlite）构建",
-    "上下文超阈值自动压缩 (/compact) + 早期历史一键归属：支持在「会话记忆区」设置阈值（默认 500k）并在空闲时自动触发 /compact；账号用量分布支持近 30/90 天/1 年热力图、防重计数及早期未跟踪历史一键归属"
+    "可开关实时 Token 吞吐极值监控：支持实时采集与展示峰值 / 最低 / 平均 Token 吞吐（tok/s），提供一键开关与重置记录",
+    "全局外观同步与日间预设精修：一键同步切换 Antigravity 宿主与引力中枢外观（支持 10 款暗夜 + 10 款日间预设），补齐日间默认极光原生色板与气泡/高亮视觉",
+    "每周 + 5 小时双限额协同自动切号与额度瞬时同步：支持双阈值联动切号与 Bridge/LS 秒级额度响应"
   ]
 }

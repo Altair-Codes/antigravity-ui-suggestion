@@ -836,6 +836,57 @@
     costInfoBtn.addEventListener("mouseleave", () => hidePopover(60));
   }
 
+  function extractTpsExtrema(tpsHist, scatterPts, speedBuckets, fallbackAvg = 0) {
+    const samples = [];
+    if (tpsHist && typeof tpsHist === "object") {
+      for (const [k, v] of Object.entries(tpsHist)) {
+        const val = Math.round(Number(k));
+        const cnt = Number(v) || 0;
+        if (Number.isFinite(val) && val > 0 && val < 50000 && cnt > 0) {
+          samples.push(val);
+        }
+      }
+    }
+    if (Array.isArray(scatterPts)) {
+      for (const pt of scatterPts) {
+        const val = Math.round(Number(pt?.speed) || 0);
+        if (Number.isFinite(val) && val > 0 && val < 50000) {
+          samples.push(val);
+        }
+      }
+    }
+    if (Array.isArray(speedBuckets)) {
+      for (const b of speedBuckets) {
+        for (const m of Object.values(b?.models || {})) {
+          const val = Math.round(Number(m?.tps) || 0);
+          if (Number.isFinite(val) && val > 0 && val < 50000) {
+            samples.push(val);
+          }
+        }
+      }
+    }
+    if (samples.length === 0) {
+      const fb = Math.round(Number(fallbackAvg) || 0);
+      return fb > 0 ? { peakTps: fb, minTps: fb, sampleCount: 1 } : { peakTps: 0, minTps: 0, sampleCount: 0 };
+    }
+    return {
+      peakTps: Math.max(...samples),
+      minTps: Math.min(...samples),
+      sampleCount: samples.length
+    };
+  }
+
+  let latestRenderedAgg = null;
+  let latestRenderedSpec = null;
+  let tpsMonitorState = {
+    enabled: lsGet("nb.tps.monitor.enabled", "1") !== "0",
+    peakTps: 0,
+    minTps: 0,
+    avgTps: 0,
+    sampleCount: 0,
+    lastTps: 0
+  };
+
   function buildRangeAggregate(overview, session, spec) {
     if (spec.range === "session") {
       if (!session) return null;
@@ -860,6 +911,10 @@
       const modelCost = models.reduce((acc, m) => acc + calcCost(m.modelId || m.modelName, m.inTok, m.outTok, m.cacheRead), 0);
       const cost = acctCost > 0 ? acctCost : modelCost;
       const speedSeries = buildSessionSpeedSeries(session);
+      const stepTpsVals = steps.map((s) => Math.round(Number(s.tokPerSec) || 0)).filter((v) => v > 0 && v < 50000);
+      const avgSessionTps = Math.round(Number(session.avgTokPerSec) || 0);
+      const peakSessionTps = stepTpsVals.length > 0 ? Math.max(...stepTpsVals) : avgSessionTps;
+      const minSessionTps = stepTpsVals.length > 0 ? Math.min(...stepTpsVals) : avgSessionTps;
       const scatterPts = steps
         .filter((s) => (s.ttft || 0) > 0 && (s.totDur || 0) > 0)
         .map((s, idx) => ({
@@ -877,8 +932,11 @@
         totalTokens: t,
         requests: session.totalRequests || 0,
         userTurns: session.sessionTurns || 0,
-        avgTokPerSec: Math.round(Number(session.avgTokPerSec) || 0),
+        avgTokPerSec: avgSessionTps,
         p50TokPerSec: Math.round(Number(session.p50TokPerSec || session.e2eTokPerSec) || 0),
+        peakTokPerSec: peakSessionTps,
+        minTokPerSec: minSessionTps,
+        tpsSampleCount: stepTpsVals.length,
         avgTurnLatency: Number(session.avgTurnLatency) || 0,
         avgTtft: Number(session.avgTtft) || 0,
         cacheEfficiency: Number(session.cacheEfficiency) || 0,
@@ -1189,6 +1247,7 @@
     const cacheEfficiency = denom > 0 ? Math.round((cacheRead / denom) * 1000) / 10 : 0;
     const avgTokPerSec = effSec > 0 ? Math.round(effOutTok / effSec) : 0;
     const p50TokPerSec = medianFromHist(tpsHist) || avgTokPerSec;
+    const tpsExtrema = extractTpsExtrema(tpsHist, scatterPts, speedBuckets, avgTokPerSec);
     const avgTtft = ttftCount > 0 ? Math.round((ttftSum / ttftCount) * 100) / 100 : 0;
     const avgTurnLatency = validTurnCount > 0 ? Math.round((turnDurSum / validTurnCount) * 100) / 100 : 0;
 
@@ -1199,6 +1258,9 @@
       userTurns,
       avgTokPerSec,
       p50TokPerSec,
+      peakTokPerSec: tpsExtrema.peakTps,
+      minTokPerSec: tpsExtrema.minTps,
+      tpsSampleCount: tpsExtrema.sampleCount,
       avgTurnLatency,
       avgTtft,
       cacheEfficiency,
@@ -1235,7 +1297,73 @@
     return { models, buckets, dateBounds: buckets.map((b) => b.label) };
   }
 
+  function renderTpsMonitorSection(agg = latestRenderedAgg, spec = latestRenderedSpec) {
+    const monEnabled = tpsMonitorState.enabled !== false;
+    const toggleTop = document.getElementById("nb-tps-monitor-toggle");
+    const toggleStudio = document.getElementById("nb-cfg-tps-monitor");
+    const resetBtn = document.getElementById("nb-btn-tps-reset");
+    const gridEl = document.getElementById("nb-tps-monitor-grid");
+    const noteEl = document.getElementById("nb-tps-monitor-note");
+    const peakEl = document.getElementById("nb-kpi-tps-peak");
+    const avgEl = document.getElementById("nb-kpi-tps-avg");
+    const minEl = document.getElementById("nb-kpi-tps-min");
+
+    if (toggleTop) toggleTop.checked = monEnabled;
+    if (toggleStudio) toggleStudio.checked = monEnabled;
+    if (resetBtn) resetBtn.style.display = monEnabled ? "" : "none";
+    if (gridEl) gridEl.style.display = monEnabled ? "grid" : "none";
+
+    if (!monEnabled) {
+      if (noteEl) noteEl.textContent = "已关闭 Token 吞吐监控（打开开关即可恢复峰值 / 最低 / 平均采样）";
+      return;
+    }
+
+    const rangePeak = Math.round(Number(agg?.peakTokPerSec) || 0);
+    const rangeMin = Math.round(Number(agg?.minTokPerSec) || 0);
+    const rangeAvg = Math.round(Number(agg?.avgTokPerSec) || 0);
+    const livePeak = Math.round(Number(tpsMonitorState.peakTps) || 0);
+    const liveMin = Math.round(Number(tpsMonitorState.minTps) || 0);
+    const liveAvg = Math.round(Number(tpsMonitorState.avgTps) || 0);
+    const liveCount = Math.round(Number(tpsMonitorState.sampleCount) || 0);
+
+    const isSessionView = spec?.range === "session" || Boolean(agg?.isSession);
+    const useLiveOnly = isSessionView || (rangePeak <= 0 && livePeak > 0);
+    let peak = 0;
+    let avg = 0;
+    let min = 0;
+
+    if (useLiveOnly && liveCount > 0) {
+      peak = Math.max(rangePeak, livePeak);
+      avg = rangeAvg > 0 ? rangeAvg : liveAvg;
+      min = rangeMin > 0 && liveMin > 0 ? Math.min(rangeMin, liveMin) : (liveMin || rangeMin);
+    } else if (rangePeak > 0 || rangeAvg > 0) {
+      peak = Math.max(rangePeak, livePeak);
+      avg = rangeAvg > 0 ? rangeAvg : liveAvg;
+      min = rangeMin > 0 ? (liveMin > 0 ? Math.min(rangeMin, liveMin) : rangeMin) : liveMin;
+    } else if (liveCount > 0) {
+      peak = livePeak;
+      avg = liveAvg;
+      min = liveMin;
+    }
+
+    if (peakEl) peakEl.textContent = peak > 0 ? `${peak} tok/s` : "-- tok/s";
+    if (avgEl) avgEl.textContent = avg > 0 ? `${avg} tok/s` : "-- tok/s";
+    if (minEl) minEl.textContent = min > 0 ? `${min} tok/s` : "-- tok/s";
+
+    if (noteEl) {
+      if (liveCount > 0) {
+        noteEl.textContent = `监控中 · 实时累计采样 ${liveCount} 次（峰 ${livePeak} / 均 ${liveAvg} / 低 ${liveMin} tok/s）`;
+      } else if (peak > 0) {
+        noteEl.textContent = `监控中 · 已结合「${spec?.labelZh || "当前范围"}」历史样本，新生成回复将实时累加`;
+      } else {
+        noteEl.textContent = "监控中 · 正在等待下一轮流式生成采样...";
+      }
+    }
+  }
+
   function renderHeroAndKpis(agg, spec) {
+    latestRenderedAgg = agg || latestRenderedAgg;
+    latestRenderedSpec = spec || latestRenderedSpec;
     const t = agg?.totalTokens || { input: 0, output: 0, cacheRead: 0, thinking: 0, total: 0 };
     const total = Number(t.total) || 0;
     const approx = total >= 1e6 ? `~${(total / 1e6).toFixed(1)}M` : total >= 1e3 ? `~${(total / 1e3).toFixed(1)}k` : "";
@@ -1271,6 +1399,7 @@
     }
 
     document.getElementById("nb-kpi-tps").textContent = agg && agg.avgTokPerSec > 0 ? String(agg.avgTokPerSec) : "--";
+    renderTpsMonitorSection(agg, spec);
     document.getElementById("nb-kpi-p50").textContent = agg && agg.p50TokPerSec > 0 ? `${agg.p50TokPerSec} tok/s` : "--";
     document.getElementById("nb-kpi-turn-lat").textContent = agg && agg.avgTurnLatency > 0 ? `${agg.avgTurnLatency.toFixed(2)}s` : "--";
 
@@ -2100,7 +2229,97 @@
       }
       renderAllAnalytics();
     } catch {}
+    syncTpsMonitor();
   }
+
+  async function syncTpsMonitor() {
+    try {
+      const r = await apiFetch("/api/suite-tps-monitor", { method: "GET" });
+      if (!r.ok) {
+        renderTpsMonitorSection();
+        return;
+      }
+      const j = await r.json();
+      if (j && j.ok) {
+        tpsMonitorState = {
+          enabled: j.enabled !== false,
+          peakTps: Number(j.peakTps) || 0,
+          minTps: Number(j.minTps) || 0,
+          avgTps: Number(j.avgTps) || 0,
+          sampleCount: Number(j.sampleCount) || 0,
+          lastTps: Number(j.lastTps) || 0
+        };
+        lsSet("nb.tps.monitor.enabled", tpsMonitorState.enabled ? "1" : "0");
+        renderTpsMonitorSection();
+      }
+    } catch {
+      renderTpsMonitorSection();
+    }
+  }
+
+  async function setTpsMonitorEnabled(enabled) {
+    const nextEnabled = Boolean(enabled);
+    tpsMonitorState.enabled = nextEnabled;
+    lsSet("nb.tps.monitor.enabled", nextEnabled ? "1" : "0");
+    renderTpsMonitorSection();
+
+    try {
+      await apiFetch("/api/suite-tps-monitor", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: nextEnabled })
+      });
+    } catch {}
+
+    await patchConfig(
+      {
+        themeVars: {
+          ...(currentConfig?.themeVars || {}),
+          "--ag-tps-monitor": nextEnabled ? "on" : "off"
+        }
+      },
+      nextEnabled ? "已开启 Token 吞吐极值监控（峰值 / 最低 / 平均）" : "已关闭 Token 吞吐监控"
+    );
+  }
+
+  async function resetTpsMonitor() {
+    const seq = String(Date.now());
+    tpsMonitorState = {
+      ...tpsMonitorState,
+      peakTps: 0,
+      minTps: 0,
+      avgTps: 0,
+      sampleCount: 0,
+      lastTps: 0
+    };
+    renderTpsMonitorSection();
+
+    try {
+      await apiFetch("/api/suite-tps-monitor", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "reset" })
+      });
+    } catch {}
+
+    await patchConfig(
+      {
+        themeVars: {
+          ...(currentConfig?.themeVars || {}),
+          "--ag-tps-monitor-reset": seq
+        }
+      },
+      "已重置实时 Token 吞吐采样记录"
+    );
+  }
+
+  document.getElementById("nb-tps-monitor-toggle")?.addEventListener("change", (e) => {
+    setTpsMonitorEnabled(e.currentTarget.checked);
+  });
+  document.getElementById("nb-cfg-tps-monitor")?.addEventListener("change", (e) => {
+    setTpsMonitorEnabled(e.currentTarget.checked);
+  });
+  document.getElementById("nb-btn-tps-reset")?.addEventListener("click", resetTpsMonitor);
 
   // 时间范围按钮 & 自定义日期 & 作用域切换
   const rangeSeg = document.getElementById("nb-range-seg");
@@ -2246,6 +2465,12 @@
         // 遥测与间隔
         const telEl = document.getElementById("nb-cfg-telemetry");
         if (telEl) telEl.checked = c.telemetry?.enabled !== false;
+        const tvTps = tv["--ag-tps-monitor"];
+        if (tvTps === "off" || tvTps === "on") {
+          tpsMonitorState.enabled = tvTps !== "off";
+          lsSet("nb.tps.monitor.enabled", tpsMonitorState.enabled ? "1" : "0");
+          renderTpsMonitorSection();
+        }
         const telIv = String(c.telemetry?.interval || 2000);
         document.querySelectorAll("#nb-telemetry-interval-seg button").forEach((b) => {
           b.classList.toggle("active", b.dataset.interval === telIv);
@@ -2705,6 +2930,7 @@
   syncAutoSwitch();
   loadStudioConfig();
   syncSystemCenter();
+  renderTpsMonitorSection();
 
   setInterval(refreshStatus, 8000);
   setInterval(() => {

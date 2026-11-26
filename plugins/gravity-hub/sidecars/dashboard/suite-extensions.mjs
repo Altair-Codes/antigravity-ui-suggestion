@@ -440,7 +440,8 @@ export function initSuiteExtensions({
       "suite-last-route.json",
       "suite-update-state.json",
       "suite-account-prefs.json",
-      "suite-auto-compact.json"
+      "suite-auto-compact.json",
+      "suite-tps-monitor.json"
     ];
     for (const lDir of legacyDirs) {
       if (!fs.existsSync(lDir)) continue;
@@ -462,6 +463,88 @@ export function initSuiteExtensions({
   const accountPrefsFile = path.join(dataDir, "suite-account-prefs.json");
   const autoCompactFile = path.join(dataDir, "suite-auto-compact.json");
   const quotaCacheFile = path.join(dataDir, "suite-quota-cache.json");
+  const tpsMonitorFile = path.join(dataDir, "suite-tps-monitor.json");
+
+  const DEFAULT_TPS_MONITOR = {
+    enabled: true,
+    peakTps: 0,
+    minTps: 0,
+    sumTps: 0,
+    avgTps: 0,
+    sampleCount: 0,
+    lastTps: 0,
+    lastSig: "",
+    peakAt: 0,
+    minAt: 0,
+    updatedAt: 0
+  };
+
+  function getTpsMonitorState() {
+    const raw = readJsonSafe(tpsMonitorFile, {});
+    const sampleCount = Math.max(0, Math.round(Number(raw?.sampleCount) || 0));
+    const sumTps = Math.max(0, Number(raw?.sumTps) || 0);
+    const peakTps = Math.max(0, Math.round(Number(raw?.peakTps) || 0));
+    const minTps = Math.max(0, Math.round(Number(raw?.minTps) || 0));
+    const avgTps = sampleCount > 0 ? Math.round(sumTps / sampleCount) : 0;
+    return {
+      ok: true,
+      enabled: raw?.enabled !== false,
+      peakTps,
+      minTps,
+      sumTps,
+      avgTps,
+      sampleCount,
+      lastTps: Math.max(0, Math.round(Number(raw?.lastTps) || 0)),
+      lastSig: typeof raw?.lastSig === "string" ? raw.lastSig : "",
+      peakAt: Number(raw?.peakAt) || 0,
+      minAt: Number(raw?.minAt) || 0,
+      updatedAt: Number(raw?.updatedAt) || 0
+    };
+  }
+
+  function saveTpsMonitorState(patch) {
+    const cur = getTpsMonitorState();
+    const { ok: _ignore, ...curData } = cur;
+    if (patch?.action === "reset") {
+      const resetNext = {
+        ...DEFAULT_TPS_MONITOR,
+        enabled: curData.enabled,
+        updatedAt: Date.now()
+      };
+      writeJsonSafe(tpsMonitorFile, resetNext);
+      return { ok: true, ...resetNext };
+    }
+
+    const next = { ...curData };
+    if (typeof patch?.enabled === "boolean") {
+      next.enabled = patch.enabled;
+      next.updatedAt = Date.now();
+    }
+
+    const sample = patch?.sample;
+    if (next.enabled !== false && sample && typeof sample === "object") {
+      const tps = Math.round(Number(sample.tps));
+      const sig = typeof sample.sig === "string" ? sample.sig.trim() : "";
+      const ts = Number(sample.ts) || Date.now();
+      if (Number.isFinite(tps) && tps > 0 && tps < 50000 && (!sig || sig !== next.lastSig)) {
+        next.peakTps = Math.max(next.peakTps || 0, tps);
+        if (!next.peakAt || tps >= next.peakTps) next.peakAt = ts;
+        if (next.minTps <= 0 || tps <= next.minTps) {
+          next.minTps = tps;
+          next.minAt = ts;
+        }
+        next.sumTps = (next.sumTps || 0) + tps;
+        next.sampleCount = (next.sampleCount || 0) + 1;
+        next.avgTps = Math.round(next.sumTps / next.sampleCount);
+        next.lastTps = tps;
+        if (sig) next.lastSig = sig;
+        next.updatedAt = ts;
+      }
+    }
+
+    writeJsonSafe(tpsMonitorFile, next);
+    return { ok: true, ...next };
+  }
 
   function normalizeHeatmapDays(v) {
     const n = Number(v);
@@ -981,7 +1064,7 @@ export function initSuiteExtensions({
   }
 
   function getLocalVersionInfo() {
-    const fallback = { version: "2.1.0", publishedAt: "", repoUrl: REPO_URL, branch: DEFAULT_UPDATE_BRANCH, highlights: [] };
+    const fallback = { version: "2.1.1", publishedAt: "", repoUrl: REPO_URL, branch: DEFAULT_UPDATE_BRANCH, highlights: [] };
     const fromData = readJsonSafe(versionFile, null);
     if (fromData && fromData.version) return { ...fallback, ...fromData };
     const fromSeed = readJsonSafe(path.join(pluginRoot, "sidecars", "dashboard", "user", "suite-version.json"), null);
@@ -1489,6 +1572,10 @@ sleep 1
         result = getAccountPrefs();
       } else if (urlObj.pathname === "/api/suite-account-prefs" && req.method === "POST") {
         result = saveAccountPrefs(bodyObj);
+      } else if (urlObj.pathname === "/api/suite-tps-monitor" && req.method === "GET") {
+        result = getTpsMonitorState();
+      } else if (urlObj.pathname === "/api/suite-tps-monitor" && req.method === "POST") {
+        result = saveTpsMonitorState(bodyObj);
       } else if (urlObj.pathname === "/api/suite-reload" && req.method === "POST") {
         if (typeof reloadAll === "function") await reloadAll();
         result = { ok: true, reloaded: true };
@@ -1553,6 +1640,8 @@ sleep 1
     Oe.api("/api/suite-auto-compact", (e) => saveAutoCompactState(parseBody(e)), "POST");
     Oe.api("/api/suite-account-prefs", () => getAccountPrefs(), "GET");
     Oe.api("/api/suite-account-prefs", (e) => saveAccountPrefs(parseBody(e)), "POST");
+    Oe.api("/api/suite-tps-monitor", () => getTpsMonitorState(), "GET");
+    Oe.api("/api/suite-tps-monitor", (e) => saveTpsMonitorState(parseBody(e)), "POST");
     Oe.api("/api/suite-relaunch-cdp", () => relaunchAntigravityWithCdp(), "POST");
 
     Oe.api("/suite-panel-addon.js", () => {
