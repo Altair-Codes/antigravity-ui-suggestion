@@ -764,15 +764,26 @@ html[data-ag-collinear="on"] #antigravity\.agentSidePanelInputBox button[data-te
  *    常态未悬停时全部整齐收起为 5px 短刻度（不放大）；
  *    仅在鼠标悬停/滑过刻度时，当前项与上下相邻 1~4 级瞬间阶梯放大（60ms 零延迟跟手）
  * ============================================================================ */
-[data-testid="conversation-navigator"],
 div:has(> [data-testid="conversation-navigator"]) {
-  width: 36px !important;
+  width: 34px !important;
+  overflow: visible !important;
+}
+
+[data-testid="conversation-navigator"] {
+  width: 4px !important;
+  overflow: visible !important;
+  align-items: flex-start !important;
+}
+
+/* 为对话区滚动容器预留 46px 左侧安全边距，确保分屏宽度下也通过原生 fits 检测 (Ja.left - nav.right >= 40) 且正文零重叠 */
+[data-testid="conversation-view"]:has([data-testid="conversation-navigator"]) [data-testid="autoscroll-viewport"] {
+  padding-left: 46px !important;
 }
 
 [data-testid="conversation-navigator"] ol {
   opacity: 0.75 !important;
   align-items: flex-start !important;
-  width: 100% !important;
+  width: 34px !important;
 }
 
 [data-testid="conversation-navigator"]:hover ol,
@@ -782,7 +793,7 @@ div:has(> [data-testid="conversation-navigator"]) {
 
 /* 常态未悬停：所有刻度统一 5px 短横线，绝不自动放大 */
 [data-testid="conversation-navigator"] ol > li {
-  width: 36px !important;
+  width: 34px !important;
   --ag-nav-bar-w: 5px;
   --ag-nav-bar-h: 2px;
   --ag-nav-bar-bg: rgba(255, 255, 255, 0.24);
@@ -804,9 +815,9 @@ html:not([data-ag-color-scheme="dark"]) [data-testid="conversation-navigator"] o
 
 [data-testid="conversation-navigator"] button[data-testid="conversation-navigator-turn"],
 [data-testid="conversation-navigator"] button[data-testid="conversation-navigator-group"] {
-  width: 36px !important;
+  width: 34px !important;
   justify-content: flex-start !important;
-  padding-left: 8px !important;
+  padding-left: 6px !important;
 }
 
 [data-testid="conversation-navigator"] button[data-testid="conversation-navigator-turn"] > span,
@@ -1889,6 +1900,15 @@ html [data-nb-metrics-tier="hidden"] #ag-live-metrics-pill {
 [data-testid="conversation-view"][data-nb-pane-morphing="1"] #nb-docked-metrics-strip {
   opacity: 0.18 !important;
   filter: blur(3px) !important;
+}
+
+/* 右侧引力扩展面板（中枢 / 文库 / 目录）最多占分栏总宽度的 40%，至少留 60% 给对话区 */
+[data-testid="aux-pane-split"] > div:has([data-aux-pane-open="true"]):has([data-side-panel-strip="true"][data-active-tab-id^="sidecar__gravity-"]) {
+  max-width: min(max(308px, 40%), calc(100% - 301px)) !important;
+}
+
+[data-testid="aux-pane-split"] > div:has([data-aux-pane-open="true"]):has([data-side-panel-strip="true"][data-active-tab-id^="sidecar__gravity-"]) > [data-split-sized] {
+  max-width: 100% !important;
 }
 
 /* 11. 尊重系统「减弱动态效果」偏好（保留静态 41/51 节点 OKLab 高精度五色渐变） */

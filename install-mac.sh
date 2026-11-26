@@ -2,7 +2,7 @@
 set -e
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-echo "🚀 正在安装 Antigravity 引力套件 (Gravity Suite v2.1.2 · 纯 Node.js 全中文三扩展)..."
+echo "🚀 正在安装 Antigravity 引力套件 (Gravity Suite v2.1.3 · 纯 Node.js 全中文三扩展)..."
 
 NODE_BIN="$(command -v node || true)"
 if [ -z "$NODE_BIN" ] && [ -d "$HOME/.nvm/versions/node" ]; then
@@ -131,9 +131,9 @@ cat > "$LAUNCHER/Contents/Info.plist" <<'PLIST'
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
-  <string>2.1.2</string>
+  <string>2.1.3</string>
   <key>CFBundleVersion</key>
-  <string>4</string>
+  <string>5</string>
   <key>LSMinimumSystemVersion</key>
   <string>11.0</string>
   <key>LSUIElement</key>
@@ -231,4 +231,4 @@ if [ -f "$HOME/.zshrc" ] && ! grep -q '\.local/bin' "$HOME/.zshrc" 2>/dev/null; 
   printf '\n# Antigravity CLI (agy)\nexport PATH="$HOME/.local/bin:$PATH"\n' >> "$HOME/.zshrc"
 fi
 
-echo "✅ 引力套件 (Gravity Suite v2.1.2) 安装完成！请完全退出 Antigravity (Cmd + Q) 并通过 Antigravity Gravity.app 重新打开。"
+echo "✅ 引力套件 (Gravity Suite v2.1.3) 安装完成！请完全退出 Antigravity (Cmd + Q) 并通过 Antigravity Gravity.app 重新打开。"

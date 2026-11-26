@@ -1,4 +1,4 @@
-# 引力目录 (`gravity-explorer` v2.1.2)
+# 引力目录 (`gravity-explorer` v2.1.3)
 
 **引力目录 (Gravity Explorer)** 是面向 Google Antigravity 桌面端的项目目录浏览器，基于 **纯 Node.js 22+（ESM + `sidecar_sdk`）** 构建，融合 macOS 访达（Finder）四栏列表效率与 Google Gemini 五色双主题视觉。
 

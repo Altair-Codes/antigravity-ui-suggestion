@@ -1,7 +1,7 @@
-# Antigravity 引力套件 (Gravity Suite v2.1.2) 全中文纯 Node.js 三扩展 (`antigravity-ui-suggestion`)
+# Antigravity 引力套件 (Gravity Suite v2.1.3) 全中文纯 Node.js 三扩展 (`antigravity-ui-suggestion`)
 
 > [!NOTE]
-> **主分支：`main`（Gravity Suite `v2.1.2` · 纯 Node.js 22+ 架构）**
+> **主分支：`main`（Gravity Suite `v2.1.3` · 纯 Node.js 22+ 架构）**
 > 套件由三大核心扩展组成：**引力中枢 (`gravity-hub`)**、**引力目录 (`gravity-explorer`)**、**引力文库 (`gravity-vault`)**，全套基于原生 **Node.js 22+ ESM + `node:sqlite`** 构建，无外部运行时依赖。
 
 将 **Google Antigravity 2.x** 桌面端与 3 个核心扩展深度整合为 **「引力套件 (`Gravity Suite`)」**：配备 Google Gemini 五色高精度 OKLab 流体视觉、全量简体中文与 120+ 技能双语引擎、零遮挡自适应遥测驾驶舱、访达风格项目目录树及极速会话文库，支持 **macOS 与 Windows 一键安装与同步更新**。所有插件与配置均存放在用户目录 `~/.gemini/` 下，**不改动官方二进制文件，完整保留 macOS 苹果代码签名与客户端热更新**（官方升级重开后 2 秒内自动激活主题）。
@@ -27,7 +27,7 @@
 在任意一台电脑打开 Antigravity，直接复制下面这段话发给对话框里的 AI 即可完成克隆与安装：
 
 ```text
-请帮我克隆 https://github.com/Songh0918/antigravity-ui-suggestion.git 主分支到临时目录，并根据我当前操作系统自动执行仓库里的安装脚本（macOS 运行 bash install-mac.sh，Windows 运行 powershell -ExecutionPolicy Bypass -File install-win.ps1），为我一键同步安装整套引力套件 (Gravity Suite v2.1.2)、Google Gemini 五色流光主题、全量简体中文与三个中文扩展（引力中枢、引力目录、引力文库）。全程不要在会话内强杀正在运行的 Antigravity 进程，装完校验插件状态并提示我重启客户端生效。
+请帮我克隆 https://github.com/Songh0918/antigravity-ui-suggestion.git 主分支到临时目录，并根据我当前操作系统自动执行仓库里的安装脚本（macOS 运行 bash install-mac.sh，Windows 运行 powershell -ExecutionPolicy Bypass -File install-win.ps1），为我一键同步安装整套引力套件 (Gravity Suite v2.1.3)、Google Gemini 五色流光主题、全量简体中文与三个中文扩展（引力中枢、引力目录、引力文库）。全程不要在会话内强杀正在运行的 Antigravity 进程，装完校验插件状态并提示我重启客户端生效。
 ```
 
 ---
@@ -79,7 +79,7 @@ powershell -ExecutionPolicy Bypass -File .\install-win.ps1
 antigravity-ui-suggestion/ (branch: main)
 ├── docs/
 │   ├── implementation_plan.md # 套件架构与五色 OKLab 视觉设计
-│   └── walkthrough.md         # v2.1.2 功能说明与实测验证报告
+│   └── walkthrough.md         # v2.1.3 功能说明与实测验证报告
 ├── plugins/
 │   ├── gravity-hub/           # 引力中枢（中文三舱 Bento 控制台 + node:sqlite 遥测 + 扩展服务）
 │   ├── gravity-explorer/      # 引力目录（访达四栏目录树 + 轻量分栏预览）
@@ -89,7 +89,7 @@ antigravity-ui-suggestion/ (branch: main)
 ├── enable-cdp.mjs             # 跨平台 CDP 调试端口自愈脚本
 ├── install-mac.sh             # macOS 一键安装脚本（生成 Antigravity Gravity.app 无侵入启动器）
 ├── install-win.ps1            # Windows PowerShell 一键安装脚本
-├── version.json               # 套件版本清单 (v2.1.2)
+├── version.json               # 套件版本清单 (v2.1.3)
 └── README.md                  # 本说明文档
 ```
 
