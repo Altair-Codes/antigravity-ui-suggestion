@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <linearGradient id="gvVltRing" x1="6" y1="6" x2="58" y2="58" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#4285F4"/>
+      <stop offset="38%" stop-color="#9B72CB"/>
+      <stop offset="72%" stop-color="#EA4335"/>
+      <stop offset="100%" stop-color="#34A853"/>
+    </linearGradient>
+    <linearGradient id="gvVltDoc" x1="18" y1="14" x2="46" y2="50" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#A8C7FA"/>
+      <stop offset="100%" stop-color="#4285F4"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="56" height="56" rx="15" fill="#171921" stroke="url(#gvVltRing)" stroke-width="2.5"/>
+  <path d="M21 15H36L45 24V46C45 48.21 43.21 50 41 50H21C18.79 50 17 48.21 17 46V19C17 16.79 18.79 15 21 15Z" fill="url(#gvVltDoc)"/>
+  <path d="M36 15V24H45" fill="#171921" opacity="0.28"/>
+  <path d="M24 31H38M24 37H38M24 43H32" stroke="#131314" stroke-width="2.4" stroke-linecap="round"/>
+  <circle cx="44" cy="44" r="7" fill="#171921" stroke="#FDD663" stroke-width="2"/>
+  <path d="M44 40.5L45 42.8L47.5 43.1L45.6 44.8L46.1 47.2L44 45.9L41.9 47.2L42.4 44.8L40.5 43.1L43 42.8L44 40.5Z" fill="#FDD663"/>
+</svg>

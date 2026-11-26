@@ -1,0 +1,11 @@
+{
+  "version": "2.1.0",
+  "publishedAt": "2026-11-26T09:30:00+08:00",
+  "repoUrl": "https://github.com/Songh0918/antigravity-ui-suggestion",
+  "branch": "main",
+  "highlights": [
+    "全新统一品牌「引力套件 (Gravity Suite v2.1.0)」：引力中枢 (gravity-hub) + 引力目录 (gravity-explorer) + 引力文库 (gravity-vault)，全套 100% 自研并统一为纯 Node.js 22+（ESM + 原生 node:sqlite），零 Python 与零第三方依赖",
+    "上下文超阈值自动压缩 (/compact) + 早期历史一键归属：支持在「会话记忆区」设置阈值（默认 500k）并在空闲时自动触发 /compact；账号用量分布支持近 30/90 天/1 年热力图、防重计数及早期未跟踪历史一键归属",
+    "零遮挡自适应输入框与分栏高斯模糊柔和过渡：以右侧控制组真实左边界为碰撞硬边界，极窄自动停靠至上方独立信息条 (docked-top)，展开/收起右侧分栏提供 GPU 柔和模糊过渡"
+  ]
+}

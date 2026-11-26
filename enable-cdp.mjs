@@ -70,7 +70,7 @@ function findAsarAndExe() {
 function patchAsarForCdp() {
   const { asarPath, exePath } = findAsarAndExe();
   if (!asarPath) {
-    console.log("  • [CDP] 未在默认路径检测到 app.asar，将由 Aura Sidecar 启动时自动探测。");
+    console.log("  • [CDP] 未在默认路径检测到 app.asar，将由引力中枢 Sidecar 启动时自动探测。");
     return;
   }
 

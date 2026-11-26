@@ -1,0 +1,18 @@
+{
+  "name": "gravity-hub",
+  "displayName": "引力中枢",
+  "version": "2.1.0",
+  "description": "Antigravity 引力中枢（Gravity Hub）：Google Gemini 四色流体引擎、全量双语汉化、零遮挡一体式遥测舱、多账号周额度自动轮换与工程纪律护栏中枢",
+  "logo": "assets/logo.svg",
+  "homepage": "https://github.com/Songh0918/antigravity-ui-suggestion",
+  "repository": "https://github.com/Songh0918/antigravity-ui-suggestion",
+  "author": {
+    "name": "Songh0918",
+    "url": "https://github.com/Songh0918"
+  },
+  "suggestedPrompts": [
+    "打开引力中枢查看当前账号的 Gemini / Claude / Argon 每周与 5 小时剩余额度及会话吞吐率",
+    "配置多账号周额度阈值自动轮换切号，并开启严格防幻觉 5 项工程护栏",
+    "热重载 Google Gemini 四色流光视觉样式与斜杠技能双语菜单"
+  ]
+}

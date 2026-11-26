@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>引力文库 · Gravity Vault</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <script src="/preload.js"></script>
+</head>
+<body>
+  <div class="gvv-shell">
+    <header class="gvv-header">
+      <div class="gvv-title-row">
+        <span class="gvv-brand">引力文库</span>
+        <select id="gvv-scope" class="gvv-select" title="文件隔离范围">
+          <option value="session">当前会话</option>
+          <option value="project">当前项目</option>
+          <option value="all">全部范围</option>
+        </select>
+        <div class="gvv-hdr-actions">
+          <button id="gvv-btn-code" class="gvv-chip-btn" title="显示或隐藏源码与配置文件">仅文档</button>
+          <button id="gvv-btn-archived" class="gvv-chip-btn" title="查看已归档记录">📦 <span id="gvv-arch-cnt">0</span></button>
+          <button id="gvv-btn-select-mode" class="gvv-chip-btn" title="多选批量操作">选择</button>
+          <button id="gvv-btn-settings" class="gvv-icon-btn" title="文库设置">⚙</button>
+          <button id="gvv-btn-refresh" class="gvv-icon-btn" title="刷新列表">↻</button>
+        </div>
+      </div>
+
+      <div class="gvv-search-row">
+        <input type="text" id="gvv-search" placeholder="搜索文件名、路径或对话..." autocomplete="off" />
+        <select id="gvv-sort" class="gvv-select sm" title="排序方式">
+          <option value="time">时间 ↓</option>
+          <option value="name">名称 A-Z</option>
+          <option value="type">类型</option>
+        </select>
+      </div>
+
+      <div class="gvv-filter-pills" id="gvv-source-pills">
+        <button type="button" class="gvv-pill active" data-src="all">全部 <b id="gvv-cnt-all">0</b></button>
+        <button type="button" class="gvv-pill" data-src="generated">交付生成</button>
+        <button type="button" class="gvv-pill" data-src="sent">我发送的</button>
+        <button type="button" class="gvv-pill" data-src="pinned">★ 收藏 <b id="gvv-cnt-pin">0</b></button>
+      </div>
+      <div class="gvv-type-pills" id="gvv-type-pills"></div>
+    </header>
+
+    <main id="gvv-list" class="gvv-list">
+      <div class="gvv-empty">正在扫描会话文档与交付记录...</div>
+    </main>
+
+    <div id="gvv-batch-bar" class="gvv-batch-bar" hidden>
+      <span id="gvv-batch-info">已选 0 项</span>
+      <div class="gvv-batch-btns">
+        <button id="gvv-batch-copy" class="gvv-mini-btn primary">复制引用</button>
+        <button id="gvv-batch-pin" class="gvv-mini-btn">★ 收藏</button>
+        <button id="gvv-batch-archive" class="gvv-mini-btn">📦 归档</button>
+      </div>
+    </div>
+
+    <div id="gvv-action-menu" class="gvv-menu" hidden></div>
+
+    <!-- 轻量预览弹窗 -->
+    <div id="gvv-preview-modal" class="gvv-modal" hidden>
+      <div class="gvv-modal-card large">
+        <div class="gvv-modal-head">
+          <span id="gvv-prev-title" class="gvv-modal-title">预览</span>
+          <div class="gvv-hdr-actions">
+            <button id="gvv-prev-sidecar" class="gvv-mini-btn primary">分栏打开</button>
+            <button id="gvv-prev-os" class="gvv-mini-btn">默认软件</button>
+            <button id="gvv-prev-close" class="gvv-icon-btn">✕</button>
+          </div>
+        </div>
+        <div id="gvv-prev-body" class="gvv-prev-body"></div>
+      </div>
+    </div>
+
+    <!-- 设置弹窗 -->
+    <div id="gvv-settings-modal" class="gvv-modal" hidden>
+      <div class="gvv-modal-card">
+        <div class="gvv-modal-head">
+          <span class="gvv-modal-title">引力文库设置</span>
+          <button id="gvv-set-close" class="gvv-icon-btn">✕</button>
+        </div>
+        <div class="gvv-set-body">
+          <label class="gvv-field">
+            <span>按日归档根目录</span>
+            <input type="text" id="gvv-set-arch-root" />
+          </label>
+          <label class="gvv-field">
+            <span>点击文件名默认动作</span>
+            <select id="gvv-set-open-act" class="gvv-select">
+              <option value="sidebar">侧边栏分栏打开 (推荐)</option>
+              <option value="preview">文库内置轻量预览</option>
+              <option value="os">系统默认软件打开</option>
+            </select>
+          </label>
+          <label class="gvv-check-row">
+            <input type="checkbox" id="gvv-set-show-code" />
+            <span>同时显示源码与配置文件（关闭则只看可读文档）</span>
+          </label>
+        </div>
+        <div class="gvv-set-foot">
+          <button id="gvv-set-save" class="gvv-mini-btn primary">保存设置</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="gvv-toast" class="gvv-toast" hidden></div>
+  </div>
+  <script src="/app.js"></script>
+</body>
+</html>

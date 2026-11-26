@@ -1,6 +1,0 @@
-{
-  "name": "launcher_pane",
-  "version": "1.0.0",
-  "type": "module",
-  "description": "File Launcher sidecar backend for Antigravity"
-}
