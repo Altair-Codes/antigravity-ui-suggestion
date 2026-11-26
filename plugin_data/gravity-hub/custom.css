@@ -880,18 +880,20 @@ html:not([data-ag-color-scheme="dark"]) [data-testid="conversation-navigator"] o
 }
 
 /* ============================================================================
- * 6. 顶栏极简 >_ CLI 快捷按钮 & GitHub 扩展更新轻量提示卡片
+ * 6. 顶栏极简 >_ CLI、✦ 中枢 / 文库 / 目录 快捷按钮 & GitHub 扩展更新轻量提示卡片
  * ============================================================================ */
 #ag-suite-cli-btn,
 #ag-suite-aura-btn,
+#ag-suite-vault-btn,
+#ag-suite-explorer-btn,
 #ag-suite-update-btn {
   -webkit-app-region: no-drag;
   display: inline-flex;
   align-items: center;
   gap: 4px;
   height: 24px;
-  padding: 0 9px;
-  margin-right: 4px;
+  padding: 0 8px;
+  margin-right: 2px;
   border-radius: 999px;
   border: 1px solid rgba(138, 180, 248, 0.28);
   background: rgba(66, 133, 244, 0.12);
@@ -900,19 +902,43 @@ html:not([data-ag-color-scheme="dark"]) [data-testid="conversation-navigator"] o
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.01em;
+  white-space: nowrap;
+  flex-shrink: 0;
   cursor: pointer;
-  transition: background-color 140ms ease, border-color 140ms ease, transform 120ms ease;
+  transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease, transform 120ms ease;
 }
 
 #ag-suite-aura-btn,
+#ag-suite-vault-btn,
+#ag-suite-explorer-btn,
 #ag-suite-update-btn {
   font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+.ag-suite-ico {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  flex-shrink: 0;
 }
 
 #ag-suite-aura-btn {
   border-color: rgba(197, 138, 249, 0.30);
   background: rgba(155, 114, 203, 0.13);
   color: #d7aefb;
+}
+
+#ag-suite-vault-btn {
+  border-color: rgba(251, 188, 5, 0.30);
+  background: rgba(251, 188, 5, 0.12);
+  color: #fde293;
+}
+
+#ag-suite-explorer-btn {
+  border-color: rgba(54, 185, 197, 0.30);
+  background: rgba(54, 185, 197, 0.13);
+  color: #99e9f2;
 }
 
 #ag-suite-update-btn {
@@ -962,14 +988,41 @@ html:not([data-ag-color-scheme="dark"]) #ag-suite-update-btn:hover {
   color: #ffffff;
 }
 
-#ag-suite-aura-btn:hover {
+#ag-suite-aura-btn:hover,
+#ag-suite-aura-btn.is-active {
   background: rgba(155, 114, 203, 0.26);
-  border-color: rgba(197, 138, 249, 0.60);
+  border-color: rgba(197, 138, 249, 0.65);
   color: #ffffff;
+}
+#ag-suite-aura-btn.is-active {
+  box-shadow: 0 0 0 1px rgba(197, 138, 249, 0.35), 0 0 10px rgba(155, 114, 203, 0.28);
+}
+
+#ag-suite-vault-btn:hover,
+#ag-suite-vault-btn.is-active {
+  background: rgba(251, 188, 5, 0.24);
+  border-color: rgba(253, 214, 99, 0.65);
+  color: #ffffff;
+}
+#ag-suite-vault-btn.is-active {
+  box-shadow: 0 0 0 1px rgba(253, 214, 99, 0.32), 0 0 10px rgba(251, 188, 5, 0.24);
+}
+
+#ag-suite-explorer-btn:hover,
+#ag-suite-explorer-btn.is-active {
+  background: rgba(54, 185, 197, 0.25);
+  border-color: rgba(102, 217, 232, 0.65);
+  color: #ffffff;
+}
+#ag-suite-explorer-btn.is-active {
+  box-shadow: 0 0 0 1px rgba(102, 217, 232, 0.32), 0 0 10px rgba(54, 185, 197, 0.24);
 }
 
 #ag-suite-cli-btn:active,
-#ag-suite-aura-btn:active {
+#ag-suite-aura-btn:active,
+#ag-suite-vault-btn:active,
+#ag-suite-explorer-btn:active,
+#ag-suite-update-btn:active {
   transform: scale(0.96);
 }
 
@@ -981,6 +1034,14 @@ html:not([data-ag-color-scheme="dark"]) #ag-suite-update-btn:hover {
   color: #c58af9;
   font-size: 12px;
   line-height: 1;
+}
+
+#ag-suite-vault-btn .ag-vault-ico {
+  color: #fdd663;
+}
+
+#ag-suite-explorer-btn .ag-explorer-ico {
+  color: #56cfe1;
 }
 
 html:not([data-ag-color-scheme="dark"]) #ag-suite-cli-btn {
@@ -997,9 +1058,50 @@ html:not([data-ag-color-scheme="dark"]) #ag-suite-aura-btn {
   border-color: rgba(147, 52, 230, 0.26);
   color: #7627bb;
 }
-html:not([data-ag-color-scheme="dark"]) #ag-suite-aura-btn:hover {
+html:not([data-ag-color-scheme="dark"]) #ag-suite-aura-btn:hover,
+html:not([data-ag-color-scheme="dark"]) #ag-suite-aura-btn.is-active {
   background: rgba(147, 52, 230, 0.16);
+  border-color: rgba(147, 52, 230, 0.50);
   color: #5b1894;
+}
+html:not([data-ag-color-scheme="dark"]) #ag-suite-aura-btn.is-active {
+  box-shadow: 0 0 0 1px rgba(147, 52, 230, 0.22);
+}
+
+html:not([data-ag-color-scheme="dark"]) #ag-suite-vault-btn {
+  background: rgba(176, 96, 0, 0.08);
+  border-color: rgba(176, 96, 0, 0.26);
+  color: #a15400;
+}
+html:not([data-ag-color-scheme="dark"]) #ag-suite-vault-btn .ag-vault-ico {
+  color: #b06000;
+}
+html:not([data-ag-color-scheme="dark"]) #ag-suite-vault-btn:hover,
+html:not([data-ag-color-scheme="dark"]) #ag-suite-vault-btn.is-active {
+  background: rgba(176, 96, 0, 0.16);
+  border-color: rgba(176, 96, 0, 0.48);
+  color: #7a3e00;
+}
+html:not([data-ag-color-scheme="dark"]) #ag-suite-vault-btn.is-active {
+  box-shadow: 0 0 0 1px rgba(176, 96, 0, 0.22);
+}
+
+html:not([data-ag-color-scheme="dark"]) #ag-suite-explorer-btn {
+  background: rgba(14, 116, 144, 0.08);
+  border-color: rgba(14, 116, 144, 0.26);
+  color: #0e7490;
+}
+html:not([data-ag-color-scheme="dark"]) #ag-suite-explorer-btn .ag-explorer-ico {
+  color: #0e7490;
+}
+html:not([data-ag-color-scheme="dark"]) #ag-suite-explorer-btn:hover,
+html:not([data-ag-color-scheme="dark"]) #ag-suite-explorer-btn.is-active {
+  background: rgba(14, 116, 144, 0.16);
+  border-color: rgba(14, 116, 144, 0.48);
+  color: #155e75;
+}
+html:not([data-ag-color-scheme="dark"]) #ag-suite-explorer-btn.is-active {
+  box-shadow: 0 0 0 1px rgba(14, 116, 144, 0.22);
 }
 
 #ag-suite-mini-notice {

@@ -140,9 +140,29 @@ try {
     window.__ag_suite_notice_timer = setTimeout(() => el.classList.remove("show"), 4200);
   }
 
-  // 1. 顶栏注入极简 >_ CLI、⚙ 控制台 与 ↻ 更新 快捷按钮
-  async function openAuraDashboardTab() {
-    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  // 1. 顶栏注入极简 >_ CLI、✦ 中枢 / 文库 / 目录 与 ↻ 更新 快捷按钮
+  const GRAVITY_SIDE_EXTENSIONS = {
+    hub: {
+      btnId: "ag-suite-aura-btn",
+      tabIdPrefix: "sidecar__gravity-hub/dashboard",
+      labelRe: /^(引力中枢|Gravity Hub|星云中枢|Nebula Hub|Aura 控制台|Aura Dashboard)$/i,
+      menuRe: /引力中枢|Gravity Hub|星云中枢|Nebula Hub|Aura 控制台|Aura Dashboard/i
+    },
+    vault: {
+      btnId: "ag-suite-vault-btn",
+      tabIdPrefix: "sidecar__gravity-vault/dock",
+      labelRe: /^(引力文库|Gravity Vault|File Launcher|文件启动器)$/i,
+      menuRe: /引力文库|Gravity Vault|File Launcher|文件启动器/i
+    },
+    explorer: {
+      btnId: "ag-suite-explorer-btn",
+      tabIdPrefix: "sidecar__gravity-explorer/panel",
+      labelRe: /^(引力目录|Gravity Explorer|Workspace Files|Workspace File Tree|项目文件)$/i,
+      menuRe: /引力目录|Gravity Explorer|Workspace Files|Workspace File Tree|项目文件/i
+    }
+  };
+
+  function getTopbarVisibleChecker() {
     const winW = window.innerWidth || 1440;
     const isVisible = (el) => {
       if (!el) return false;
@@ -153,76 +173,228 @@ try {
       isVisible(document.querySelector('[data-testid="new-tab-card-extensions"]')) ||
       isVisible(document.querySelector('[data-testid="side-panel-new-tab-button"]')) ||
       Array.from(document.querySelectorAll(".agy-aux-tab")).some(isVisible);
+    return { isVisible, isSidePanelVisible };
+  }
 
-    // 1) 若右侧边栏确实收起，先触发柔和模糊过渡再展开
+  function syncTopbarExtActiveState() {
+    const { isVisible, isSidePanelVisible } = getTopbarVisibleChecker();
+    const specs = Object.entries(GRAVITY_SIDE_EXTENSIONS);
     if (!isSidePanelVisible()) {
-      const toggleBtn = document.querySelector('[data-testid="toggle-aux-sidebar"]');
-      if (toggleBtn) {
-        window.__NB_QUOTA_UI__?.triggerPaneMorph?.(220);
-        toggleBtn.click();
-        await sleep(240);
+      for (const [, spec] of specs) {
+        document.getElementById(spec.btnId)?.classList.remove("is-active");
       }
-    }
-
-    // 2) 若标签栏里已有「引力中枢」，直接切换过去
-    const tabBtns = Array.from(document.querySelectorAll(".agy-aux-tab button"));
-    const existing = tabBtns.find((b) => /^引力中枢$|^Gravity Hub$|^星云中枢$|^Nebula Hub$|^Aura 控制台$|^Aura Dashboard$/i.test((b.innerText || "").trim()));
-    if (existing) {
-      existing.click();
       return;
     }
 
-    // 3) 若当前尚未停留在新标签导航页，先点「+ 新标签」；若已在空侧边栏导航页（无 + 号），直接找「扩展」卡片
-    let extCard = document.querySelector('[data-testid="new-tab-card-extensions"]');
-    if (!isVisible(extCard)) {
-      const newTabBtn = document.querySelector('[data-testid="side-panel-new-tab-button"]');
-      if (isVisible(newTabBtn)) {
-        newTabBtn.click();
-        for (let i = 0; i < 6; i++) {
-          await sleep(70);
-          extCard = document.querySelector('[data-testid="new-tab-card-extensions"]');
-          if (isVisible(extCard)) break;
+    let activeKey = "";
+    const auxTabs = Array.from(document.querySelectorAll(".agy-aux-tab")).filter(isVisible);
+    const activeTabEl = auxTabs.find((tab) => {
+      const btn = tab.querySelector("button");
+      return (
+        tab.classList.contains("bg-secondary") ||
+        tab.getAttribute("data-active") === "true" ||
+        btn?.getAttribute("aria-selected") === "true" ||
+        btn?.getAttribute("data-active") === "true"
+      );
+    });
+    if (activeTabEl) {
+      const btn = activeTabEl.querySelector("button");
+      const tabId = btn?.getAttribute("data-tab-id") || "";
+      const txt = (btn?.innerText || btn?.getAttribute("title") || activeTabEl.innerText || "").trim();
+      for (const [k, spec] of specs) {
+        if ((tabId && tabId.startsWith(spec.tabIdPrefix)) || (txt && spec.labelRe.test(txt))) {
+          activeKey = k;
+          break;
+        }
+      }
+    }
+    if (!activeKey) {
+      const tabParam = new URLSearchParams(location.search).get("tab") || "";
+      if (tabParam) {
+        for (const [k, spec] of specs) {
+          if (tabParam.startsWith(spec.tabIdPrefix)) {
+            activeKey = k;
+            break;
+          }
         }
       }
     }
 
-    // 4) 点击「扩展」并在弹出的扩展菜单里精准点击「引力中枢」
-    if (isVisible(extCard)) {
-      extCard.click();
-      for (let i = 0; i < 8; i++) {
-        await sleep(80);
-        const menuItems = Array.from(document.querySelectorAll('[role="menuitem"], [role="option"]'));
-        const auraMenu = menuItems.find((el) => /引力中枢|Gravity Hub|星云中枢|Nebula Hub|Aura 控制台|Aura Dashboard/i.test((el.innerText || "").trim()));
-        if (auraMenu) {
-          auraMenu.click();
-          return;
-        }
-      }
+    for (const [k, spec] of specs) {
+      document.getElementById(spec.btnId)?.classList.toggle("is-active", k === activeKey);
     }
   }
+
+  async function openGravityExtensionTab(extKey = "hub") {
+    const spec = GRAVITY_SIDE_EXTENSIONS[extKey] || GRAVITY_SIDE_EXTENSIONS.hub;
+    const now = Date.now();
+    if (now < (window.__ag_open_ext_busy_until || 0)) return;
+    window.__ag_open_ext_busy_until = now + 1500;
+
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    const { isVisible, isSidePanelVisible } = getTopbarVisibleChecker();
+
+    try {
+      // 1) 若右侧边栏确实收起，先触发柔和模糊过渡再展开
+      if (!isSidePanelVisible()) {
+        const toggleBtn = document.querySelector('[data-testid="toggle-aux-sidebar"]');
+        if (toggleBtn) {
+          window.__NB_QUOTA_UI__?.triggerPaneMorph?.(220);
+          toggleBtn.click();
+          for (let i = 0; i < 10; i++) {
+            await sleep(60);
+            if (isSidePanelVisible()) break;
+          }
+        }
+      }
+
+      // 2) 若标签栏里已有目标扩展标签，直接切换过去
+      const tabBtns = Array.from(document.querySelectorAll(".agy-aux-tab button"));
+      const existing =
+        tabBtns.find((b) => (b.getAttribute("data-tab-id") || "").startsWith(spec.tabIdPrefix)) ||
+        tabBtns.find((b) => spec.labelRe.test((b.innerText || b.getAttribute("title") || "").trim()));
+      if (existing) {
+        existing.click();
+        setTimeout(syncTopbarExtActiveState, 90);
+        return;
+      }
+
+      // 3) 若当前尚未停留在新标签导航页，先点「+ 新标签」；若已在空侧边栏导航页，直接找「扩展」卡片
+      let extCard = document.querySelector('[data-testid="new-tab-card-extensions"]');
+      if (!isVisible(extCard)) {
+        const newTabBtn = document.querySelector('[data-testid="side-panel-new-tab-button"]');
+        if (isVisible(newTabBtn)) {
+          newTabBtn.click();
+          for (let i = 0; i < 10; i++) {
+            await sleep(70);
+            extCard = document.querySelector('[data-testid="new-tab-card-extensions"]');
+            if (isVisible(extCard)) break;
+          }
+        }
+      }
+
+      // 4) 点击「扩展」并在弹出的扩展菜单里精准点击目标扩展
+      if (isVisible(extCard)) {
+        extCard.click();
+        for (let i = 0; i < 10; i++) {
+          await sleep(80);
+          const menuItems = Array.from(document.querySelectorAll('[role="menuitem"], [role="option"]'));
+          const targetItem = menuItems.find((el) => spec.menuRe.test((el.innerText || "").trim()));
+          if (targetItem) {
+            targetItem.click();
+            setTimeout(syncTopbarExtActiveState, 150);
+            return;
+          }
+        }
+      }
+
+      // 5) 兜底路径：通过顶栏更多操作 -> 扩展插件子菜单打开
+      const moreBtn = document.querySelector('[data-testid="titlebar-more-actions"]');
+      if (isVisible(moreBtn)) {
+        moreBtn.click();
+        let extMenuItem = null;
+        for (let i = 0; i < 8; i++) {
+          await sleep(70);
+          const items = Array.from(document.querySelectorAll('[role="menuitem"], [role="option"]'));
+          extMenuItem = items.find((el) => /扩展插件|Extensions/i.test((el.innerText || "").trim()));
+          if (extMenuItem) break;
+        }
+        if (extMenuItem) {
+          extMenuItem.dispatchEvent(new PointerEvent("pointerenter", { bubbles: true }));
+          extMenuItem.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+          extMenuItem.click();
+          for (let i = 0; i < 10; i++) {
+            await sleep(80);
+            const items = Array.from(document.querySelectorAll('[role="menuitem"], [role="option"]'));
+            const targetItem = items.find((el) => spec.menuRe.test((el.innerText || "").trim()));
+            if (targetItem) {
+              targetItem.click();
+              setTimeout(syncTopbarExtActiveState, 150);
+              return;
+            }
+          }
+        }
+        document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true }));
+      }
+    } finally {
+      window.__ag_open_ext_busy_until = 0;
+      setTimeout(syncTopbarExtActiveState, 180);
+    }
+  }
+
+  const openAuraDashboardTab = () => openGravityExtensionTab("hub");
 
   function ensureCliButton() {
     const anchor =
       document.querySelector('[data-testid="titlebar-more-actions"]') ||
       document.querySelector('[data-testid="toggle-overview-panel"]');
     if (!anchor || !anchor.parentElement) return;
+    const parent = anchor.parentElement;
 
     window.__ag_open_aura_fn = openAuraDashboardTab;
-    const oldAuraBtn = document.getElementById("ag-suite-aura-btn");
-    if (oldAuraBtn && oldAuraBtn.dataset.v !== "4") oldAuraBtn.remove();
-    if (!document.getElementById("ag-suite-aura-btn")) {
-      const auraBtn = document.createElement("button");
-      auraBtn.id = "ag-suite-aura-btn";
-      auraBtn.dataset.v = "4";
-      auraBtn.type = "button";
-      auraBtn.title = "打开引力中枢（模型额度池 / 周额度自动切号 / 防幻觉护栏 / Gemini 流光设置）";
-      auraBtn.innerHTML = `<span class="ag-aura-ico">✦</span><span>引力</span>`;
-      auraBtn.addEventListener("click", () => window.__ag_open_aura_fn && window.__ag_open_aura_fn());
-      anchor.parentElement.insertBefore(auraBtn, anchor);
+    window.__ag_open_ext_fn = openGravityExtensionTab;
+
+    if (!window.__ag_topbar_ext_sync_hook_v1) {
+      window.__ag_topbar_ext_sync_hook_v1 = true;
+      document.addEventListener(
+        "click",
+        (ev) => {
+          const t = ev.target;
+          if (t && typeof t.closest === "function" && t.closest('.agy-aux-tab, [data-testid="toggle-aux-sidebar"]')) {
+            setTimeout(syncTopbarExtActiveState, 60);
+            setTimeout(syncTopbarExtActiveState, 220);
+          }
+        },
+        true
+      );
     }
 
-    if (!document.getElementById("ag-suite-update-btn")) {
-      const updBtn = document.createElement("button");
+    let auraBtn = document.getElementById("ag-suite-aura-btn");
+    if (!auraBtn) {
+      auraBtn = document.createElement("button");
+      auraBtn.id = "ag-suite-aura-btn";
+      auraBtn.dataset.v = "4";
+      auraBtn.dataset.nbSuiteV = "5";
+      auraBtn.type = "button";
+      auraBtn.title = "打开引力中枢（模型额度池 / 周额度自动切号 / 防幻觉护栏 / Gemini 流光设置）";
+      auraBtn.innerHTML = `<span class="ag-suite-ico ag-aura-ico">✦</span><span>中枢</span>`;
+      auraBtn.addEventListener("click", () => window.__ag_open_ext_fn && window.__ag_open_ext_fn("hub"));
+    } else if (auraBtn.dataset.nbSuiteV !== "5") {
+      auraBtn.dataset.v = "4";
+      auraBtn.dataset.nbSuiteV = "5";
+      auraBtn.title = "打开引力中枢（模型额度池 / 周额度自动切号 / 防幻觉护栏 / Gemini 流光设置）";
+      auraBtn.innerHTML = `<span class="ag-suite-ico ag-aura-ico">✦</span><span>中枢</span>`;
+    }
+
+    const oldVaultBtn = document.getElementById("ag-suite-vault-btn");
+    if (oldVaultBtn && oldVaultBtn.dataset.v !== "5") oldVaultBtn.remove();
+    let vaultBtn = document.getElementById("ag-suite-vault-btn");
+    if (!vaultBtn) {
+      vaultBtn = document.createElement("button");
+      vaultBtn.id = "ag-suite-vault-btn";
+      vaultBtn.dataset.v = "5";
+      vaultBtn.type = "button";
+      vaultBtn.title = "打开引力文库（会话文档归档 / 右侧分栏直开 / 一键 @引用）";
+      vaultBtn.innerHTML = `<span class="ag-suite-ico ag-vault-ico"><svg width="11.5" height="11.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.5 1.75H4a1.25 1.25 0 0 0-1.25 1.25v10A1.25 1.25 0 0 0 4 14.25h8A1.25 1.25 0 0 0 13.25 13V5.5L9.5 1.75Z"/><path d="M9.5 1.75V5.5h3.75"/><path d="M5.5 8.5h5"/><path d="M5.5 11h3.5"/></svg></span><span>文库</span>`;
+      vaultBtn.addEventListener("click", () => window.__ag_open_ext_fn && window.__ag_open_ext_fn("vault"));
+    }
+
+    const oldExplorerBtn = document.getElementById("ag-suite-explorer-btn");
+    if (oldExplorerBtn && oldExplorerBtn.dataset.v !== "5") oldExplorerBtn.remove();
+    let explorerBtn = document.getElementById("ag-suite-explorer-btn");
+    if (!explorerBtn) {
+      explorerBtn = document.createElement("button");
+      explorerBtn.id = "ag-suite-explorer-btn";
+      explorerBtn.dataset.v = "5";
+      explorerBtn.type = "button";
+      explorerBtn.title = "打开引力目录（访达四栏目录树 / 项目搜索 / 轻量预览）";
+      explorerBtn.innerHTML = `<span class="ag-suite-ico ag-explorer-ico"><svg width="11.5" height="11.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 3.75A1.25 1.25 0 0 1 3.25 2.5h3.1l1.25 1.5h5.15A1.25 1.25 0 0 1 14 5.25v7A1.25 1.25 0 0 1 12.75 13.5h-9.5A1.25 1.25 0 0 1 2 12.25v-8.5Z"/></svg></span><span>目录</span>`;
+      explorerBtn.addEventListener("click", () => window.__ag_open_ext_fn && window.__ag_open_ext_fn("explorer"));
+    }
+
+    let updBtn = document.getElementById("ag-suite-update-btn");
+    if (!updBtn) {
+      updBtn = document.createElement("button");
       updBtn.id = "ag-suite-update-btn";
       updBtn.type = "button";
       updBtn.title = "点击一键热重载主题样式并检查 GitHub 套件新版本";
@@ -260,51 +432,65 @@ try {
           updBtn.disabled = false;
         }
       });
-      const auraBtnEl2 = document.getElementById("ag-suite-aura-btn");
-      anchor.parentElement.insertBefore(updBtn, auraBtnEl2 ? auraBtnEl2.nextSibling : anchor);
+    } else {
+      const lbl = updBtn.querySelector(".ag-upd-label");
+      if (lbl && lbl.textContent === "刷新" && !updBtn.classList.contains("has-update")) {
+        lbl.textContent = "更新";
+      }
     }
 
-    if (document.getElementById("ag-suite-cli-btn")) return;
-
-    const btn = document.createElement("button");
-    btn.id = "ag-suite-cli-btn";
-    btn.type = "button";
-    btn.title = "在当前项目目录一键启动 agy CLI 终端（自动继承当前账号与系统代理）";
-    btn.innerHTML = `<span class="ag-cli-chevron">&gt;_</span><span>CLI</span>`;
-    btn.addEventListener("click", async () => {
-      const b = window.__AG_SUITE_BRIDGE__;
-      if (!b) return;
-      btn.disabled = true;
-      try {
-        let cwd = "";
+    let cliBtn = document.getElementById("ag-suite-cli-btn");
+    if (!cliBtn) {
+      cliBtn = document.createElement("button");
+      cliBtn.id = "ag-suite-cli-btn";
+      cliBtn.type = "button";
+      cliBtn.title = "在当前项目目录一键启动 agy CLI 终端（自动继承当前账号与系统代理）";
+      cliBtn.innerHTML = `<span class="ag-cli-chevron">&gt;_</span><span>CLI</span>`;
+      cliBtn.addEventListener("click", async () => {
+        const b = window.__AG_SUITE_BRIDGE__;
+        if (!b) return;
+        cliBtn.disabled = true;
         try {
-          const tabParam = new URLSearchParams(location.search).get("tab") || "";
-          const m = tabParam.match(/file__file:\/\/(\/[^?&#]+)/);
-          if (m) {
-            const p = decodeURIComponent(m[1]);
-            cwd = p.replace(/\/[^/]+$/, "");
+          let cwd = "";
+          try {
+            const tabParam = new URLSearchParams(location.search).get("tab") || "";
+            const m = tabParam.match(/file__file:\/\/(\/[^?&#]+)/);
+            if (m) {
+              const p = decodeURIComponent(m[1]);
+              cwd = p.replace(/\/[^/]+$/, "");
+            }
+          } catch {}
+          const res = await fetch(`${b.origin}/api/launch-cli`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Suite-Token": b.token },
+            body: JSON.stringify({ cwd })
+          });
+          const j = await res.json();
+          if (j.ok) {
+            const proxyTag = j.proxyApplied ? ` · 已自动注入代理` : "";
+            showMiniNotice(`已打开 ${j.terminal || "CLI"}${proxyTag} · ${j.cwd}`, false);
+          } else {
+            showMiniNotice(j.error || "启动 agy CLI 失败", true);
           }
-        } catch {}
-        const res = await fetch(`${b.origin}/api/launch-cli`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "X-Suite-Token": b.token },
-          body: JSON.stringify({ cwd })
-        });
-        const j = await res.json();
-        if (j.ok) {
-          const proxyTag = j.proxyApplied ? ` · 已自动注入代理` : "";
-          showMiniNotice(`已打开 ${j.terminal || "CLI"}${proxyTag} · ${j.cwd}`, false);
-        } else {
-          showMiniNotice(j.error || "启动 agy CLI 失败", true);
+        } catch {
+          showMiniNotice("无法连接本地套件桥接服务", true);
+        } finally {
+          cliBtn.disabled = false;
         }
-      } catch {
-        showMiniNotice("无法连接本地套件桥接服务", true);
-      } finally {
-        btn.disabled = false;
+      });
+    }
+
+    const ordered = [cliBtn, auraBtn, vaultBtn, explorerBtn, updBtn];
+    let cursor = anchor;
+    for (let i = ordered.length - 1; i >= 0; i--) {
+      const node = ordered[i];
+      if (node.parentElement !== parent || node.nextElementSibling !== cursor) {
+        parent.insertBefore(node, cursor);
       }
-    });
-    const auraBtnEl = document.getElementById("ag-suite-aura-btn");
-    anchor.parentElement.insertBefore(btn, auraBtnEl || anchor);
+      cursor = node;
+    }
+
+    syncTopbarExtActiveState();
   }
 
   // 2. 通过 Antigravity 原生 RetrieveUserQuotaSummary + GetUserStatus 与 Sidecar Bridge 协同同步每周/5h额度、底栏实时胶囊与运行中只读查额度
@@ -2095,6 +2281,16 @@ try {
     window.__NB_QUOTA_UI__.refreshAutoCompactConfig = refreshAutoCompactConfig;
   }
 
+  window.__ag_suite_host_tick_fn = () => {
+    ensureCliButton();
+    ensureComposerResponsiveObserver();
+    window.__NB_QUOTA_UI__?.ensureLiveQuotaPill();
+    window.__NB_QUOTA_UI__?.checkTurnCompletionAndRefresh();
+    window.__NB_QUOTA_UI__?.enhanceOpenModelMenu?.();
+    window.__NB_QUOTA_UI__?.syncComposerResponsiveLayout?.();
+    window.__NB_QUOTA_UI__?.checkAndTriggerAutoCompact?.();
+  };
+
   if (!window.__ag_suite_host_timers_v1) {
     window.__ag_suite_host_timers_v1 = true;
     ensureCliButton();
@@ -2102,15 +2298,8 @@ try {
     ensureComposerResponsiveObserver();
     refreshAutoCompactConfig(true);
     window.addEventListener("focus", () => refreshAutoCompactConfig(true), { passive: true });
-    setInterval(() => {
-      ensureCliButton();
-      ensureComposerResponsiveObserver();
-      window.__NB_QUOTA_UI__?.ensureLiveQuotaPill();
-      window.__NB_QUOTA_UI__?.checkTurnCompletionAndRefresh();
-      window.__NB_QUOTA_UI__?.enhanceOpenModelMenu?.();
-      window.__NB_QUOTA_UI__?.syncComposerResponsiveLayout?.();
-      window.__NB_QUOTA_UI__?.checkAndTriggerAutoCompact?.();
-    }, 2500);
+    if (window.__ag_suite_host_interval_id) clearInterval(window.__ag_suite_host_interval_id);
+    window.__ag_suite_host_interval_id = setInterval(() => window.__ag_suite_host_tick_fn?.(), 2500);
     initLastRoutePersistence();
     setTimeout(() => syncNativeModelQuotas(false), 50);
     setTimeout(() => syncNativeModelQuotas(true), 1200);
@@ -2118,6 +2307,8 @@ try {
     setInterval(() => syncNativeModelQuotas(false), 45000);
     setTimeout(checkUpdatesOnce, 4500);
   } else {
+    if (window.__ag_suite_host_interval_id) clearInterval(window.__ag_suite_host_interval_id);
+    window.__ag_suite_host_interval_id = setInterval(() => window.__ag_suite_host_tick_fn?.(), 2500);
     ensureCliButton();
     ensureLiveQuotaPill();
     ensureComposerResponsiveObserver();
