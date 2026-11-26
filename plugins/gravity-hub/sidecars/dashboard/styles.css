@@ -1608,13 +1608,13 @@ body {
  * ============================================================================ */
 html[data-theme="light"] {
   color-scheme: light;
-  --nb-bg: #f6f8fa;
+  --nb-bg: #f4f6fa;
   --nb-card: #ffffff;
-  --nb-card-alt: #f1f3f4;
+  --nb-card-alt: #f0f3f8;
   --nb-fg: #3c4043;
   --nb-fg-strong: #1f1f1f;
   --nb-muted: #5f6368;
-  --nb-border: rgba(31, 31, 31, 0.1);
+  --nb-border: rgba(31, 35, 40, 0.09);
   --nb-blue: #1a73e8;
   --nb-purple: #7627bb;
   --nb-green: #137333;
@@ -1623,9 +1623,9 @@ html[data-theme="light"] {
 }
 
 html[data-theme="light"] .nb-brand-row {
-  background: linear-gradient(135deg, #ffffff 0%, #f0f4ff 100%);
-  border-color: rgba(26, 115, 232, 0.2);
-  box-shadow: 0 6px 20px -10px rgba(26, 115, 232, 0.2);
+  background: linear-gradient(135deg, #ffffff 0%, #f1f5fe 100%);
+  border-color: rgba(26, 115, 232, 0.16);
+  box-shadow: 0 6px 20px -12px rgba(15, 23, 42, 0.12);
 }
 
 html[data-theme="light"] .nb-title {
@@ -1635,7 +1635,8 @@ html[data-theme="light"] .nb-title {
 }
 
 html[data-theme="light"] .nb-tabs {
-  background: #eceff4;
+  background: #e9edf5;
+  border-color: rgba(31, 35, 40, 0.07);
 }
 
 html[data-theme="light"] .nb-tab:hover {
@@ -1646,12 +1647,12 @@ html[data-theme="light"] .nb-tab:hover {
 html[data-theme="light"] .nb-tab.active {
   color: #1a73e8;
   background: #ffffff;
-  border-color: rgba(26, 115, 232, 0.25);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  border-color: rgba(26, 115, 232, 0.22);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
 }
 
 html[data-theme="light"] .nb-card {
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.04), 0 0 0 1px rgba(31, 35, 40, 0.03);
 }
 
 html[data-theme="light"] .nb-card-title,
@@ -1719,17 +1720,26 @@ html[data-theme="light"] .nb-input-text {
 
 html[data-theme="light"] .nb-quota-box,
 html[data-theme="light"] .nb-as-bar,
+html[data-theme="light"] .nb-as-rules-row,
 html[data-theme="light"] .nb-order-item,
 html[data-theme="light"] .nb-preset-card,
 html[data-theme="light"] .nb-pillar,
 html[data-theme="light"] .nb-toggle-tile,
 html[data-theme="light"] .nb-heatmap-box,
 html[data-theme="light"] .nb-path-pill {
-  background: #f8f9fa;
+  background: #f6f8fb;
+  border-color: rgba(31, 35, 40, 0.08);
+}
+
+html[data-theme="light"] .nb-preset-card:hover {
+  background: #eef3fb;
+  border-color: rgba(26, 115, 232, 0.24);
 }
 
 html[data-theme="light"] .nb-preset-card.active {
-  background: rgba(26, 115, 232, 0.08);
+  background: rgba(26, 115, 232, 0.09);
+  border-color: rgba(26, 115, 232, 0.42);
+  box-shadow: 0 1px 6px rgba(26, 115, 232, 0.10);
 }
 
 html[data-theme="light"] .nb-track,

@@ -159,18 +159,23 @@ html:not([data-ag-color-scheme="dark"]) #antigravity\.agentSidePanelInputBox .su
   border: var(--nb-glow-width, 1.5px) solid transparent !important;
   background:
     linear-gradient(var(--nb-composer-bg-light, #ffffff), var(--nb-composer-bg-light, #ffffff)) padding-box,
+    linear-gradient(rgba(255, 255, 255, 0.36), rgba(255, 255, 255, 0.36)) border-box,
     var(--nb-glow-ring-light, conic-gradient(from var(--gemini-angle), var(--ai-stops-loop))) border-box !important;
   animation: geminiFluidSpin var(--nb-glow-speed, 5.8s) linear infinite !important;
   animation-play-state: var(--nb-glow-play-state, running) !important;
   box-shadow:
-    0 2px 14px rgba(66, 133, 244, 0.14),
-    0 2px 20px rgba(155, 114, 203, 0.11) !important;
+    0 4px 18px -4px rgba(15, 23, 42, 0.08),
+    0 2px 10px rgba(66, 133, 244, 0.10) !important;
   transition: box-shadow 0.28s ease !important;
 }
 
 html:not([data-ag-color-scheme="dark"]) #antigravity\.agentSidePanelInputBox:hover .surface-composer-card,
 html:not([data-ag-color-scheme="dark"]) #antigravity\.agentSidePanelInputBox:focus-within .surface-composer-card {
   border: calc(var(--nb-glow-width, 1.5px) + 0.5px) solid transparent !important;
+  background:
+    linear-gradient(var(--nb-composer-bg-light, #ffffff), var(--nb-composer-bg-light, #ffffff)) padding-box,
+    linear-gradient(rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.14)) border-box,
+    var(--nb-glow-ring-light, conic-gradient(from var(--gemini-angle), var(--ai-stops-loop))) border-box !important;
   animation:
     geminiFluidSpin calc(var(--nb-glow-speed, 5.8s) * 0.72) linear infinite,
     aiBreathGlowLight 4.4s ease-in-out infinite !important;
@@ -191,6 +196,14 @@ html:not([data-ag-color-scheme="dark"]) #antigravity\.agentSidePanelInputBox:foc
   html:not([data-ag-color-scheme="dark"]) #antigravity\.agentSidePanelInputBox .surface-composer-card {
     background:
       linear-gradient(var(--nb-composer-bg-light, #ffffff), var(--nb-composer-bg-light, #ffffff)) padding-box,
+      linear-gradient(rgba(255, 255, 255, 0.36), rgba(255, 255, 255, 0.36)) border-box,
+      var(--nb-glow-ring-light, conic-gradient(from var(--gemini-angle) in oklab, var(--ai-stops-loop))) border-box !important;
+  }
+  html:not([data-ag-color-scheme="dark"]) #antigravity\.agentSidePanelInputBox:hover .surface-composer-card,
+  html:not([data-ag-color-scheme="dark"]) #antigravity\.agentSidePanelInputBox:focus-within .surface-composer-card {
+    background:
+      linear-gradient(var(--nb-composer-bg-light, #ffffff), var(--nb-composer-bg-light, #ffffff)) padding-box,
+      linear-gradient(rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.14)) border-box,
       var(--nb-glow-ring-light, conic-gradient(from var(--gemini-angle) in oklab, var(--ai-stops-loop))) border-box !important;
   }
 }
@@ -227,6 +240,15 @@ button[data-testid="send-button"][aria-disabled="true"] {
   background: rgba(138, 180, 248, 0.08) !important;
   border: 1px solid rgba(138, 180, 248, 0.28) !important;
   color: #8ab4f8 !important;
+  box-shadow: none !important;
+}
+
+html:not([data-ag-color-scheme="dark"]) button[data-testid="send-button"]:disabled,
+html:not([data-ag-color-scheme="dark"]) .agy-send-button:disabled,
+html:not([data-ag-color-scheme="dark"]) button[data-testid="send-button"][aria-disabled="true"] {
+  background: #e6eaf0 !important;
+  border: 1px solid rgba(31, 35, 40, 0.12) !important;
+  color: #80868b !important;
   box-shadow: none !important;
 }
 
@@ -373,10 +395,10 @@ html:not([data-ag-color-scheme="dark"]) #ag-live-metrics-pill::before {
 html:not([data-ag-color-scheme="dark"]) #antigravity\.agentSidePanelInputBox button[data-testid="model-selector-trigger"],
 html:not([data-ag-color-scheme="dark"]) #antigravity\.agentSidePanelInputBox button[data-testid="permissions-selector-trigger"] {
   background:
-    linear-gradient(135deg, #f6f8fe 0%, #eef3fd 100%) padding-box,
-    linear-gradient(rgba(255, 255, 255, 0.32), rgba(255, 255, 255, 0.32)) border-box,
+    linear-gradient(135deg, color-mix(in srgb, var(--nb-composer-bg-light, #ffffff) 92%, #eef3fd) 0%, color-mix(in srgb, var(--nb-composer-bg-light, #ffffff) 84%, #e8effc) 100%) padding-box,
+    linear-gradient(rgba(255, 255, 255, 0.54), rgba(255, 255, 255, 0.54)) border-box,
     var(--nb-glow-ring-light, conic-gradient(from var(--gemini-angle), var(--ai-stops-loop))) border-box !important;
-  box-shadow: 0 2px 8px rgba(26, 115, 232, 0.08) !important;
+  box-shadow: 0 1px 6px rgba(15, 23, 42, 0.06) !important;
   color: #1f1f1f !important;
 }
 html:not([data-ag-color-scheme="dark"]) #antigravity\.agentSidePanelInputBox button[data-testid="model-selector-trigger"]:hover,
@@ -387,8 +409,9 @@ html:not([data-ag-color-scheme="dark"]) #antigravity\.agentSidePanelInputBox but
 html:not([data-ag-color-scheme="dark"]) #antigravity\.agentSidePanelInputBox button[data-testid="permissions-selector-trigger"][data-state="open"] {
   background:
     linear-gradient(135deg, #ffffff 0%, #f1f6ff 100%) padding-box,
+    linear-gradient(rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.24)) border-box,
     var(--nb-glow-ring-light, conic-gradient(from var(--gemini-angle), var(--ai-stops-loop))) border-box !important;
-  box-shadow: 0 3px 12px rgba(26, 115, 232, 0.16), 0 0 10px -3px rgba(104, 29, 168, 0.14) !important;
+  box-shadow: 0 3px 10px rgba(26, 115, 232, 0.14), 0 0 8px -3px rgba(104, 29, 168, 0.12) !important;
   color: #0b57d0 !important;
 }
 html:not([data-ag-color-scheme="dark"]) #antigravity\.agentSidePanelInputBox button[data-testid="model-selector-trigger"][data-nb-quota-level="ok"]::before {
@@ -502,16 +525,17 @@ html:not([data-ag-color-scheme="dark"]) #antigravity\.agentSidePanelInputBox but
 
 html:not([data-ag-color-scheme="dark"]) #ag-live-metrics-pill .nb-cockpit-bar {
   background:
-    linear-gradient(135deg, #f6f8fe 0%, #eef3fd 100%) padding-box,
-    linear-gradient(rgba(255, 255, 255, 0.32), rgba(255, 255, 255, 0.32)) border-box,
+    linear-gradient(135deg, color-mix(in srgb, var(--nb-composer-bg-light, #ffffff) 92%, #eef3fd) 0%, color-mix(in srgb, var(--nb-composer-bg-light, #ffffff) 84%, #e8effc) 100%) padding-box,
+    linear-gradient(rgba(255, 255, 255, 0.54), rgba(255, 255, 255, 0.54)) border-box,
     var(--nb-glow-ring-light, conic-gradient(from var(--gemini-angle), var(--ai-stops-loop))) border-box;
-  box-shadow: 0 2px 8px rgba(26, 115, 232, 0.08);
+  box-shadow: 0 1px 6px rgba(15, 23, 42, 0.06);
 }
 html:not([data-ag-color-scheme="dark"]) #ag-live-metrics-pill:hover .nb-cockpit-bar {
   background:
     linear-gradient(135deg, #ffffff 0%, #f1f6ff 100%) padding-box,
+    linear-gradient(rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.24)) border-box,
     var(--nb-glow-ring-light, conic-gradient(from var(--gemini-angle), var(--ai-stops-loop))) border-box;
-  box-shadow: 0 3px 12px rgba(26, 115, 232, 0.16), 0 0 10px -3px rgba(104, 29, 168, 0.14);
+  box-shadow: 0 3px 10px rgba(26, 115, 232, 0.14), 0 0 8px -3px rgba(104, 29, 168, 0.12);
 }
 @supports (background: conic-gradient(from 0deg in oklab, #4285F4, #34A853)) {
   #antigravity\.agentSidePanelInputBox button[data-testid="model-selector-trigger"],
@@ -545,8 +569,8 @@ html:not([data-ag-color-scheme="dark"]) #ag-live-metrics-pill:hover .nb-cockpit-
   html:not([data-ag-color-scheme="dark"]) #antigravity\.agentSidePanelInputBox button[data-testid="model-selector-trigger"],
   html:not([data-ag-color-scheme="dark"]) #antigravity\.agentSidePanelInputBox button[data-testid="permissions-selector-trigger"] {
     background:
-      linear-gradient(135deg, #f6f8fe 0%, #eef3fd 100%) padding-box,
-      linear-gradient(rgba(255, 255, 255, 0.32), rgba(255, 255, 255, 0.32)) border-box,
+      linear-gradient(135deg, color-mix(in srgb, var(--nb-composer-bg-light, #ffffff) 92%, #eef3fd) 0%, color-mix(in srgb, var(--nb-composer-bg-light, #ffffff) 84%, #e8effc) 100%) padding-box,
+      linear-gradient(rgba(255, 255, 255, 0.54), rgba(255, 255, 255, 0.54)) border-box,
       var(--nb-glow-ring-light, conic-gradient(from var(--gemini-angle) in oklab, var(--ai-stops-loop))) border-box !important;
   }
   html:not([data-ag-color-scheme="dark"]) #antigravity\.agentSidePanelInputBox button[data-testid="model-selector-trigger"]:hover,
@@ -557,17 +581,19 @@ html:not([data-ag-color-scheme="dark"]) #ag-live-metrics-pill:hover .nb-cockpit-
   html:not([data-ag-color-scheme="dark"]) #antigravity\.agentSidePanelInputBox button[data-testid="permissions-selector-trigger"][data-state="open"] {
     background:
       linear-gradient(135deg, #ffffff 0%, #f1f6ff 100%) padding-box,
+      linear-gradient(rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.24)) border-box,
       var(--nb-glow-ring-light, conic-gradient(from var(--gemini-angle) in oklab, var(--ai-stops-loop))) border-box !important;
   }
   html:not([data-ag-color-scheme="dark"]) #ag-live-metrics-pill .nb-cockpit-bar {
     background:
-      linear-gradient(135deg, #f6f8fe 0%, #eef3fd 100%) padding-box,
-      linear-gradient(rgba(255, 255, 255, 0.32), rgba(255, 255, 255, 0.32)) border-box,
+      linear-gradient(135deg, color-mix(in srgb, var(--nb-composer-bg-light, #ffffff) 92%, #eef3fd) 0%, color-mix(in srgb, var(--nb-composer-bg-light, #ffffff) 84%, #e8effc) 100%) padding-box,
+      linear-gradient(rgba(255, 255, 255, 0.54), rgba(255, 255, 255, 0.54)) border-box,
       var(--nb-glow-ring-light, conic-gradient(from var(--gemini-angle) in oklab, var(--ai-stops-loop))) border-box;
   }
   html:not([data-ag-color-scheme="dark"]) #ag-live-metrics-pill:hover .nb-cockpit-bar {
     background:
       linear-gradient(135deg, #ffffff 0%, #f1f6ff 100%) padding-box,
+      linear-gradient(rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.24)) border-box,
       var(--nb-glow-ring-light, conic-gradient(from var(--gemini-angle) in oklab, var(--ai-stops-loop))) border-box;
   }
 }
@@ -1971,6 +1997,98 @@ html[data-ag-color-scheme="dark"][data-ag-preset="github-dark"] aside,
 html[data-ag-color-scheme="dark"][data-ag-preset="gruvbox-dark"] .bg-sidebar,
 html[data-ag-color-scheme="dark"][data-ag-preset="gruvbox-dark"] aside {
   background-color: var(--ag-theme-sidebar) !important;
+}
+
+/* --- 日间基础层：全面清除暗色 customThemeSeedsLight 遗留，统一语法高亮与表面质感 --- */
+html:not([data-ag-color-scheme="dark"]),
+html:not([data-ag-color-scheme="dark"]) body {
+  color-scheme: light !important;
+  --placeholder: color-mix(in srgb, var(--foreground, #1f1f1f) 42%, transparent) !important;
+  --link: #1a73e8 !important;
+  --success: #137333 !important;
+  --warning: #b06000 !important;
+  --error: #c5221f !important;
+  --code-foreground: #0b57d0 !important;
+  --editor-code-block-background: color-mix(in srgb, var(--foreground, #1f1f1f) 4.5%, var(--background, #ffffff)) !important;
+  --scrim: rgba(15, 23, 42, 0.28) !important;
+  --glass: color-mix(in srgb, var(--card, #ffffff) 88%, #ffffff) !important;
+  --glass-border: rgba(31, 35, 40, 0.10) !important;
+  --glass-highlight: rgba(255, 255, 255, 0.85) !important;
+  --onyx-frame: rgba(31, 35, 40, 0.04) !important;
+  --onyx-well: rgba(31, 35, 40, 0.05) !important;
+  --onyx-raised: #ffffff !important;
+  --onyx-selected: rgba(26, 115, 232, 0.10) !important;
+  --onyx-key: rgba(31, 35, 40, 0.08) !important;
+  --syntax-comment: #6e7781 !important;
+  --syntax-punctuation: #24292f !important;
+  --syntax-property: #0550ae !important;
+  --syntax-deleted: #cf222e !important;
+  --syntax-inserted: #116329 !important;
+  --syntax-tag: #116329 !important;
+  --syntax-constant: #0550ae !important;
+  --syntax-number: #0550ae !important;
+  --syntax-string: #0a3069 !important;
+  --syntax-attr-name: #0550ae !important;
+  --syntax-builtin: #953800 !important;
+  --syntax-operator: #cf222e !important;
+  --syntax-variable: #953800 !important;
+  --syntax-attr-value: #0a3069 !important;
+  --syntax-keyword: #cf222e !important;
+  --syntax-function: #8250df !important;
+  --syntax-class-name: #953800 !important;
+  --syntax-regex: #116329 !important;
+  --syntax-default-fg: var(--foreground, #1f1f1f) !important;
+}
+
+/* 日间用户消息气泡 & 内联代码柔和化（消除黑灰气泡与高对比硬边） */
+html:not([data-ag-color-scheme="dark"]) .agy-user-bubble-frame {
+  background: color-mix(in srgb, var(--primary, #1a73e8) 18%, var(--border, rgba(31, 35, 40, 0.12))) !important;
+  box-shadow: 0 2px 10px -4px rgba(15, 23, 42, 0.08) !important;
+}
+
+html:not([data-ag-color-scheme="dark"]) .agy-user-bubble {
+  background: color-mix(in srgb, var(--primary, #1a73e8) 7%, var(--card, #ffffff)) !important;
+  color: var(--foreground, #1f1f1f) !important;
+}
+
+html:not([data-ag-color-scheme="dark"]) :not(pre) > code {
+  background: color-mix(in srgb, var(--foreground, #1f1f1f) 5.5%, transparent) !important;
+  color: var(--code-foreground, #0b57d0) !important;
+}
+
+/* --- 日间预设 1：✦ 极光原生 (default) 完整 Material 3 日间色板 --- */
+html:not([data-ag-color-scheme="dark"])[data-ag-preset="default"],
+html:not([data-ag-color-scheme="dark"])[data-ag-preset="default"] body {
+  --ag-theme-sidebar: #f4f6fa !important;
+  --background: #ffffff !important;
+  --content: #ffffff !important;
+  --shell: #f4f6fa !important;
+  --foreground: #1f1f1f !important;
+  --sidebar: #f4f6fa !important;
+  --sidebar-secondary: #e8edf5 !important;
+  --sidebar-muted: #eef2f8 !important;
+  --sidebar-border: rgba(31, 35, 40, 0.08) !important;
+  --border: rgba(31, 35, 40, 0.09) !important;
+  --vscode-sideBar-background: #f4f6fa !important;
+  --card: #f8f9fc !important;
+  --card-border: rgba(31, 35, 40, 0.09) !important;
+  --secondary: rgba(26, 115, 232, 0.08) !important;
+  --secondary-foreground: #444746 !important;
+  --muted: rgba(31, 35, 40, 0.05) !important;
+  --muted-foreground: #5f6368 !important;
+  --primary: #1a73e8 !important;
+  --primary-foreground: #ffffff !important;
+  --nb-composer-bg-light: #ffffff;
+  background-color: #ffffff !important;
+  color: #1f1f1f !important;
+}
+
+html:not([data-ag-color-scheme="dark"])[data-ag-preset="default"] .bg-sidebar,
+html:not([data-ag-color-scheme="dark"])[data-ag-preset="default"] aside,
+html:not([data-ag-color-scheme="dark"])[data-ag-preset="default"] .agy-shell,
+html:not([data-ag-color-scheme="dark"])[data-ag-preset="default"] .agy-inset-shell {
+  --shell-canvas: #f4f6fa !important;
+  background-color: #f4f6fa !important;
 }
 
 /* --- 日间预设 4：Catppuccin Latte --- */
