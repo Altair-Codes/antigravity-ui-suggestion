@@ -1,10 +1,19 @@
 ﻿$ErrorActionPreference = "Stop"
 $Here = Split-Path -Parent $MyInvocation.MyCommand.Path
 
-Write-Host "🚀 正在安装 Antigravity 引力套件 (Gravity Suite v2.1.3 · 纯 Node.js 全中文三扩展 Windows)..." -ForegroundColor Cyan
+Write-Host "🚀 正在安装 Antigravity 引力套件 (Gravity Suite v2.1.4 · 纯 Node.js 全中文三扩展 Windows)..." -ForegroundColor Cyan
 
-if (-not (Get-Command "node" -ErrorAction SilentlyContinue)) {
-  Write-Error "❌ 未检测到 Node.js (>=20，推荐 v22+)，请先安装并加入 PATH。"
+$nodeCmd = Get-Command "node" -ErrorAction SilentlyContinue
+if (-not $nodeCmd) {
+  Write-Error "❌ 未检测到 Node.js (>=20，推荐 v22.5+)，请先安装并加入 PATH。"
+}
+$nodeVerRaw = (& $nodeCmd.Source -v 2>$null).Trim()
+Write-Host "  • Node.js: $($nodeCmd.Source) ($nodeVerRaw)" -ForegroundColor Gray
+if ($nodeVerRaw -match '^v?(\d+)\.(\d+)') {
+  $nMaj = [int]$Matches[1]; $nMin = [int]$Matches[2]
+  if ($nMaj -lt 22 -or ($nMaj -eq 22 -and $nMin -lt 5)) {
+    Write-Host "  ⚠️ 当前系统 PATH 中的 Node ($nodeVerRaw) 低于 v22.5（不自带 node:sqlite）；已启用降级兼容，新版 Antigravity 启动扩展时也会优先使用内置 Node 24。" -ForegroundColor Yellow
+  }
 }
 
 $PluginsDst              = Join-Path $env:USERPROFILE ".gemini\config\plugins"
@@ -60,22 +69,28 @@ if (Test-Path $VerFile) {
   Copy-Item -Force $VerFile (Join-Path $GravityUserSeedDst "suite-version.json")
 }
 
-# 3. 将全部 3 个扩展的 sidecar.json command 适配为 node（UTF-8 无 BOM）
-$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+# 3. 使用 Node.js 原生 UTF-8 无 BOM 校验并确保 3 个扩展的 sidecar.json command 为 node
 $targets = @(
   (Join-Path $PluginsDst "gravity-hub\sidecars\dashboard\sidecar.json"),
   (Join-Path $PluginsDst "gravity-explorer\sidecars\panel\sidecar.json"),
   (Join-Path $PluginsDst "gravity-vault\sidecars\dock\sidecar.json")
 )
-foreach ($tPath in $targets) {
-  $obj = Get-Content $tPath -Raw -Encoding UTF8 | ConvertFrom-Json
-  $obj.command = "node"
-  [System.IO.File]::WriteAllText($tPath, ($obj | ConvertTo-Json -Depth 10), $utf8NoBom)
+node -e '
+const fs = require("node:fs");
+for (const p of process.argv.slice(1)) {
+  const data = JSON.parse(fs.readFileSync(p, "utf8"));
+  data.command = "node";
+  fs.writeFileSync(p, JSON.stringify(data, null, 2) + "\n", "utf8");
 }
-Write-Host "  • 已完成 3 个纯 Node.js 扩展的 Windows 启动命令适配"
+' @targets
+Write-Host "  • 已完成 3 个纯 Node.js 扩展的 Windows 启动配置校验"
 
-# 4. 为 app.asar 开启 CDP 调试端口（若 Antigravity.exe 正在运行被锁，自动挂载退场瞬间替换并重启守护）
-node (Join-Path $Here "enable-cdp.mjs")
+# 4. 为 app.asar 开启 CDP 调试端口（容错：若安装在 Program Files 无写权限则不阻塞快捷方式注入）
+try {
+  node (Join-Path $Here "enable-cdp.mjs")
+} catch {
+  Write-Host "  ⚠️ [CDP] enable-cdp.mjs 执行出现异常（将由快捷方式 --remote-debugging-port=0 兜底）：$($_.Exception.Message)" -ForegroundColor Yellow
+}
 
 # 5. 同时为桌面与开始菜单的 Antigravity 快捷方式加上 --remote-debugging-port=0
 try {
@@ -103,4 +118,69 @@ if (-not (Get-Command "agy" -ErrorAction SilentlyContinue)) {
   try { irm https://antigravity.google/cli/install.ps1 | iex } catch {}
 }
 
-Write-Host "✅ 引力套件 (Gravity Suite v2.1.3) 安装完成！现在只需关闭一次 Antigravity 窗口，全量汉化与 Gemini 五色流光即刻生效！" -ForegroundColor Green
+# 7. 安装后 Windows 环境自检（sidecar_sdk、三扩展试启动、系统代理回环绕过检测）
+Write-Host "`n🔍 正在执行 Windows 三扩展启动自检..." -ForegroundColor Cyan
+$sdkEntry = Join-Path $env:USERPROFILE ".gemini\antigravity\lib\node_modules\sidecar_sdk\index.mjs"
+if (Test-Path $sdkEntry) {
+  Write-Host "  • [SDK] 已找到 sidecar_sdk: $sdkEntry" -ForegroundColor Gray
+} else {
+  Write-Host "  ⚠️ [SDK] 未检测到 $sdkEntry（若尚未登录/初始化过 Antigravity，请先登录客户端一次再重试）" -ForegroundColor Yellow
+}
+
+$sidecarEntries = @(
+  @{ Name = "引力中枢 (gravity-hub)"; Path = (Join-Path $PluginsDst "gravity-hub\sidecars\dashboard\main.mjs") },
+  @{ Name = "引力目录 (gravity-explorer)"; Path = (Join-Path $PluginsDst "gravity-explorer\sidecars\panel\main.mjs") },
+  @{ Name = "引力文库 (gravity-vault)"; Path = (Join-Path $PluginsDst "gravity-vault\sidecars\dock\main.mjs") }
+)
+
+$prevLsAddr = $env:ANTIGRAVITY_LS_ADDRESS
+$prevCsrf = $env:ANTIGRAVITY_CSRF_TOKEN
+$prevPort = $env:ANTIGRAVITY_SIDECAR_WEB_PORT
+try {
+  $env:ANTIGRAVITY_LS_ADDRESS = "127.0.0.1:5387"
+  $env:ANTIGRAVITY_CSRF_TOKEN = "install-check"
+  foreach ($item in $sidecarEntries) {
+    $entryPath = $item.Path
+    & $nodeCmd.Source --check $entryPath 2>$null
+    if ($LASTEXITCODE -ne 0) {
+      Write-Host "  ❌ [$($item.Name)] 语法检查失败: $entryPath" -ForegroundColor Red
+      continue
+    }
+    $env:ANTIGRAVITY_SIDECAR_WEB_PORT = "0"
+    $outTmp = Join-Path $env:TEMP "ag_check_out.txt"
+    $errTmp = Join-Path $env:TEMP "ag_check_err.txt"
+    Remove-Item $outTmp, $errTmp -ErrorAction SilentlyContinue
+    $proc = Start-Process -FilePath $nodeCmd.Source -ArgumentList "`"$entryPath`"" -NoNewWindow -PassThru -RedirectStandardOutput $outTmp -RedirectStandardError $errTmp
+    Start-Sleep -Milliseconds 1500
+    if (-not $proc.HasExited) {
+      Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+      Write-Host "  ✅ [$($item.Name)] 试启动正常" -ForegroundColor Green
+    } else {
+      Write-Host "  ❌ [$($item.Name)] 试启动退出 (code=$($proc.ExitCode))" -ForegroundColor Red
+      if (Test-Path $errTmp) { Get-Content $errTmp -Tail 12 | ForEach-Object { Write-Host "     $_" -ForegroundColor Red } }
+      if (Test-Path $outTmp) { Get-Content $outTmp -Tail 6 | ForEach-Object { Write-Host "     $_" -ForegroundColor DarkGray } }
+    }
+    Remove-Item $outTmp, $errTmp -ErrorAction SilentlyContinue
+  }
+} finally {
+  $env:ANTIGRAVITY_LS_ADDRESS = $prevLsAddr
+  $env:ANTIGRAVITY_CSRF_TOKEN = $prevCsrf
+  $env:ANTIGRAVITY_SIDECAR_WEB_PORT = $prevPort
+}
+
+try {
+  $inet = Get-ItemProperty "HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings" -ErrorAction SilentlyContinue
+  if ($inet -and $inet.ProxyEnable -eq 1) {
+    $ov = [string]($inet.ProxyOverride)
+    if ($ov -notmatch '<local>|127\.0\.0\.1|localhost') {
+      Write-Host "  ⚠️ 检测到系统代理 ($($inet.ProxyServer)) 未配置绕过本地回环 (<local>;127.0.0.1;localhost)，可能导致侧边栏扩展白屏！建议在 Windows 代理设置中勾选「请勿将代理服务器用于本地(Intranet)地址」或加入 127.0.0.1;localhost;<local>。" -ForegroundColor Yellow
+    }
+  }
+} catch {}
+
+$bootLog = Join-Path $env:USERPROFILE ".gemini\antigravity\sidecar_data\gravity-suite-boot.log"
+$agLogs = Join-Path $env:APPDATA "Antigravity\logs"
+Write-Host "  • 启动日志路径: $bootLog" -ForegroundColor Gray
+Write-Host "  • 客户端日志目录: $agLogs" -ForegroundColor Gray
+
+Write-Host "`n✅ 引力套件 (Gravity Suite v2.1.4) 安装完成！现在只需关闭一次 Antigravity 窗口，全量汉化与 Gemini 五色流光即刻生效！" -ForegroundColor Green

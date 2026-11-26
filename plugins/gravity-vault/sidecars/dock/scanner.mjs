@@ -1,8 +1,17 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, extname, join, resolve } from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
-import { DatabaseSync } from "node:sqlite";
 import os from "node:os";
+
+let DatabaseSync = null;
+try {
+  const sqliteMod = await import("node:sqlite").catch(() => null);
+  if (sqliteMod && typeof sqliteMod.DatabaseSync === "function") {
+    DatabaseSync = sqliteMod.DatabaseSync;
+  }
+} catch {
+  DatabaseSync = null;
+}
 
 const DOC_EXTS = new Set([".md", ".markdown", ".txt", ".pdf", ".docx", ".doc", ".pptx", ".ppt", ".xlsx", ".xls", ".csv", ".tsv", ".rtf", ".pages", ".numbers", ".key"]);
 const IMAGE_EXTS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".ico", ".bmp"]);
@@ -37,6 +46,7 @@ export function uriToLocalPath(uriOrPath) {
 }
 
 export function readConversationSummaries(appDataDir = join(os.homedir(), ".gemini", "antigravity")) {
+  if (!DatabaseSync) return [];
   const dbPath = join(appDataDir, "conversation_summaries.db");
   if (!existsSync(dbPath)) return [];
   let db;

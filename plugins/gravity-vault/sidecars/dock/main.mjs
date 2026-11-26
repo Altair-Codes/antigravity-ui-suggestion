@@ -1,15 +1,53 @@
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync, appendFileSync, mkdirSync } from "node:fs";
 import { dirname, extname, join, basename, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
-import { SidecarApp, Response } from "sidecar_sdk";
+import { homedir } from "node:os";
 import { createVaultStore } from "./store.mjs";
 import { scanVaultState } from "./scanner.mjs";
 
 const execFileAsync = promisify(execFile);
 const HERE = dirname(fileURLToPath(import.meta.url));
 const readLocal = (n) => readFileSync(join(HERE, n), "utf8");
+const APP_DATA_DIR = process.env.ANTIGRAVITY_APP_DATA_DIR || join(homedir(), ".gemini", "antigravity");
+const BOOT_LOG_FILE = join(APP_DATA_DIR, "sidecar_data", "gravity-suite-boot.log");
+
+function appendBootLog(msg) {
+  try {
+    mkdirSync(dirname(BOOT_LOG_FILE), { recursive: true });
+    const line = `${new Date().toISOString()} [gravity-vault] pid=${process.pid} node=${process.version} exec=${process.execPath} ${String(msg).replace(/\r?\n/g, " | ")}\n`;
+    appendFileSync(BOOT_LOG_FILE, line, "utf8");
+  } catch {}
+}
+
+process.on("uncaughtException", (err) => {
+  appendBootLog(`uncaughtException: ${err?.stack || err?.message || err}`);
+  console.error("[gravity-vault] uncaughtException:", err);
+  process.exit(1);
+});
+
+process.on("unhandledRejection", (reason) => {
+  appendBootLog(`unhandledRejection: ${reason?.stack || reason?.message || reason}`);
+  console.error("[gravity-vault] unhandledRejection:", reason);
+});
+
+async function loadSidecarSdk() {
+  try {
+    return await import("sidecar_sdk");
+  } catch (primaryErr) {
+    const fallback = join(APP_DATA_DIR, "lib", "node_modules", "sidecar_sdk", "index.mjs");
+    if (existsSync(fallback)) {
+      appendBootLog(`sidecar_sdk ESM resolver fallback -> ${fallback}`);
+      return await import(pathToFileURL(fallback).href);
+    }
+    appendBootLog(`sidecar_sdk load failed: ${primaryErr?.message || primaryErr}`);
+    throw primaryErr;
+  }
+}
+
+appendBootLog(`boot port=${process.env.ANTIGRAVITY_SIDECAR_WEB_PORT || ""} ls=${process.env.ANTIGRAVITY_LS_ADDRESS || ""}`);
+const { SidecarApp, Response } = await loadSidecarSdk();
 
 function noCache(content, contentType) {
   return new Response(content, {
@@ -120,4 +158,6 @@ app.api("/api/clipboard", (data) => {
   return { ok: false };
 });
 
-await app.run();
+const server = await app.run();
+const addr = typeof server?.address === "function" ? server.address() : null;
+appendBootLog(`listening on 127.0.0.1:${addr?.port || process.env.ANTIGRAVITY_SIDECAR_WEB_PORT || ""}`);

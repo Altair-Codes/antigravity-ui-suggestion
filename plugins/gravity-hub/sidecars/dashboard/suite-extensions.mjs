@@ -437,6 +437,29 @@ export function initSuiteExtensions({
   recordAccountSwitch,
   reloadHostWindow
 }) {
+  const appDataDir = process.env.ANTIGRAVITY_APP_DATA_DIR || path.join(os.homedir(), ".gemini", "antigravity");
+  const bootLogFile = path.join(appDataDir, "sidecar_data", "gravity-suite-boot.log");
+  function appendHubBootLog(msg) {
+    try {
+      fs.mkdirSync(path.dirname(bootLogFile), { recursive: true });
+      const line = `${new Date().toISOString()} [gravity-hub] pid=${process.pid} node=${process.version} exec=${process.execPath} ${String(msg).replace(/\r?\n/g, " | ")}\n`;
+      fs.appendFileSync(bootLogFile, line, "utf8");
+    } catch {}
+  }
+  if (!process.__gravityHubLogHooked) {
+    process.__gravityHubLogHooked = true;
+    process.on("uncaughtException", (err) => {
+      appendHubBootLog(`uncaughtException: ${err?.stack || err?.message || err}`);
+      console.error("[gravity-hub] uncaughtException:", err);
+      process.exit(1);
+    });
+    process.on("unhandledRejection", (reason) => {
+      appendHubBootLog(`unhandledRejection: ${reason?.stack || reason?.message || reason}`);
+      console.error("[gravity-hub] unhandledRejection:", reason);
+    });
+  }
+  appendHubBootLog(`boot port=${process.env.ANTIGRAVITY_SIDECAR_WEB_PORT || ""} ls=${process.env.ANTIGRAVITY_LS_ADDRESS || ""}`);
+
   // 自动从旧版 nebula-hub / aura-dashboard 平滑迁移用户配置与账号备选库数据
   try {
     const legacyDirs = [
@@ -1186,7 +1209,7 @@ export function initSuiteExtensions({
   }
 
   function getLocalVersionInfo() {
-    const fallback = { version: "2.1.3", publishedAt: "", repoUrl: REPO_URL, branch: DEFAULT_UPDATE_BRANCH, highlights: [] };
+    const fallback = { version: "2.1.4", publishedAt: "", repoUrl: REPO_URL, branch: DEFAULT_UPDATE_BRANCH, highlights: [] };
     const fromData = readJsonSafe(versionFile, null);
     if (fromData && fromData.version) return { ...fallback, ...fromData };
     const fromSeed = readJsonSafe(path.join(pluginRoot, "sidecars", "dashboard", "user", "suite-version.json"), null);
@@ -1746,6 +1769,7 @@ sleep 1
     const addr = bridgeServer.address();
     if (addr && typeof addr === "object") {
       bridgeOrigin = `http://127.0.0.1:${addr.port}`;
+      appendHubBootLog(`bridge listening on 127.0.0.1:${addr.port} sidecarPort=${process.env.ANTIGRAVITY_SIDECAR_WEB_PORT || ""}`);
     }
   });
 

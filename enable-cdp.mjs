@@ -159,12 +159,16 @@ function patchAsarForCdp() {
   }
 
   const pendingPath = `${asarPath}.cdp_pending`;
-  fs.writeFileSync(pendingPath, outBuf);
-
   try {
+    fs.writeFileSync(pendingPath, outBuf);
     fs.renameSync(pendingPath, asarPath);
     console.log(`  • [CDP] 已成功为 app.asar 开启调试端口 (${asarPath})`);
   } catch (err) {
+    const code = err && err.code;
+    if (code === "EACCES" || code === "EPERM") {
+      console.log(`  • [CDP] 暂无权限写入 ${asarPath} (${code})，将跳过 app.asar 修改并由快捷方式 --remote-debugging-port=0 接管。`);
+      return;
+    }
     if (process.platform === "win32") {
       const escPending = pendingPath.replace(/'/g, "''");
       const escTarget = asarPath.replace(/'/g, "''");
