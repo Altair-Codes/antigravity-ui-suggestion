@@ -42,7 +42,7 @@
   --ai-gradient-vertical: linear-gradient(180deg, var(--ai-stops-linear));
   --ai-gradient-diag: linear-gradient(135deg, var(--ai-stops-linear));
   --ai-gradient-flow: linear-gradient(90deg, var(--ai-stops-loop));
-  --ai-gradient-conic: conic-gradient(from var(--ai-ring-angle, 0deg), var(--ai-stops-loop));
+  --ai-gradient-conic: conic-gradient(from 0deg, var(--ai-stops-loop));
 }
 
 @supports (background: linear-gradient(90deg in oklab, #4285F4, #34A853)) {
@@ -56,7 +56,7 @@
 
 @supports (background: conic-gradient(from 0deg in oklab, #4285F4, #34A853)) {
   :root {
-    --ai-gradient-conic: conic-gradient(from var(--ai-ring-angle, 0deg) in oklab, var(--ai-stops-loop));
+    --ai-gradient-conic: conic-gradient(from 0deg in oklab, var(--ai-stops-loop));
   }
 }
 
@@ -125,8 +125,16 @@ body {
   border: 1.5px solid transparent;
   background:
     linear-gradient(var(--nb-card, #1e1f20), var(--nb-card, #1e1f20)) padding-box,
-    var(--ai-gradient-conic) border-box;
+    conic-gradient(from var(--ai-ring-angle), var(--ai-stops-loop)) border-box;
   animation: aiLogoRingSpin 8s linear infinite;
+}
+
+@supports (background: conic-gradient(from 0deg in oklab, #4285F4, #34A853)) {
+  .nb-logo {
+    background:
+      linear-gradient(var(--nb-card, #1e1f20), var(--nb-card, #1e1f20)) padding-box,
+      conic-gradient(from var(--ai-ring-angle) in oklab, var(--ai-stops-loop)) border-box;
+  }
 }
 
 .nb-title-wrap {
