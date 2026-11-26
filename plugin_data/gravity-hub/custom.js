@@ -29,6 +29,95 @@ try {
 
 (function initGeminiSuiteHostBridge(ctxObj) {
   const bridge = ctxObj && ctxObj.suiteBridge;
+  window.__AG_LAST_PATCH_CTX__ = ctxObj || null;
+
+  // 0. 零重启即时同步预设属性与中英文切回自愈（修复从 English 切回 zh-CN 时老版节点缓存跳过重译的问题）
+  function syncPresetsAndI18nState(curCtx) {
+    try {
+      const root = document.documentElement;
+      const cfg = curCtx && curCtx.config;
+      if (root && cfg && cfg.presets) {
+        const scheme = root.getAttribute("data-ag-color-scheme") === "dark" ? "dark" : "light";
+        const lp = String(cfg.presets.light || "default").trim() || "default";
+        const dp = String(cfg.presets.dark || "default").trim() || "default";
+        if (root.getAttribute("data-ag-light-preset") !== lp) root.setAttribute("data-ag-light-preset", lp);
+        if (root.getAttribute("data-ag-dark-preset") !== dp) root.setAttribute("data-ag-dark-preset", dp);
+        const target = scheme === "dark" ? dp : lp;
+        if (root.getAttribute("data-ag-preset") !== target) root.setAttribute("data-ag-preset", target);
+      }
+
+      const lang = cfg && cfg.language ? cfg.language : "zh-CN";
+      const enabled = !cfg || cfg.enabled !== false;
+      if (enabled && lang === "zh-CN") {
+        const dict = window.__ag_i18n_dict;
+        const map = window.__ag_orig_text_map;
+        const excl =
+          (cfg && cfg.selectors && cfg.selectors.excludeI18n) ||
+          'code, pre, kbd, samp, textarea, input, style, script, noscript, [contenteditable="true"], .prose, .markdown, [class*="chat-message"], #ag-live-metrics-pill, #ag-live-metrics-tooltip';
+        if (dict && typeof dict === "object" && Object.keys(dict).length > 0 && document.body) {
+          const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+          let node;
+          while ((node = walker.nextNode())) {
+            const parent = node.parentElement;
+            if (!parent || parent.closest(excl)) continue;
+            const raw = node.nodeValue || "";
+            const trimmed = raw.trim();
+            if (!trimmed) continue;
+            const rec = map && typeof map.get === "function" ? map.get(node) : null;
+            const origRaw = rec ? rec.origRaw : raw;
+            const origTrim = origRaw.trim();
+            let zh = dict[origTrim];
+            if (typeof zh !== "string" && origTrim.endsWith(".")) {
+              const noDot = dict[origTrim.slice(0, -1)];
+              if (typeof noDot === "string") zh = noDot.endsWith("。") || noDot.endsWith(".") ? noDot : `${noDot}。`;
+            }
+            if (typeof zh === "string" && zh && raw.trim() !== zh.trim()) {
+              const nextVal = origRaw.replace(origTrim, zh);
+              if (node.nodeValue !== nextVal) node.nodeValue = nextVal;
+              if (map && typeof map.set === "function") {
+                map.set(node, { origRaw, lastVal: nextVal, ver: curCtx?.version || "zh", lang: "zh-CN" });
+              }
+            }
+          }
+          const attrEls = document.body.querySelectorAll("[title], [placeholder], [data-ag-orig-title], [data-ag-orig-placeholder]");
+          for (let i = 0; i < attrEls.length; i++) {
+            const el = attrEls[i];
+            if (el.closest(excl)) continue;
+            for (const [attr, origAttr] of [["title", "data-ag-orig-title"], ["placeholder", "data-ag-orig-placeholder"]]) {
+              const orig = el.getAttribute(origAttr) ?? el.getAttribute(attr);
+              if (!orig) continue;
+              const t = orig.trim();
+              const zh = dict[t];
+              if (typeof zh === "string" && zh) {
+                if (!el.hasAttribute(origAttr)) el.setAttribute(origAttr, orig);
+                el.setAttribute(`${origAttr}-last`, zh);
+                if (el.getAttribute(attr) !== zh) el.setAttribute(attr, zh);
+              }
+            }
+          }
+        }
+        if (typeof window.__ag_decorate_slash_fn === "function") window.__ag_decorate_slash_fn();
+      } else {
+        if (typeof window.__ag_clear_slash_fn === "function") window.__ag_clear_slash_fn();
+      }
+    } catch {}
+  }
+
+  syncPresetsAndI18nState(ctxObj);
+  if (!window.__nb_preset_scheme_obs_v1) {
+    window.__nb_preset_scheme_obs_v1 = true;
+    try {
+      new MutationObserver(() => {
+        const latest = window.__AG_LAST_PATCH_CTX__ || window.__AG_PATCH_CTX__;
+        if (!latest || !latest.config || !latest.config.presets) return;
+        const root = document.documentElement;
+        const scheme = root.getAttribute("data-ag-color-scheme") === "dark" ? "dark" : "light";
+        const wanted = scheme === "dark" ? (latest.config.presets.dark || "default") : (latest.config.presets.light || "default");
+        if (root.getAttribute("data-ag-preset") !== wanted) root.setAttribute("data-ag-preset", wanted);
+      }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-ag-color-scheme"] });
+    } catch {}
+  }
+
   if (!bridge || !bridge.origin || !bridge.token) return;
   window.__AG_SUITE_BRIDGE__ = bridge;
 
@@ -2204,11 +2293,28 @@ try {
   function isChineseModeActive() {
     const html = document.documentElement;
     if (html && html.getAttribute("data-aura-active") === "false") return false;
+    const ctx = window.__AG_LAST_PATCH_CTX__ || window.__AG_PATCH_CTX__;
+    if (ctx && ctx.config) {
+      if (ctx.config.enabled === false) return false;
+      if (ctx.config.language && ctx.config.language !== "zh-CN") return false;
+    }
     return true;
   }
 
+  function clearSlashMenuDom() {
+    document.querySelectorAll("[data-ag-zh-label]").forEach((el) => el.removeAttribute("data-ag-zh-label"));
+    document.querySelectorAll("[data-ag-custom-skill]").forEach((el) => el.removeAttribute("data-ag-custom-skill"));
+    document.querySelectorAll("[data-ag-zh-desc]").forEach((el) => el.removeAttribute("data-ag-zh-desc"));
+  }
+
+  window.__ag_decorate_slash_fn = () => decorateSlashMenuDom();
+  window.__ag_clear_slash_fn = () => clearSlashMenuDom();
+
   function decorateSlashMenuDom() {
-    if (!isChineseModeActive()) return;
+    if (!isChineseModeActive()) {
+      clearSlashMenuDom();
+      return;
+    }
 
     // 1) 处理下拉菜单项 [data-testid="menu-option-label"] 与同行 [data-testid="menu-option-description"]
     const labels = document.querySelectorAll('[data-testid="menu-option-label"]');

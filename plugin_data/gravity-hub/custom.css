@@ -134,7 +134,7 @@ html[data-ag-color-scheme="dark"] #antigravity\.agentSidePanelInputBox .surface-
   position: relative !important;
   border: var(--nb-glow-width, 1.5px) solid transparent !important;
   background:
-    linear-gradient(#1b1c1f, #1b1c1f) padding-box,
+    linear-gradient(var(--nb-composer-bg, #1b1c1f), var(--nb-composer-bg, #1b1c1f)) padding-box,
     var(--nb-glow-ring-dark, conic-gradient(from var(--gemini-angle), var(--ai-stops-loop))) border-box !important;
   animation: geminiFluidSpin var(--nb-glow-speed, 5.8s) linear infinite !important;
   animation-play-state: var(--nb-glow-play-state, running) !important;
@@ -158,7 +158,7 @@ html:not([data-ag-color-scheme="dark"]) #antigravity\.agentSidePanelInputBox .su
   position: relative !important;
   border: var(--nb-glow-width, 1.5px) solid transparent !important;
   background:
-    linear-gradient(#ffffff, #ffffff) padding-box,
+    linear-gradient(var(--nb-composer-bg-light, #ffffff), var(--nb-composer-bg-light, #ffffff)) padding-box,
     var(--nb-glow-ring-light, conic-gradient(from var(--gemini-angle), var(--ai-stops-loop))) border-box !important;
   animation: geminiFluidSpin var(--nb-glow-speed, 5.8s) linear infinite !important;
   animation-play-state: var(--nb-glow-play-state, running) !important;
@@ -185,12 +185,12 @@ html:not([data-ag-color-scheme="dark"]) #antigravity\.agentSidePanelInputBox:foc
   }
   html[data-ag-color-scheme="dark"] #antigravity\.agentSidePanelInputBox .surface-composer-card {
     background:
-      linear-gradient(#1b1c1f, #1b1c1f) padding-box,
+      linear-gradient(var(--nb-composer-bg, #1b1c1f), var(--nb-composer-bg, #1b1c1f)) padding-box,
       var(--nb-glow-ring-dark, conic-gradient(from var(--gemini-angle) in oklab, var(--ai-stops-loop))) border-box !important;
   }
   html:not([data-ag-color-scheme="dark"]) #antigravity\.agentSidePanelInputBox .surface-composer-card {
     background:
-      linear-gradient(#ffffff, #ffffff) padding-box,
+      linear-gradient(var(--nb-composer-bg-light, #ffffff), var(--nb-composer-bg-light, #ffffff)) padding-box,
       var(--nb-glow-ring-light, conic-gradient(from var(--gemini-angle) in oklab, var(--ai-stops-loop))) border-box !important;
   }
 }
@@ -1781,6 +1781,382 @@ html [data-nb-metrics-tier="hidden"] #ag-live-metrics-pill {
     animation: none !important;
     transition: none !important;
   }
+}
+
+/* ============================================================================
+ * 12. 10 款主流暗夜预设 & 10 款主流日间预设主题色板
+ * ============================================================================ */
+
+/* --- 暗夜预设 4：Tokyo Night --- */
+html[data-ag-color-scheme="dark"][data-ag-preset="tokyo-night"],
+html[data-ag-color-scheme="dark"][data-ag-preset="tokyo-night"] body {
+  --ag-theme-sidebar: #16161e !important;
+  --background: #1a1b26 !important;
+  --content: #1a1b26 !important;
+  --shell: #16161e !important;
+  --foreground: #c0caf5 !important;
+  --sidebar: #16161e !important;
+  --sidebar-secondary: #24283b !important;
+  --sidebar-muted: #1f2335 !important;
+  --sidebar-border: rgba(122, 162, 247, 0.14) !important;
+  --border: rgba(122, 162, 247, 0.16) !important;
+  --vscode-sideBar-background: #16161e !important;
+  --card: #1f2335 !important;
+  --card-border: rgba(122, 162, 247, 0.16) !important;
+  --secondary: rgba(122, 162, 247, 0.12) !important;
+  --secondary-foreground: #a9b1d6 !important;
+  --muted: rgba(122, 162, 247, 0.08) !important;
+  --muted-foreground: #787c99 !important;
+  --primary: #7aa2f7 !important;
+  --nb-composer-bg: #1f2335;
+}
+
+/* --- 暗夜预设 5：Catppuccin Mocha --- */
+html[data-ag-color-scheme="dark"][data-ag-preset="catppuccin-mocha"],
+html[data-ag-color-scheme="dark"][data-ag-preset="catppuccin-mocha"] body {
+  --ag-theme-sidebar: #181825 !important;
+  --background: #1e1e2e !important;
+  --content: #1e1e2e !important;
+  --shell: #181825 !important;
+  --foreground: #cdd6f4 !important;
+  --sidebar: #181825 !important;
+  --sidebar-secondary: #313244 !important;
+  --sidebar-muted: #242437 !important;
+  --sidebar-border: rgba(203, 166, 247, 0.14) !important;
+  --border: rgba(203, 166, 247, 0.16) !important;
+  --vscode-sideBar-background: #181825 !important;
+  --card: #242437 !important;
+  --card-border: rgba(203, 166, 247, 0.16) !important;
+  --secondary: rgba(203, 166, 247, 0.11) !important;
+  --secondary-foreground: #bac2de !important;
+  --muted: rgba(203, 166, 247, 0.07) !important;
+  --muted-foreground: #9399b2 !important;
+  --primary: #cba6f7 !important;
+  --nb-composer-bg: #232336;
+}
+
+/* --- 暗夜预设 6：Dracula --- */
+html[data-ag-color-scheme="dark"][data-ag-preset="dracula"],
+html[data-ag-color-scheme="dark"][data-ag-preset="dracula"] body {
+  --ag-theme-sidebar: #21222c !important;
+  --background: #282a36 !important;
+  --content: #282a36 !important;
+  --shell: #21222c !important;
+  --foreground: #f8f8f2 !important;
+  --sidebar: #21222c !important;
+  --sidebar-secondary: #343746 !important;
+  --sidebar-muted: #2b2d3a !important;
+  --sidebar-border: rgba(189, 147, 249, 0.16) !important;
+  --border: rgba(189, 147, 249, 0.18) !important;
+  --vscode-sideBar-background: #21222c !important;
+  --card: #2d303e !important;
+  --card-border: rgba(189, 147, 249, 0.18) !important;
+  --secondary: rgba(189, 147, 249, 0.12) !important;
+  --secondary-foreground: #d6d8e5 !important;
+  --muted: rgba(98, 114, 164, 0.16) !important;
+  --muted-foreground: #9ea8d1 !important;
+  --primary: #bd93f9 !important;
+  --nb-composer-bg: #2d303e;
+}
+
+/* --- 暗夜预设 7：One Dark Pro --- */
+html[data-ag-color-scheme="dark"][data-ag-preset="one-dark-pro"],
+html[data-ag-color-scheme="dark"][data-ag-preset="one-dark-pro"] body {
+  --ag-theme-sidebar: #21252b !important;
+  --background: #282c34 !important;
+  --content: #282c34 !important;
+  --shell: #21252b !important;
+  --foreground: #abb2bf !important;
+  --sidebar: #21252b !important;
+  --sidebar-secondary: #2c313c !important;
+  --sidebar-muted: #252931 !important;
+  --sidebar-border: rgba(97, 175, 239, 0.14) !important;
+  --border: rgba(255, 255, 255, 0.10) !important;
+  --vscode-sideBar-background: #21252b !important;
+  --card: #2c313c !important;
+  --card-border: rgba(255, 255, 255, 0.10) !important;
+  --secondary: rgba(97, 175, 239, 0.11) !important;
+  --secondary-foreground: #c8ccd4 !important;
+  --muted: rgba(255, 255, 255, 0.05) !important;
+  --muted-foreground: #7f848e !important;
+  --primary: #61afef !important;
+  --nb-composer-bg: #2c313c;
+}
+
+/* --- 暗夜预设 8：Nord 极光 --- */
+html[data-ag-color-scheme="dark"][data-ag-preset="nord"],
+html[data-ag-color-scheme="dark"][data-ag-preset="nord"] body {
+  --ag-theme-sidebar: #272c36 !important;
+  --background: #2e3440 !important;
+  --content: #2e3440 !important;
+  --shell: #272c36 !important;
+  --foreground: #eceff4 !important;
+  --sidebar: #272c36 !important;
+  --sidebar-secondary: #3b4252 !important;
+  --sidebar-muted: #323846 !important;
+  --sidebar-border: rgba(136, 192, 208, 0.16) !important;
+  --border: rgba(136, 192, 208, 0.18) !important;
+  --vscode-sideBar-background: #272c36 !important;
+  --card: #3b4252 !important;
+  --card-border: rgba(136, 192, 208, 0.18) !important;
+  --secondary: rgba(136, 192, 208, 0.12) !important;
+  --secondary-foreground: #d8dee9 !important;
+  --muted: rgba(216, 222, 233, 0.07) !important;
+  --muted-foreground: #9ba6bc !important;
+  --primary: #88c0d0 !important;
+  --nb-composer-bg: #353c4a;
+}
+
+/* --- 暗夜预设 9：GitHub Dark --- */
+html[data-ag-color-scheme="dark"][data-ag-preset="github-dark"],
+html[data-ag-color-scheme="dark"][data-ag-preset="github-dark"] body {
+  --ag-theme-sidebar: #010409 !important;
+  --background: #0d1117 !important;
+  --content: #0d1117 !important;
+  --shell: #010409 !important;
+  --foreground: #e6edf3 !important;
+  --sidebar: #010409 !important;
+  --sidebar-secondary: #161b22 !important;
+  --sidebar-muted: #0d1117 !important;
+  --sidebar-border: #30363d !important;
+  --border: #30363d !important;
+  --vscode-sideBar-background: #010409 !important;
+  --card: #161b22 !important;
+  --card-border: #30363d !important;
+  --secondary: rgba(88, 166, 255, 0.10) !important;
+  --secondary-foreground: #c9d1d9 !important;
+  --muted: rgba(110, 118, 129, 0.14) !important;
+  --muted-foreground: #8b949e !important;
+  --primary: #58a6ff !important;
+  --nb-composer-bg: #161b22;
+}
+
+/* --- 暗夜预设 10：Gruvbox Dark --- */
+html[data-ag-color-scheme="dark"][data-ag-preset="gruvbox-dark"],
+html[data-ag-color-scheme="dark"][data-ag-preset="gruvbox-dark"] body {
+  --ag-theme-sidebar: #1d2021 !important;
+  --background: #282828 !important;
+  --content: #282828 !important;
+  --shell: #1d2021 !important;
+  --foreground: #ebdbb2 !important;
+  --sidebar: #1d2021 !important;
+  --sidebar-secondary: #3c3836 !important;
+  --sidebar-muted: #32302f !important;
+  --sidebar-border: rgba(235, 219, 178, 0.14) !important;
+  --border: rgba(235, 219, 178, 0.16) !important;
+  --vscode-sideBar-background: #1d2021 !important;
+  --card: #32302f !important;
+  --card-border: rgba(235, 219, 178, 0.16) !important;
+  --secondary: rgba(250, 189, 47, 0.12) !important;
+  --secondary-foreground: #d5c4a1 !important;
+  --muted: rgba(235, 219, 178, 0.06) !important;
+  --muted-foreground: #a89984 !important;
+  --primary: #fabd2f !important;
+  --nb-composer-bg: #32302f;
+}
+
+/* 暗夜新预设侧边栏通用背景绑定 */
+html[data-ag-color-scheme="dark"][data-ag-preset="tokyo-night"] .bg-sidebar,
+html[data-ag-color-scheme="dark"][data-ag-preset="tokyo-night"] aside,
+html[data-ag-color-scheme="dark"][data-ag-preset="catppuccin-mocha"] .bg-sidebar,
+html[data-ag-color-scheme="dark"][data-ag-preset="catppuccin-mocha"] aside,
+html[data-ag-color-scheme="dark"][data-ag-preset="dracula"] .bg-sidebar,
+html[data-ag-color-scheme="dark"][data-ag-preset="dracula"] aside,
+html[data-ag-color-scheme="dark"][data-ag-preset="one-dark-pro"] .bg-sidebar,
+html[data-ag-color-scheme="dark"][data-ag-preset="one-dark-pro"] aside,
+html[data-ag-color-scheme="dark"][data-ag-preset="nord"] .bg-sidebar,
+html[data-ag-color-scheme="dark"][data-ag-preset="nord"] aside,
+html[data-ag-color-scheme="dark"][data-ag-preset="github-dark"] .bg-sidebar,
+html[data-ag-color-scheme="dark"][data-ag-preset="github-dark"] aside,
+html[data-ag-color-scheme="dark"][data-ag-preset="gruvbox-dark"] .bg-sidebar,
+html[data-ag-color-scheme="dark"][data-ag-preset="gruvbox-dark"] aside {
+  background-color: var(--ag-theme-sidebar) !important;
+}
+
+/* --- 日间预设 4：Catppuccin Latte --- */
+html:not([data-ag-color-scheme="dark"])[data-ag-preset="catppuccin-latte"],
+html:not([data-ag-color-scheme="dark"])[data-ag-preset="catppuccin-latte"] body {
+  --ag-theme-sidebar: #e6e9ef !important;
+  --background: #eff1f5 !important;
+  --content: #eff1f5 !important;
+  --shell: #e6e9ef !important;
+  --foreground: #4c4f69 !important;
+  --sidebar: #e6e9ef !important;
+  --sidebar-secondary: #dce0e8 !important;
+  --sidebar-muted: #e6e9ef !important;
+  --sidebar-border: rgba(76, 79, 105, 0.14) !important;
+  --border: rgba(76, 79, 105, 0.16) !important;
+  --vscode-sideBar-background: #e6e9ef !important;
+  --card: #ffffff !important;
+  --card-border: rgba(76, 79, 105, 0.14) !important;
+  --secondary: rgba(30, 102, 245, 0.08) !important;
+  --secondary-foreground: #5c5f77 !important;
+  --muted: rgba(76, 79, 105, 0.06) !important;
+  --muted-foreground: #6c6f85 !important;
+  --primary: #1e66f5 !important;
+  --nb-composer-bg-light: #ffffff;
+}
+
+/* --- 日间预设 5：GitHub Light --- */
+html:not([data-ag-color-scheme="dark"])[data-ag-preset="github-light"],
+html:not([data-ag-color-scheme="dark"])[data-ag-preset="github-light"] body {
+  --ag-theme-sidebar: #f6f8fa !important;
+  --background: #ffffff !important;
+  --content: #ffffff !important;
+  --shell: #f6f8fa !important;
+  --foreground: #1f2328 !important;
+  --sidebar: #f6f8fa !important;
+  --sidebar-secondary: #eef1f4 !important;
+  --sidebar-muted: #f6f8fa !important;
+  --sidebar-border: #d0d7de !important;
+  --border: #d0d7de !important;
+  --vscode-sideBar-background: #f6f8fa !important;
+  --card: #ffffff !important;
+  --card-border: #d0d7de !important;
+  --secondary: rgba(9, 105, 218, 0.08) !important;
+  --secondary-foreground: #424a53 !important;
+  --muted: rgba(175, 184, 193, 0.2) !important;
+  --muted-foreground: #656d76 !important;
+  --primary: #0969da !important;
+  --nb-composer-bg-light: #ffffff;
+}
+
+/* --- 日间预设 6：Solarized Light --- */
+html:not([data-ag-color-scheme="dark"])[data-ag-preset="solarized-light"],
+html:not([data-ag-color-scheme="dark"])[data-ag-preset="solarized-light"] body {
+  --ag-theme-sidebar: #eee8d5 !important;
+  --background: #fdf6e3 !important;
+  --content: #fdf6e3 !important;
+  --shell: #eee8d5 !important;
+  --foreground: #3b4b52 !important;
+  --sidebar: #eee8d5 !important;
+  --sidebar-secondary: #e5dec9 !important;
+  --sidebar-muted: #eee8d5 !important;
+  --sidebar-border: rgba(101, 123, 131, 0.22) !important;
+  --border: rgba(101, 123, 131, 0.22) !important;
+  --vscode-sideBar-background: #eee8d5 !important;
+  --card: #fffaf0 !important;
+  --card-border: rgba(101, 123, 131, 0.2) !important;
+  --secondary: rgba(38, 139, 210, 0.10) !important;
+  --secondary-foreground: #586e75 !important;
+  --muted: rgba(147, 161, 161, 0.14) !important;
+  --muted-foreground: #657b83 !important;
+  --primary: #268bd2 !important;
+  --nb-composer-bg-light: #fffdf6;
+}
+
+/* --- 日间预设 7：Tokyo Night Day --- */
+html:not([data-ag-color-scheme="dark"])[data-ag-preset="tokyo-day"],
+html:not([data-ag-color-scheme="dark"])[data-ag-preset="tokyo-day"] body {
+  --ag-theme-sidebar: #d5d6db !important;
+  --background: #e1e2e7 !important;
+  --content: #e1e2e7 !important;
+  --shell: #d5d6db !important;
+  --foreground: #3760bf !important;
+  --sidebar: #d5d6db !important;
+  --sidebar-secondary: #c8cad1 !important;
+  --sidebar-muted: #d5d6db !important;
+  --sidebar-border: rgba(55, 96, 191, 0.16) !important;
+  --border: rgba(55, 96, 191, 0.18) !important;
+  --vscode-sideBar-background: #d5d6db !important;
+  --card: #ebecf0 !important;
+  --card-border: rgba(55, 96, 191, 0.16) !important;
+  --secondary: rgba(46, 125, 233, 0.10) !important;
+  --secondary-foreground: #36415c !important;
+  --muted: rgba(55, 96, 191, 0.08) !important;
+  --muted-foreground: #6172b0 !important;
+  --primary: #2e7de9 !important;
+  --nb-composer-bg-light: #f2f3f7;
+}
+
+/* --- 日间预设 8：Rosé Pine Dawn --- */
+html:not([data-ag-color-scheme="dark"])[data-ag-preset="rose-pine-dawn"],
+html:not([data-ag-color-scheme="dark"])[data-ag-preset="rose-pine-dawn"] body {
+  --ag-theme-sidebar: #f2e9e1 !important;
+  --background: #faf4ed !important;
+  --content: #faf4ed !important;
+  --shell: #f2e9e1 !important;
+  --foreground: #575279 !important;
+  --sidebar: #f2e9e1 !important;
+  --sidebar-secondary: #eae0d6 !important;
+  --sidebar-muted: #f2e9e1 !important;
+  --sidebar-border: rgba(87, 82, 121, 0.14) !important;
+  --border: rgba(87, 82, 121, 0.16) !important;
+  --vscode-sideBar-background: #f2e9e1 !important;
+  --card: #fffaf3 !important;
+  --card-border: rgba(87, 82, 121, 0.14) !important;
+  --secondary: rgba(180, 99, 122, 0.10) !important;
+  --secondary-foreground: #6e6a86 !important;
+  --muted: rgba(152, 147, 165, 0.12) !important;
+  --muted-foreground: #797593 !important;
+  --primary: #b4637a !important;
+  --nb-composer-bg-light: #fffaf3;
+}
+
+/* --- 日间预设 9：Nord Snow Storm --- */
+html:not([data-ag-color-scheme="dark"])[data-ag-preset="nord-snow"],
+html:not([data-ag-color-scheme="dark"])[data-ag-preset="nord-snow"] body {
+  --ag-theme-sidebar: #e5e9f0 !important;
+  --background: #eceff4 !important;
+  --content: #eceff4 !important;
+  --shell: #e5e9f0 !important;
+  --foreground: #2e3440 !important;
+  --sidebar: #e5e9f0 !important;
+  --sidebar-secondary: #d8dee9 !important;
+  --sidebar-muted: #e5e9f0 !important;
+  --sidebar-border: rgba(46, 52, 64, 0.14) !important;
+  --border: rgba(46, 52, 64, 0.15) !important;
+  --vscode-sideBar-background: #e5e9f0 !important;
+  --card: #f8fafc !important;
+  --card-border: rgba(46, 52, 64, 0.12) !important;
+  --secondary: rgba(94, 129, 172, 0.11) !important;
+  --secondary-foreground: #3b4252 !important;
+  --muted: rgba(76, 86, 106, 0.08) !important;
+  --muted-foreground: #4c566a !important;
+  --primary: #5e81ac !important;
+  --nb-composer-bg-light: #f8fafc;
+}
+
+/* --- 日间预设 10：Everforest Light --- */
+html:not([data-ag-color-scheme="dark"])[data-ag-preset="everforest-light"],
+html:not([data-ag-color-scheme="dark"])[data-ag-preset="everforest-light"] body {
+  --ag-theme-sidebar: #f4f0d9 !important;
+  --background: #fdf6e3 !important;
+  --content: #fdf6e3 !important;
+  --shell: #f4f0d9 !important;
+  --foreground: #5c6a72 !important;
+  --sidebar: #f4f0d9 !important;
+  --sidebar-secondary: #efebd4 !important;
+  --sidebar-muted: #f4f0d9 !important;
+  --sidebar-border: rgba(92, 106, 114, 0.16) !important;
+  --border: rgba(92, 106, 114, 0.18) !important;
+  --vscode-sideBar-background: #f4f0d9 !important;
+  --card: #fffbef !important;
+  --card-border: rgba(92, 106, 114, 0.16) !important;
+  --secondary: rgba(141, 161, 1, 0.10) !important;
+  --secondary-foreground: #708089 !important;
+  --muted: rgba(147, 159, 145, 0.14) !important;
+  --muted-foreground: #829181 !important;
+  --primary: #8da101 !important;
+  --nb-composer-bg-light: #fffbef;
+}
+
+/* 日间新预设侧边栏与背景统一绑定 */
+html:not([data-ag-color-scheme="dark"])[data-ag-preset="catppuccin-latte"] .bg-sidebar,
+html:not([data-ag-color-scheme="dark"])[data-ag-preset="catppuccin-latte"] aside,
+html:not([data-ag-color-scheme="dark"])[data-ag-preset="github-light"] .bg-sidebar,
+html:not([data-ag-color-scheme="dark"])[data-ag-preset="github-light"] aside,
+html:not([data-ag-color-scheme="dark"])[data-ag-preset="solarized-light"] .bg-sidebar,
+html:not([data-ag-color-scheme="dark"])[data-ag-preset="solarized-light"] aside,
+html:not([data-ag-color-scheme="dark"])[data-ag-preset="tokyo-day"] .bg-sidebar,
+html:not([data-ag-color-scheme="dark"])[data-ag-preset="tokyo-day"] aside,
+html:not([data-ag-color-scheme="dark"])[data-ag-preset="rose-pine-dawn"] .bg-sidebar,
+html:not([data-ag-color-scheme="dark"])[data-ag-preset="rose-pine-dawn"] aside,
+html:not([data-ag-color-scheme="dark"])[data-ag-preset="nord-snow"] .bg-sidebar,
+html:not([data-ag-color-scheme="dark"])[data-ag-preset="nord-snow"] aside,
+html:not([data-ag-color-scheme="dark"])[data-ag-preset="everforest-light"] .bg-sidebar,
+html:not([data-ag-color-scheme="dark"])[data-ag-preset="everforest-light"] aside {
+  background-color: var(--ag-theme-sidebar) !important;
 }
 
 
