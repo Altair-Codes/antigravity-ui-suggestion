@@ -63,9 +63,9 @@ const DEFAULT_AUTO_SWITCH_CFG = {
   enabled: false,
   poolKey: "gemini-weekly",
   weeklyEnabled: true,
-  thresholdPct: 10,
+  thresholdPct: 5,
   fiveHourEnabled: true,
-  fiveHourThresholdPct: 10,
+  fiveHourThresholdPct: 0,
   cooldownMinutes: 10,
   reloadWindow: true,
   accountOrder: [],
@@ -73,8 +73,21 @@ const DEFAULT_AUTO_SWITCH_CFG = {
   lastSwitchFrom: "",
   lastSwitchTo: "",
   lastTriggerReason: "",
+  switchHistory: [],
   accountQuotaSnapshots: {}
 };
+
+function normalizePct(val, fallback) {
+  const n = Number(val);
+  if (!Number.isFinite(n) || val === "" || val === null || val === undefined) return fallback;
+  return Math.max(0, Math.min(95, Math.round(n)));
+}
+
+function normalizeCooldown(val, fallback = 10) {
+  const n = Number(val);
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  return Math.max(1, Math.min(180, Math.round(n)));
+}
 
 function compareSemver(a, b) {
   const pa = String(a || "0.0.0").replace(/^v/i, "").split(".").map((n) => parseInt(n, 10) || 0);
@@ -689,6 +702,10 @@ export function initSuiteExtensions({
     }
   }
 
+  let hostAgentBusyState = { busy: false, updatedAt: 0 };
+  let breachStreak = { email: "", ruleKey: "", count: 0, firstAt: 0, lastAt: 0 };
+  let confirmRecheckTimer = null;
+
   function loadAutoSwitchConfig() {
     const raw = readJsonSafe(autoSwitchFile, {});
     const weeklyEnabled = raw?.weeklyEnabled !== false;
@@ -697,10 +714,11 @@ export function initSuiteExtensions({
       ...DEFAULT_AUTO_SWITCH_CFG,
       ...(raw && typeof raw === "object" ? raw : {}),
       weeklyEnabled,
-      thresholdPct: Math.max(1, Math.min(95, Number(raw?.thresholdPct ?? DEFAULT_AUTO_SWITCH_CFG.thresholdPct) || 10)),
+      thresholdPct: normalizePct(raw?.thresholdPct, DEFAULT_AUTO_SWITCH_CFG.thresholdPct),
       fiveHourEnabled,
-      fiveHourThresholdPct: Math.max(1, Math.min(95, Number(raw?.fiveHourThresholdPct ?? DEFAULT_AUTO_SWITCH_CFG.fiveHourThresholdPct) || 10)),
-      cooldownMinutes: Math.max(1, Math.min(180, Number(raw?.cooldownMinutes ?? DEFAULT_AUTO_SWITCH_CFG.cooldownMinutes) || 10))
+      fiveHourThresholdPct: normalizePct(raw?.fiveHourThresholdPct, DEFAULT_AUTO_SWITCH_CFG.fiveHourThresholdPct),
+      cooldownMinutes: normalizeCooldown(raw?.cooldownMinutes, DEFAULT_AUTO_SWITCH_CFG.cooldownMinutes),
+      switchHistory: Array.isArray(raw?.switchHistory) ? raw.switchHistory.slice(0, 10) : []
     };
   }
 
@@ -711,15 +729,20 @@ export function initSuiteExtensions({
       ...(typeof patch?.enabled === "boolean" ? { enabled: patch.enabled } : {}),
       ...(typeof patch?.poolKey === "string" && patch.poolKey.trim() ? { poolKey: patch.poolKey.trim() } : {}),
       ...(typeof patch?.weeklyEnabled === "boolean" ? { weeklyEnabled: patch.weeklyEnabled } : {}),
-      ...(patch?.thresholdPct !== undefined ? { thresholdPct: Math.max(1, Math.min(95, Math.round(Number(patch.thresholdPct) || 10))) } : {}),
+      ...(patch?.thresholdPct !== undefined ? { thresholdPct: normalizePct(patch.thresholdPct, cur.thresholdPct) } : {}),
       ...(typeof patch?.fiveHourEnabled === "boolean" ? { fiveHourEnabled: patch.fiveHourEnabled } : {}),
-      ...(patch?.fiveHourThresholdPct !== undefined ? { fiveHourThresholdPct: Math.max(1, Math.min(95, Math.round(Number(patch.fiveHourThresholdPct) || 10))) } : {}),
-      ...(patch?.cooldownMinutes !== undefined ? { cooldownMinutes: Math.max(1, Math.min(180, Math.round(Number(patch.cooldownMinutes) || 10))) } : {}),
+      ...(patch?.fiveHourThresholdPct !== undefined
+        ? { fiveHourThresholdPct: normalizePct(patch.fiveHourThresholdPct, cur.fiveHourThresholdPct) }
+        : {}),
+      ...(patch?.cooldownMinutes !== undefined
+        ? { cooldownMinutes: normalizeCooldown(patch.cooldownMinutes, cur.cooldownMinutes) }
+        : {}),
       ...(typeof patch?.reloadWindow === "boolean" ? { reloadWindow: patch.reloadWindow } : {}),
       ...(Array.isArray(patch?.accountOrder)
         ? { accountOrder: [...new Set(patch.accountOrder.map((x) => String(x || "").trim()).filter(Boolean))] }
         : {})
     };
+    breachStreak = { email: "", ruleKey: "", count: 0, firstAt: 0, lastAt: 0 };
     writeJsonSafe(autoSwitchFile, next);
     return next;
   }
@@ -920,19 +943,36 @@ export function initSuiteExtensions({
     }
   }
 
-  function extractMonitoredPoolMetrics(quotaPayload, poolKey) {
+  function extractMonitoredPoolMetrics(quotaPayload, poolKey, now = Date.now()) {
     const groups = Array.isArray(quotaPayload?.groups) ? quotaPayload.groups : [];
     const entries = [];
     for (const g of groups) {
-      const wPct = typeof g.weeklyPct === "number" ? g.weeklyPct : (typeof g.pct === "number" ? g.pct : null);
-      const hPct = typeof g.fiveHourPct === "number" ? g.fiveHourPct : null;
-      if (wPct === null && hPct === null) continue;
+      const rawW = typeof g.weeklyPct === "number" ? g.weeklyPct : (typeof g.pct === "number" ? g.pct : null);
+      const rawH = typeof g.fiveHourPct === "number" ? g.fiveHourPct : null;
+      if (rawW === null && rawH === null) continue;
+
+      const wResetTime = g.weeklyResetTime || g.resetTime || "";
+      const wResetMs = wResetTime ? Date.parse(wResetTime) : NaN;
+      const weeklyRecovered = Number.isFinite(wResetMs) && now > wResetMs;
+      const wPct = rawW !== null ? (weeklyRecovered ? 100 : rawW) : null;
+
+      const hResetTime = g.fiveHourResetTime || "";
+      const hResetMs = hResetTime ? Date.parse(hResetTime) : NaN;
+      const fiveHourRecovered = Number.isFinite(hResetMs) && now > hResetMs;
+      const hPct = rawH !== null ? (fiveHourRecovered ? 100 : rawH) : null;
+
       entries.push({
         bucketId: g.weeklyBucketId || g.key || "",
         key: g.key || "",
         label: g.label || g.key || "",
         weeklyPct: wPct,
-        fiveHourPct: hPct
+        rawWeeklyPct: rawW,
+        weeklyRecovered,
+        weeklyResetTime: wResetTime,
+        fiveHourPct: hPct,
+        rawFiveHourPct: rawH,
+        fiveHourRecovered,
+        fiveHourResetTime: hResetTime
       });
     }
     if (entries.length === 0) return { weekly: null, fiveHour: null };
@@ -959,14 +999,39 @@ export function initSuiteExtensions({
     };
   }
 
-  function evaluateAutoSwitch(quotaPayload) {
+  function resetBreachStreak() {
+    breachStreak = { email: "", ruleKey: "", count: 0, firstAt: 0, lastAt: 0 };
+    if (confirmRecheckTimer) {
+      clearTimeout(confirmRecheckTimer);
+      confirmRecheckTimer = null;
+    }
+  }
+
+  function scheduleConfirmRecheck() {
+    if (confirmRecheckTimer) return;
+    if (!process.env.ANTIGRAVITY_LS_ADDRESS || !process.env.ANTIGRAVITY_CSRF_TOKEN) return;
+    confirmRecheckTimer = setTimeout(() => {
+      confirmRecheckTimer = null;
+      fetchQuotaFromLanguageServer(true).catch(() => {});
+    }, 4000);
+    if (typeof confirmRecheckTimer.unref === "function") confirmRecheckTimer.unref();
+  }
+
+  function evaluateAutoSwitch(quotaPayload, opts = {}) {
+    const now = Number(opts?.now) || Date.now();
+    if (typeof opts?.agentBusy === "boolean") {
+      hostAgentBusyState = { busy: opts.agentBusy, updatedAt: now };
+    } else if (typeof quotaPayload?.agentBusy === "boolean") {
+      hostAgentBusyState = { busy: quotaPayload.agentBusy, updatedAt: now };
+    }
+
     const cfg = loadAutoSwitchConfig();
     const curEmail = String(quotaPayload?.email || "").trim();
 
     // 记录当前账号各模型池的完整每周/5h快照与重置时间，方便自动重置判定与切号挑选
     if (curEmail && Array.isArray(quotaPayload?.groups)) {
       const snap = { ...(cfg.accountQuotaSnapshots || {}) };
-      const emailSnap = { updatedAt: Date.now(), pools: {} };
+      const emailSnap = { updatedAt: now, pools: {} };
       for (const g of quotaPayload.groups) {
         const k = g.weeklyBucketId || g.key;
         if (!k) continue;
@@ -985,64 +1050,121 @@ export function initSuiteExtensions({
       writeJsonSafe(autoSwitchFile, cfg);
     }
 
-    if (!cfg.enabled || !accountVault || typeof accountVault.switchAccount !== "function") {
+    // 闸门 1：总开关 & 至少启用一条规则 & switchAccount 可用
+    const checkWeekly = cfg.weeklyEnabled !== false;
+    const checkFiveHour = cfg.fiveHourEnabled !== false;
+    if (!cfg.enabled || (!checkWeekly && !checkFiveHour) || !accountVault || typeof accountVault.switchAccount !== "function") {
+      resetBreachStreak();
       return { triggered: false };
     }
 
-    const metrics = extractMonitoredPoolMetrics(quotaPayload, cfg.poolKey);
-    const weeklyHit = Boolean(cfg.weeklyEnabled !== false && metrics.weekly && metrics.weekly.pct <= cfg.thresholdPct);
-    const fiveHourHit = Boolean(cfg.fiveHourEnabled !== false && metrics.fiveHour && metrics.fiveHour.pct <= cfg.fiveHourThresholdPct);
+    // 闸门 2：账号一致性核验（防止切号过渡期旧账号残留数据误触发）
+    const vault = getVaultSnapshot();
+    const activeEmail = vault.currentEmail || "";
+    if (!curEmail || (activeEmail && curEmail.toLowerCase() !== activeEmail.toLowerCase())) {
+      resetBreachStreak();
+      return { triggered: false, reason: "account_mismatch" };
+    }
+
+    // 闸门 3：结合 resetTime 过期自动恢复判定 + 精确 0~95 阈值比较
+    const metrics = extractMonitoredPoolMetrics(quotaPayload, cfg.poolKey, now);
+    const weeklyHit = Boolean(checkWeekly && metrics.weekly && !metrics.weekly.weeklyRecovered && metrics.weekly.pct <= cfg.thresholdPct);
+    const fiveHourHit = Boolean(checkFiveHour && metrics.fiveHour && !metrics.fiveHour.fiveHourRecovered && metrics.fiveHour.pct <= cfg.fiveHourThresholdPct);
     const monitored = weeklyHit ? metrics.weekly : fiveHourHit ? metrics.fiveHour : (metrics.weekly || metrics.fiveHour);
 
     if (!weeklyHit && !fiveHourHit) {
+      resetBreachStreak();
       return { triggered: false, monitored, metrics };
     }
 
-    const now = Date.now();
+    // 闸门 4：连续 2 次独立实测确认（防单次接口毛刺或瞬间抖动误切）
+    const emailLower = curEmail.toLowerCase();
+    const ruleKey = [
+      weeklyHit ? `w:${metrics.weekly.bucketId}` : "",
+      fiveHourHit ? `h:${metrics.fiveHour.bucketId}` : ""
+    ].filter(Boolean).join("+");
+
+    const sameStreak =
+      breachStreak.email === emailLower &&
+      breachStreak.ruleKey === ruleKey &&
+      now - breachStreak.lastAt <= 180000;
+
+    if (!sameStreak) {
+      breachStreak = { email: emailLower, ruleKey, count: 1, firstAt: now, lastAt: now };
+      scheduleConfirmRecheck();
+      return { triggered: false, reason: "confirming_1_of_2", pendingConfirm: true, monitored, metrics };
+    }
+    if (now - breachStreak.firstAt < 3000) {
+      breachStreak.lastAt = now;
+      scheduleConfirmRecheck();
+      return { triggered: false, reason: "confirming_1_of_2", pendingConfirm: true, monitored, metrics };
+    }
+    breachStreak.count = Math.max(2, breachStreak.count + 1);
+    breachStreak.lastAt = now;
+
+    // 闸门 5：智能体空闲保护（回复/代码修改期间延后切号，绝不中途打断）
+    const isAgentBusy = hostAgentBusyState.busy && now - hostAgentBusyState.updatedAt < 45000;
+    if (isAgentBusy) {
+      return { triggered: false, reason: "deferred_agent_busy", deferred: true, monitored, metrics };
+    }
+
+    // 闸门 6：切号冷却保护
     const cooldownMs = cfg.cooldownMinutes * 60 * 1000;
     if (cfg.lastSwitchAt && now - cfg.lastSwitchAt < cooldownMs) {
       return { triggered: false, reason: "cooldown", monitored, metrics };
     }
 
-    const vault = getVaultSnapshot();
-    const activeEmail = curEmail || vault.currentEmail;
+    // 闸门 7：严格顺位候选校验（必须存在不同账号且未双限额同时不足）
     const orderedAccounts = buildOrderedAccounts(vault.accounts, cfg.accountOrder);
     if (orderedAccounts.length < 2) {
       return { triggered: false, reason: "no_candidate_accounts", monitored, metrics };
     }
 
+    const effectiveActive = activeEmail || curEmail;
     const target = pickNextCandidate(
       orderedAccounts,
-      activeEmail,
+      effectiveActive,
       monitored?.bucketId || cfg.poolKey,
       cfg,
       cfg.accountQuotaSnapshots || {},
       now
     );
-    if (!target) {
+    if (!target || !target.email || target.email.toLowerCase() === effectiveActive.toLowerCase()) {
       return { triggered: false, reason: "all_candidates_below_threshold", monitored, metrics };
     }
 
     try {
-      // 切换前先自动保存当前账号最新凭据
+      // 切换前先自动保存当前账号最新凭据并清理确认计数
       if (typeof accountVault.saveCurrentAccount === "function") {
         try { accountVault.saveCurrentAccount(); } catch {}
       }
       const switched = accountVault.switchAccount(target.email);
+      const toEmail = switched.email || target.email;
       if (typeof recordAccountSwitch === "function") {
-        try { recordAccountSwitch(switched.email || target.email); } catch {}
+        try { recordAccountSwitch(toEmail); } catch {}
       }
       const reasonParts = [];
       if (weeklyHit) reasonParts.push(`${metrics.weekly.label} 每周剩余 ${metrics.weekly.pct}% ≤ ${cfg.thresholdPct}%`);
       if (fiveHourHit) reasonParts.push(`${metrics.fiveHour.label} 5小时剩余 ${metrics.fiveHour.pct}% ≤ ${cfg.fiveHourThresholdPct}%`);
       const reason = reasonParts.join(" 且 ");
+      const historyEntry = {
+        at: now,
+        fromEmail: effectiveActive,
+        toEmail,
+        reason,
+        weeklyPct: metrics.weekly?.pct ?? null,
+        fiveHourPct: metrics.fiveHour?.pct ?? null
+      };
+      const prevHistory = Array.isArray(cfg.switchHistory) ? cfg.switchHistory : [];
       writeJsonSafe(autoSwitchFile, {
         ...cfg,
         lastSwitchAt: now,
-        lastSwitchFrom: activeEmail,
-        lastSwitchTo: switched.email || target.email,
-        lastTriggerReason: reason
+        lastSwitchFrom: effectiveActive,
+        lastSwitchTo: toEmail,
+        lastTriggerReason: reason,
+        switchHistory: [historyEntry, ...prevHistory].slice(0, 10)
       });
+      resetBreachStreak();
 
       if (cfg.reloadWindow && typeof reloadHostWindow === "function") {
         setTimeout(() => {
@@ -1052,8 +1174,8 @@ export function initSuiteExtensions({
 
       return {
         triggered: true,
-        fromEmail: activeEmail,
-        toEmail: switched.email || target.email,
+        fromEmail: effectiveActive,
+        toEmail,
         reason,
         monitored,
         metrics
@@ -1298,14 +1420,19 @@ export function initSuiteExtensions({
     return await lsQuotaInFlight;
   }
 
-  function updateQuotaCache(payload) {
+  function updateQuotaCache(payload, opts = {}) {
     if (!payload || typeof payload !== "object") return { ok: false, error: "Invalid quota payload" };
     cachedQuota = {
       ...payload,
-      updatedAt: Date.now()
+      updatedAt: Number(opts?.now) || Date.now()
     };
     try { writeJsonSafe(quotaCacheFile, cachedQuota); } catch {}
-    lastAutoSwitchResult = evaluateAutoSwitch(cachedQuota);
+    lastAutoSwitchResult = evaluateAutoSwitch(cachedQuota, {
+      ...opts,
+      agentBusy: typeof opts?.agentBusy === "boolean"
+        ? opts.agentBusy
+        : (typeof payload.agentBusy === "boolean" ? payload.agentBusy : undefined)
+    });
     return { ok: true, updatedAt: cachedQuota.updatedAt, autoSwitch: lastAutoSwitchResult };
   }
 
@@ -1330,13 +1457,19 @@ export function initSuiteExtensions({
   const lsPollTimer = setInterval(() => { fetchQuotaFromLanguageServer(false).catch(() => {}); }, 30000);
   if (typeof lsPollTimer.unref === "function") lsPollTimer.unref();
 
-  function getAutoSwitchState() {
+  function getAutoSwitchState(opts = {}) {
+    const now = Number(opts?.now) || Date.now();
+    if (typeof opts?.busy === "boolean") {
+      hostAgentBusyState = { busy: opts.busy, updatedAt: now };
+      if (!opts.busy && lastAutoSwitchResult?.reason === "deferred_agent_busy" && cachedQuota) {
+        lastAutoSwitchResult = evaluateAutoSwitch(cachedQuota, { agentBusy: false, now });
+      }
+    }
     const cfg = loadAutoSwitchConfig();
     const vault = getVaultSnapshot();
     const activeEmail = vault.currentEmail || cachedQuota?.email || "";
     const ordered = buildOrderedAccounts(vault.accounts, cfg.accountOrder);
     const monitoredBucket = cfg.poolKey === "any-weekly" ? "" : cfg.poolKey;
-    const now = Date.now();
     const nextCand = pickNextCandidate(
       ordered,
       activeEmail,
@@ -1351,7 +1484,13 @@ export function initSuiteExtensions({
       cfg.lastSwitchAt && now - cfg.lastSwitchAt < cooldownMs
         ? Math.ceil((cooldownMs - (now - cfg.lastSwitchAt)) / 1000)
         : 0;
-    const metrics = cachedQuota ? extractMonitoredPoolMetrics(cachedQuota, cfg.poolKey) : { weekly: null, fiveHour: null };
+    const metrics = cachedQuota ? extractMonitoredPoolMetrics(cachedQuota, cfg.poolKey, now) : { weekly: null, fiveHour: null };
+    const pendingConfirm = Boolean(
+      lastAutoSwitchResult?.reason === "confirming_1_of_2" &&
+      breachStreak.count > 0 &&
+      now - breachStreak.lastAt <= 180000
+    );
+    const deferredBusy = Boolean(lastAutoSwitchResult?.reason === "deferred_agent_busy");
     return {
       ok: true,
       config: {
@@ -1363,6 +1502,10 @@ export function initSuiteExtensions({
       monitoredFiveHourPct: metrics.fiveHour ? metrics.fiveHour.pct : null,
       monitoredFiveHourLabel: metrics.fiveHour ? metrics.fiveHour.label : "",
       cooldownRemainingSec,
+      pendingConfirm,
+      deferredBusy,
+      switchHistory: Array.isArray(cfg.switchHistory) ? cfg.switchHistory : [],
+      lastEvaluation: lastAutoSwitchResult,
       vaultCount: ordered.length,
       currentEmail: activeEmail,
       nextTargetEmail,
@@ -1554,9 +1697,15 @@ sleep 1
       } else if (urlObj.pathname === "/api/suite-quota" && req.method === "GET") {
         result = await getQuotaCacheAsync({ force: urlObj.searchParams.get("refresh") === "1" });
       } else if (urlObj.pathname === "/api/suite-quota" && req.method === "POST") {
-        result = updateQuotaCache(bodyObj);
+        result = updateQuotaCache(bodyObj, {
+          now: Number(bodyObj?.now) || undefined,
+          agentBusy: typeof bodyObj?.agentBusy === "boolean" ? bodyObj.agentBusy : undefined
+        });
       } else if (urlObj.pathname === "/api/suite-auto-switch" && req.method === "GET") {
-        result = getAutoSwitchState();
+        const bParam = urlObj.searchParams.get("busy");
+        result = getAutoSwitchState({
+          busy: bParam === "1" ? true : (bParam === "0" ? false : undefined)
+        });
       } else if (urlObj.pathname === "/api/suite-auto-switch" && req.method === "POST") {
         saveAutoSwitchConfig(bodyObj);
         result = getAutoSwitchState();
@@ -1626,9 +1775,19 @@ sleep 1
       const force = Boolean(req?.url && String(req.url).includes("refresh=1"));
       return await getQuotaCacheAsync({ force });
     }, "GET");
-    Oe.api("/api/suite-quota", (e) => updateQuotaCache(parseBody(e)), "POST");
+    Oe.api("/api/suite-quota", (e) => {
+      const b = parseBody(e);
+      return updateQuotaCache(b, {
+        now: Number(b?.now) || undefined,
+        agentBusy: typeof b?.agentBusy === "boolean" ? b.agentBusy : undefined
+      });
+    }, "POST");
 
-    Oe.api("/api/suite-auto-switch", () => getAutoSwitchState(), "GET");
+    Oe.api("/api/suite-auto-switch", (e, req) => {
+      const u = String(req?.url || "");
+      const busy = u.includes("busy=1") ? true : (u.includes("busy=0") ? false : undefined);
+      return getAutoSwitchState({ busy });
+    }, "GET");
     Oe.api("/api/suite-auto-switch", (e) => {
       saveAutoSwitchConfig(parseBody(e));
       return getAutoSwitchState();

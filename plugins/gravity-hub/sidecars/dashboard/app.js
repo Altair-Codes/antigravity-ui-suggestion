@@ -342,8 +342,8 @@
 
       const weeklyOn = cfg.weeklyEnabled !== false;
       const fiveHourOn = cfg.fiveHourEnabled !== false;
-      const weeklyTh = cfg.thresholdPct ?? 10;
-      const fiveHourTh = cfg.fiveHourThresholdPct ?? 10;
+      const weeklyTh = Number.isFinite(Number(cfg.thresholdPct)) ? Number(cfg.thresholdPct) : 5;
+      const fiveHourTh = Number.isFinite(Number(cfg.fiveHourThresholdPct)) ? Number(cfg.fiveHourThresholdPct) : 0;
 
       if (enEl) enEl.checked = Boolean(cfg.enabled);
       if (poolEl) poolEl.value = cfg.poolKey || "gemini-weekly";
@@ -378,14 +378,19 @@
           monParts.length > 0
             ? `当前监控池「${j.monitoredLabel || j.monitoredFiveHourLabel || cfg.poolKey}」实时余量 ${monParts.join(" / ")} · `
             : "";
+        const guardNote = j.deferredBusy
+          ? " · ⏳ 已触达阈值，等待当前对话任务完成后自动切号"
+          : j.pendingConfirm
+          ? " · 🔍 已检测到初次触线，正在进行 2 次独立实测确认"
+          : "";
         const coolNote = j.cooldownRemainingSec > 0 ? ` · 冷却剩余 ${Math.ceil(j.cooldownRemainingSec / 60)} 分钟` : "";
         const lastLog = cfg.lastSwitchAt
           ? ` · 上次自动切号：${cfg.lastSwitchFrom || ""} → ${cfg.lastSwitchTo || ""}（${cfg.lastTriggerReason || ""}）`
           : "";
         summaryEl.textContent =
           j.vaultCount >= 2
-            ? `${monNote}轮换队列已就绪（共 ${j.vaultCount} 个账号${j.nextTargetEmail ? "，下一顺位：" + j.nextTargetEmail : ""}），可用 ↑/↓ 调整顺位${coolNote}${lastLog}`
-            : `${monNote}当前金库已存 ${j.vaultCount} 个账号。先点「+ 保存当前账号入库」，切换登录其他账号后再保存一次即可启用自动轮换${lastLog}`;
+            ? `${monNote}轮换队列已就绪（共 ${j.vaultCount} 个账号${j.nextTargetEmail ? "，下一顺位：" + j.nextTargetEmail : ""}），可用 ↑/↓ 调整顺位${guardNote}${coolNote}${lastLog}`
+            : `${monNote}当前金库已存 ${j.vaultCount} 个账号。先点「+ 保存当前账号入库」，切换登录其他账号后再保存一次即可启用自动轮换${guardNote}${lastLog}`;
       }
       if (listEl) {
         const accounts = j.accounts || [];
@@ -530,9 +535,17 @@
       weeklyEnabled = true;
       if (weeklyEnabledEl) weeklyEnabledEl.checked = true;
     }
-    const thresholdPct = Math.max(1, Math.min(95, parseInt(document.getElementById("nb-as-threshold")?.value || "10", 10) || 10));
-    const fiveHourThresholdPct = Math.max(1, Math.min(95, parseInt(document.getElementById("nb-as-5h-threshold")?.value || "10", 10) || 10));
-    const cooldownMinutes = Math.max(1, Math.min(180, parseInt(document.getElementById("nb-as-cooldown")?.value || "10", 10) || 10));
+    const parsePctInput = (elId, fallback) => {
+      const raw = String(document.getElementById(elId)?.value ?? "").trim();
+      if (raw === "") return fallback;
+      const n = Number(raw);
+      if (!Number.isFinite(n)) return fallback;
+      return Math.max(0, Math.min(95, Math.round(n)));
+    };
+    const thresholdPct = parsePctInput("nb-as-threshold", 5);
+    const fiveHourThresholdPct = parsePctInput("nb-as-5h-threshold", 0);
+    const cooldownRaw = Number(document.getElementById("nb-as-cooldown")?.value ?? 10);
+    const cooldownMinutes = Number.isFinite(cooldownRaw) ? Math.max(1, Math.min(180, Math.round(cooldownRaw))) : 10;
     const reloadWindow = document.getElementById("nb-as-reload")?.checked !== false;
     const r = await apiFetch("/api/suite-auto-switch", {
       method: "POST",
@@ -579,6 +592,12 @@
   const MODEL_COLORS = ["#3B82F6", "#F59E0B", "#10B981", "#8B5CF6", "#EC4899", "#06B6D4", "#6366F1", "#14B8A6"];
 
   const USD_TO_CNY = 7.25;
+
+  function fmtUsdCny(usd, { decimals = 2, cnyDecimals = 2 } = {}) {
+    const val = Math.max(0, Number(usd) || 0);
+    const cny = val * USD_TO_CNY;
+    return `$${val.toFixed(decimals)} | ¥${cny.toFixed(cnyDecimals)}`;
+  }
 
   const TOOL_META = {
     run_command: { name: "终端命令执行", category: "执行", color: "#F59E0B" },
@@ -819,14 +838,14 @@
       { name: "Claude Opus / Sonnet", color: "#EC4899", inR: 15.0, outR: 75.0, cR: 1.5 }
     ];
     const pricingHtml = `
-      <div class="nb-tip-head"><span>商业 API 参考单价</span><span class="nb-tip-tag">per 1M tok</span></div>
+      <div class="nb-tip-head"><span>商业 API 参考单价</span><span class="nb-tip-tag">per 1M tok · $1≈¥${USD_TO_CNY}</span></div>
       <table class="nb-tip-table">
         <thead><tr><th>Model</th><th>Input</th><th>Output</th><th>Cache</th></tr></thead>
         <tbody>
           ${pricingRows
             .map(
               (r) =>
-                `<tr><td><i class="nb-dot" style="background:${r.color}"></i>${r.name}</td><td>$${r.inR.toFixed(2)}</td><td>$${r.outR.toFixed(2)}</td><td>$${r.cR.toFixed(3)}</td></tr>`
+                `<tr><td><i class="nb-dot" style="background:${r.color}"></i>${r.name}</td><td>${fmtUsdCny(r.inR, { decimals: 2, cnyDecimals: 1 })}</td><td>${fmtUsdCny(r.outR, { decimals: 2, cnyDecimals: 1 })}</td><td>${fmtUsdCny(r.cR, { decimals: 3, cnyDecimals: 2 })}</td></tr>`
             )
             .join("")}
         </tbody>
@@ -1412,7 +1431,11 @@
 
     document.getElementById("nb-kpi-cache").textContent = agg ? `${agg.cacheEfficiency.toFixed(1)}%` : "--";
     document.getElementById("nb-kpi-ttft").textContent = agg && agg.avgTtft > 0 ? agg.avgTtft.toFixed(2) : "--";
-    document.getElementById("nb-kpi-cost").textContent = agg ? `$${agg.estimatedCost.toFixed(2)}` : "$0.00";
+    const costVal = Math.max(0, Number(agg?.estimatedCost) || 0);
+    const costEl = document.getElementById("nb-kpi-cost");
+    if (costEl) {
+      costEl.innerHTML = `<span class="nb-cost-usd">$${costVal.toFixed(2)}</span><span class="nb-cost-sep">|</span><span class="nb-cost-cny">¥${(costVal * USD_TO_CNY).toFixed(2)}</span>`;
+    }
     document.getElementById("nb-activity-title").textContent = `Token 活跃趋势（${spec.labelZh}）`;
   }
 
@@ -1523,7 +1546,7 @@
     if (sumEl) {
       sumEl.style.display = "flex";
       sumEl.innerHTML = `
-        <span>API 折算总额 <b>≈ $${totCost.toFixed(2)}</b> <span class="nb-muted">(约 ¥${(totCost * USD_TO_CNY).toFixed(1)})</span> · 总计 <b>${fmtNum(totTok)}</b> Token · 缓存省下 <b>≈ $${totSaved.toFixed(2)}</b></span>
+        <span>API 折算总额 <b>≈ ${fmtUsdCny(totCost)}</b> · 总计 <b>${fmtNum(totTok)}</b> Token · 缓存省下 <b>≈ ${fmtUsdCny(totSaved)}</b></span>
         <span class="nb-scope-pill">${esc(spec?.labelZh || "近 30 天")}</span>
       `;
     }
@@ -1536,7 +1559,7 @@
         const barPct = tot > 0 ? Math.max(0.8, (tot / maxTok) * 100) : 0;
         const denom = (m.inTok || 0) + (m.cacheRead || 0);
         const cachePct = denom > 0 ? Math.round(((m.cacheRead || 0) / denom) * 100) : 0;
-        const cnyStr = (m._cost * USD_TO_CNY).toFixed(1);
+        const cnyStr = (m._cost * USD_TO_CNY).toFixed(2);
         return `
           <div class="nb-model-row">
             <div class="nb-model-top">
@@ -1546,7 +1569,7 @@
                 <span class="nb-code-pill">${esc(m.modelId)}</span>
               </div>
               <div class="nb-model-totals">
-                <span class="nb-model-cost" title="按商业 API 公开单价折算 (美元 / 人民币)">≈ $${m._cost.toFixed(2)} <small>(¥${cnyStr})</small></span>
+                <span class="nb-model-cost" title="按商业 API 公开单价折算 (美元 | 人民币)">≈ $${m._cost.toFixed(2)} <span class="nb-cost-sep">|</span> <small>¥${cnyStr}</small></span>
                 <b>${fmtNum(tot)}</b> <span class="nb-muted">Token (${m.requests} 次调用)</span>
               </div>
             </div>
@@ -1970,7 +1993,7 @@
         const ratio = Math.min(1, Math.max(0.05, cost / maxVal));
         const level = ratio > 0.65 ? "level-4" : ratio > 0.4 ? "level-3" : ratio > 0.15 ? "level-2" : "level-1";
         const tip = `
-          <div class="nb-tip-head"><span>${dt}</span><span class="nb-tip-tag">$${cost.toFixed(2)}</span></div>
+          <div class="nb-tip-head"><span>${dt}</span><span class="nb-tip-tag">${fmtUsdCny(cost)}</span></div>
           <div class="nb-tip-row"><span>Token 总量</span><b>${fmtNum(tok)} (${fmtInt(reqs)} 次)</b></div>
         `;
         return `<div class="nb-hm-cell ${level}" data-tooltip-html="${esc(tip)}"></div>`;
@@ -2054,7 +2077,7 @@
     } else if (accountPrefs.hideUntracked && untrackedItems.length > 0) {
       const uCost = untrackedItems.reduce((a, x) => a + (x.cost || 0), 0);
       const uTok = untrackedItems.reduce((a, x) => a + (x.totalTokens || 0), 0);
-      hiddenNote = `已隐藏早期历史 $${uCost.toFixed(2)} (${fmtNum(uTok)} Token)`;
+      hiddenNote = `已隐藏早期历史 ${fmtUsdCny(uCost)} (${fmtNum(uTok)} Token)`;
       workList = workList.filter((a) => !a.isUntracked);
     }
 
@@ -2116,8 +2139,8 @@
         const quotaPills =
           !a.isUntracked && (est5h || est7d)
             ? `<div class="nb-acct-pills">
-                ${est5h ? `<span class="nb-code-pill" title="基于近期配额消耗变化反推估算，仅供参考">5h 估算 ~$${Number(est5h).toFixed(2)}</span>` : ""}
-                ${est7d ? `<span class="nb-code-pill" title="基于近期配额消耗变化反推估算，仅供参考">7d 估算 ~$${Number(est7d).toFixed(2)}</span>` : ""}
+                ${est5h ? `<span class="nb-code-pill" title="基于近期配额消耗变化反推估算，仅供参考">5h 估算 ~${fmtUsdCny(est5h, { cnyDecimals: 1 })}</span>` : ""}
+                ${est7d ? `<span class="nb-code-pill" title="基于近期配额消耗变化反推估算，仅供参考">7d 估算 ~${fmtUsdCny(est7d, { cnyDecimals: 1 })}</span>` : ""}
               </div>`
             : "";
 
@@ -2138,7 +2161,7 @@
                 ${a.isUntracked ? `<span class="nb-pct-pill">追踪开启前</span>` : ""}
               </div>
               <div class="nb-acct-spend">
-                <span class="nb-muted">折算消耗:</span> <b>$${(a.cost || 0).toFixed(2)}</b>
+                <span class="nb-muted">折算消耗:</span> <b>${fmtUsdCny(a.cost || 0)}</b>
                 <span class="nb-pct-pill">${sharePct.toFixed(1)}%</span>
               </div>
             </div>
@@ -2161,7 +2184,7 @@
 
     el.innerHTML = `
       <div class="nb-dist-summary">
-        <span>${acctSummaryPrefix} · <b>${fmtInt(totSess)}</b> 个会话 · 折算 <b>$${totCost.toFixed(2)}</b> <span class="nb-muted">(${fmtNum(totTok)} Token)</span></span>
+        <span>${acctSummaryPrefix} · <b>${fmtInt(totSess)}</b> 个会话 · 折算 <b>${fmtUsdCny(totCost)}</b> <span class="nb-muted">(${fmtNum(totTok)} Token)</span></span>
         <div class="nb-inline-controls" style="gap:6px;">
           ${hiddenNote ? `<span class="nb-muted" style="font-size:11px;">${esc(hiddenNote)}</span>` : ""}
           <span class="nb-scope-pill">${esc(scopeLbl)}</span>

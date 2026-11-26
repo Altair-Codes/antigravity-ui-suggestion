@@ -1255,6 +1255,12 @@ try {
         }
       }
 
+      const agentBusy = Boolean(
+        document.querySelector('button[data-testid="input-cancel-button"], button[data-testid="stop-button"]') ||
+        getDisabledModelTrigger()
+      );
+      const busyParam = agentBusy ? "1" : "0";
+
       if (payload && Array.isArray(payload.groups) && payload.groups.length > 0) {
         quotaState.payload = payload;
         quotaState.updatedAt = Date.now();
@@ -1265,9 +1271,9 @@ try {
           fetch(`${b.origin}/api/suite-quota`, {
             method: "POST",
             headers: { "Content-Type": "application/json", "X-Suite-Token": b.token },
-            body: JSON.stringify(payload)
+            body: JSON.stringify({ ...payload, agentBusy })
           }).then((r) => (r.ok ? r.json() : null)),
-          fetch(`${b.origin}/api/suite-auto-switch`, {
+          fetch(`${b.origin}/api/suite-auto-switch?busy=${busyParam}`, {
             method: "GET",
             headers: { "X-Suite-Token": b.token }
           }).then((r) => (r.ok ? r.json() : null))
@@ -1275,7 +1281,7 @@ try {
         if (asRes.status === "fulfilled" && asRes.value && asRes.value.ok) {
           quotaState.autoSwitch = asRes.value;
         }
-        if (postRes.status === "fulfilled" && postRes.value && postRes.value.autoSwitch && postRes.value.autoSwitch.triggered) {
+        if (postRes.status === "fulfilled" && postRes.value && postRes.value.autoSwitch) {
           autoSwitchNotice = postRes.value.autoSwitch;
         }
       } else {
@@ -1285,7 +1291,7 @@ try {
             method: "GET",
             headers: { "X-Suite-Token": b.token }
           }).then((r) => (r.ok ? r.json() : null)),
-          fetch(`${b.origin}/api/suite-auto-switch`, {
+          fetch(`${b.origin}/api/suite-auto-switch?busy=${busyParam}`, {
             method: "GET",
             headers: { "X-Suite-Token": b.token }
           }).then((r) => (r.ok ? r.json() : null))
@@ -1306,17 +1312,25 @@ try {
             recordQuotaBaseline(bridgePayload);
             persistLocalQuotaCache(bridgePayload, quotaState.updatedAt);
           }
-          if (getRes.value.autoSwitch && getRes.value.autoSwitch.triggered) {
+          if (getRes.value.autoSwitch) {
             autoSwitchNotice = getRes.value.autoSwitch;
           }
         }
       }
 
       if (autoSwitchNotice && autoSwitchNotice.triggered) {
+        quotaState.lastDeferredNoticeAt = 0;
         showMiniNotice(
           `⚡ ${autoSwitchNotice.reason}，已自动切换账号至 ${autoSwitchNotice.toEmail}`,
           false
         );
+      } else if (
+        autoSwitchNotice &&
+        autoSwitchNotice.reason === "deferred_agent_busy" &&
+        Date.now() - (quotaState.lastDeferredNoticeAt || 0) > 60000
+      ) {
+        quotaState.lastDeferredNoticeAt = Date.now();
+        showMiniNotice("⏳ 额度已触达切号阈值，将在当前任务完成后自动切号", false);
       }
       ensureLiveQuotaPill();
       renderLiveQuotaPill();

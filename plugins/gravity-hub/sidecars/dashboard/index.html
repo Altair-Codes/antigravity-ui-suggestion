@@ -124,7 +124,7 @@
             <span>每周限额自动切号</span>
           </label>
           <span class="nb-muted">周剩余 ≤</span>
-          <input type="number" id="nb-as-threshold" class="nb-input-num" min="1" max="95" value="10" />
+          <input type="number" id="nb-as-threshold" class="nb-input-num" min="0" max="95" value="5" />
           <span class="nb-muted">%</span>
           <span class="nb-as-rule-sep"></span>
           <label class="nb-switch-label">
@@ -132,9 +132,9 @@
             <span>5 小时额度自动切号</span>
           </label>
           <span class="nb-muted">5h 剩余 ≤</span>
-          <input type="number" id="nb-as-5h-threshold" class="nb-input-num" min="1" max="95" value="10" />
+          <input type="number" id="nb-as-5h-threshold" class="nb-input-num" min="0" max="95" value="0" />
           <span class="nb-muted">%</span>
-          <span class="nb-muted">(可同时开启，任一触达阈值即自动切号)</span>
+          <span class="nb-muted">(设为 0% 表示真正用尽才切；双规则可同时开启，已启用二次实测确认与任务空闲保护)</span>
         </div>
 
         <div class="nb-muted nb-as-summary" id="nb-as-summary">正在读取多账号备选金库...</div>
@@ -256,7 +256,7 @@
               <span>商业 API 估算价值</span>
               <button type="button" class="nb-info-btn" id="nb-cost-info-btn" aria-label="查看商业模型单价表">ⓘ</button>
             </div>
-            <div class="nb-kpi-mini-val" id="nb-kpi-cost">$0.00</div>
+            <div class="nb-kpi-mini-val" id="nb-kpi-cost">$0.00 | ¥0.00</div>
           </div>
         </div>
 

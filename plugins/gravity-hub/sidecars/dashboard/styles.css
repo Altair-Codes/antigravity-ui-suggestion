@@ -941,6 +941,27 @@ body {
   font-weight: 700;
   font-family: var(--nb-font-mono);
   color: #ffffff;
+  white-space: nowrap;
+}
+
+#nb-kpi-cost {
+  font-size: clamp(15px, 1.8vw, 19px);
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.nb-cost-sep {
+  opacity: 0.42;
+  font-weight: 400;
+  margin: 0 2px;
+}
+
+.nb-cost-cny {
+  font-size: 0.84em;
+  font-weight: 600;
+  color: var(--nb-blue);
 }
 
 .nb-kpi-mini-unit {
