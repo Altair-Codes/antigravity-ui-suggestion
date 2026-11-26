@@ -7,8 +7,13 @@
     </linearGradient>
     <linearGradient id="nebula-ring" x1="16" y1="16" x2="112" y2="112" gradientUnits="userSpaceOnUse">
       <stop offset="0%" stop-color="#4285F4"/>
-      <stop offset="35%" stop-color="#9B72CB"/>
-      <stop offset="70%" stop-color="#EA4335"/>
+      <stop offset="12.5%" stop-color="#777DE0"/>
+      <stop offset="25%" stop-color="#9B72CB"/>
+      <stop offset="37.5%" stop-color="#C46589"/>
+      <stop offset="50%" stop-color="#EA4335"/>
+      <stop offset="62.5%" stop-color="#F5852B"/>
+      <stop offset="75%" stop-color="#FBBC05"/>
+      <stop offset="87.5%" stop-color="#A8B440"/>
       <stop offset="100%" stop-color="#34A853"/>
     </linearGradient>
     <linearGradient id="nebula-star" x1="34" y1="30" x2="94" y2="98" gradientUnits="userSpaceOnUse">

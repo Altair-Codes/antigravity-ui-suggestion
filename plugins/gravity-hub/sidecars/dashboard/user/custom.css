@@ -1,7 +1,67 @@
 /* ============================================================================
- * Google Gemini Fluid Aurora & Material 3 Native Theme
- * 四色流体渐变：Google Blue (#4285F4) -> Gemini Violet (#9B72CB) -> Coral Red (#EA4335) -> Amber (#FBBC05) -> Emerald (#34A853)
+ * Google Gemini 五色高精度 OKLab 流体渐变主题 (Material 3 Native Theme)
+ * 核心五锚点（固定顺序）：
+ *   蓝 #4285F4 -> 紫 #9B72CB -> 红 #EA4335 -> 黄 #FBBC05 -> 绿 #34A853
+ * 过渡算法：OKLab 色彩空间每段 10 细分插值（线性 41 节点 / 环形闭环经青色 #36B9C5 共 51 节点）
  * ============================================================================ */
+
+:root {
+  /* 核心五锚点 */
+  --ai-blue: #4285F4;
+  --ai-purple: #9B72CB;
+  --ai-red: #EA4335;
+  --ai-yellow: #FBBC05;
+  --ai-green: #34A853;
+
+  /* 关键中间过渡色参考 */
+  --ai-indigo: #777DE0;
+  --ai-rose: #C46589;
+  --ai-orange: #F5852B;
+  --ai-lime: #A8B440;
+  --ai-cyan: #36B9C5;
+
+  /* 41 节点高精度线性渐变色带（OKLab 静态固化，每段 10 细分，0% -> 25% -> 50% -> 75% -> 100%） */
+  --ai-stops-linear:
+    #4285F4 0%, #5084F0 2.5%, #5B82EC 5%, #6580E8 7.5%, #6F7FE4 10%, #777DE0 12.5%, #7F7BDB 15%, #8679D7 17.5%, #8E77D3 20%, #9474CF 22.5%,
+    #9B72CB 25%, #A470BE 27.5%, #AC6EB1 30%, #B46CA4 32.5%, #BC6897 35%, #C46589 37.5%, #CC607B 40%, #D45B6C 42.5%, #DB545C 45%, #E34C4B 47.5%,
+    #EA4335 50%, #ED5234 52.5%, #EF6032 55%, #F16D31 57.5%, #F4792E 60%, #F5852B 62.5%, #F79028 65%, #F89C23 67.5%, #FAA61D 70%, #FAB114 72.5%,
+    #FBBC05 75%, #EBBB1E 77.5%, #DBBA2A 80%, #CAB833 82.5%, #B9B63A 85%, #A8B440 87.5%, #96B245 90%, #82B049 92.5%, #6DAE4D 95%, #55AB50 97.5%,
+    #34A853 100%;
+
+  /* 51 节点高精度环形/循环闭环色带（80% -> 100% 经青色 #36B9C5 自然过渡回 #4285F4，首尾零接缝） */
+  --ai-stops-loop:
+    #4285F4 0%, #5084F0 2%, #5B82EC 4%, #6580E8 6%, #6F7FE4 8%, #777DE0 10%, #7F7BDB 12%, #8679D7 14%, #8E77D3 16%, #9474CF 18%,
+    #9B72CB 20%, #A470BE 22%, #AC6EB1 24%, #B46CA4 26%, #BC6897 28%, #C46589 30%, #CC607B 32%, #D45B6C 34%, #DB545C 36%, #E34C4B 38%,
+    #EA4335 40%, #ED5234 42%, #EF6032 44%, #F16D31 46%, #F4792E 48%, #F5852B 50%, #F79028 52%, #F89C23 54%, #FAA61D 56%, #FAB114 58%,
+    #FBBC05 60%, #EBBB1E 62%, #DBBA2A 64%, #CAB833 66%, #B9B63A 68%, #A8B440 70%, #96B245 72%, #82B049 74%, #6DAE4D 76%, #55AB50 78%,
+    #34A853 80%, #33AC6D 82%, #32B084 84%, #33B39A 86%, #34B6B0 88%, #36B9C5 90%, #37B0CF 92%, #39A6D9 94%, #3B9CE2 96%, #3F91EB 98%,
+    #4285F4 100%;
+
+  /* 渐变能力变量（静态 OKLab 节点 sRGB 全兼容基准） */
+  --ai-gradient: linear-gradient(90deg, var(--ai-stops-linear));
+  --ai-gradient-vertical: linear-gradient(180deg, var(--ai-stops-linear));
+  --ai-gradient-diag: linear-gradient(135deg, var(--ai-stops-linear));
+  --ai-gradient-flow: linear-gradient(90deg, var(--ai-stops-loop));
+  --ai-gradient-flow-diag: linear-gradient(135deg, var(--ai-stops-loop));
+  --ai-gradient-conic: conic-gradient(from var(--gemini-angle), var(--ai-stops-loop));
+}
+
+/* 渐进增强：在支持 CSS Color 4 的内核中进一步启用原生 OKLab 亚像素插值 */
+@supports (background: linear-gradient(90deg in oklab, #4285F4, #34A853)) {
+  :root {
+    --ai-gradient: linear-gradient(90deg in oklab, var(--ai-stops-linear));
+    --ai-gradient-vertical: linear-gradient(180deg in oklab, var(--ai-stops-linear));
+    --ai-gradient-diag: linear-gradient(135deg in oklab, var(--ai-stops-linear));
+    --ai-gradient-flow: linear-gradient(90deg in oklab, var(--ai-stops-loop));
+    --ai-gradient-flow-diag: linear-gradient(135deg in oklab, var(--ai-stops-loop));
+  }
+}
+
+@supports (background: conic-gradient(from 0deg in oklab, #4285F4, #34A853)) {
+  :root {
+    --ai-gradient-conic: conic-gradient(from var(--gemini-angle) in oklab, var(--ai-stops-loop));
+  }
+}
 
 @property --gemini-angle {
   syntax: "<angle>";
@@ -14,50 +74,84 @@
   100% { --gemini-angle: 360deg; }
 }
 
-@keyframes geminiPillFlow {
+@keyframes aiGradientFlow {
   0%   { background-position: 0% 50%; }
-  50%  { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+
+@keyframes aiBreathGlowDark {
+  0%, 100% {
+    box-shadow:
+      0 0 18px -4px rgba(66, 133, 244, 0.28),
+      0 0 24px -6px rgba(155, 114, 203, 0.22),
+      0 0 16px -6px rgba(54, 185, 197, 0.14),
+      0 6px 20px rgba(0, 0, 0, 0.42);
+  }
+  50% {
+    box-shadow:
+      0 0 24px -2px rgba(66, 133, 244, 0.36),
+      0 0 30px -4px rgba(155, 114, 203, 0.28),
+      0 0 20px -5px rgba(234, 67, 53, 0.18),
+      0 0 18px -5px rgba(52, 168, 83, 0.16),
+      0 6px 22px rgba(0, 0, 0, 0.46);
+  }
+}
+
+@keyframes aiBreathGlowLight {
+  0%, 100% {
+    box-shadow:
+      0 2px 14px rgba(66, 133, 244, 0.14),
+      0 2px 18px rgba(155, 114, 203, 0.11);
+  }
+  50% {
+    box-shadow:
+      0 4px 20px rgba(66, 133, 244, 0.24),
+      0 4px 24px rgba(155, 114, 203, 0.18),
+      0 2px 14px rgba(52, 168, 83, 0.12);
+  }
 }
 
 @keyframes geminiPulseDot {
   0%, 100% { opacity: 1; transform: scale(1); }
-  50%      { opacity: 0.55; transform: scale(0.86); }
+  50%      { opacity: 0.58; transform: scale(0.86); }
 }
 
-/* 1. 输入框流体渐变动态流光边框（支持通过星云中枢 themeVars 实时调节转速 / 粗细 / 开关） */
+/* 通用组件可复用渐变类 */
+.ai-glow-ring {
+  border: 1.5px solid transparent;
+  background:
+    linear-gradient(var(--nb-surface, #1b1c1f), var(--nb-surface, #1b1c1f)) padding-box,
+    var(--ai-gradient-conic) border-box;
+  animation: geminiFluidSpin 6s linear infinite;
+}
+
+.ai-glow-breathe {
+  animation: aiBreathGlowDark 4.5s ease-in-out infinite;
+}
+
+/* 1. 输入框五色流体渐变动态流光边框（支持通过引力中枢 themeVars 实时调节转速 / 粗细 / 开关） */
 html[data-ag-color-scheme="dark"] #antigravity\.agentSidePanelInputBox .surface-composer-card {
   position: relative !important;
   border: var(--nb-glow-width, 1.5px) solid transparent !important;
   background:
     linear-gradient(#1b1c1f, #1b1c1f) padding-box,
-    var(--nb-glow-ring-dark, conic-gradient(
-      from var(--gemini-angle),
-      #4285f4 0%,
-      #9b72cb 22%,
-      #ea4335 42%,
-      #fbbc05 60%,
-      #34a853 78%,
-      #4285f4 100%
-    )) border-box !important;
-  animation: geminiFluidSpin var(--nb-glow-speed, 4.8s) linear infinite !important;
+    var(--nb-glow-ring-dark, var(--ai-gradient-conic)) border-box !important;
+  animation: geminiFluidSpin var(--nb-glow-speed, 5.8s) linear infinite !important;
   animation-play-state: var(--nb-glow-play-state, running) !important;
   box-shadow:
-    0 0 18px -4px rgba(66, 133, 244, 0.25),
-    0 0 24px -6px rgba(155, 114, 203, 0.22),
+    0 0 18px -5px rgba(66, 133, 244, 0.24),
+    0 0 22px -7px rgba(155, 114, 203, 0.20),
     0 4px 16px rgba(0, 0, 0, 0.35) !important;
-  transition: box-shadow 0.25s ease !important;
+  transition: box-shadow 0.28s ease !important;
 }
 
 html[data-ag-color-scheme="dark"] #antigravity\.agentSidePanelInputBox:hover .surface-composer-card,
 html[data-ag-color-scheme="dark"] #antigravity\.agentSidePanelInputBox:focus-within .surface-composer-card {
   border: calc(var(--nb-glow-width, 1.5px) + 0.5px) solid transparent !important;
-  animation-duration: calc(var(--nb-glow-speed, 4.8s) * 0.67) !important;
-  box-shadow:
-    0 0 22px -2px rgba(66, 133, 244, 0.38),
-    0 0 28px -4px rgba(155, 114, 203, 0.32),
-    0 0 18px -4px rgba(234, 67, 53, 0.2),
-    0 6px 20px rgba(0, 0, 0, 0.45) !important;
+  animation:
+    geminiFluidSpin calc(var(--nb-glow-speed, 5.8s) * 0.72) linear infinite,
+    aiBreathGlowDark 4.4s ease-in-out infinite !important;
+  animation-play-state: var(--nb-glow-play-state, running), var(--nb-glow-play-state, running) !important;
 }
 
 html:not([data-ag-color-scheme="dark"]) #antigravity\.agentSidePanelInputBox .surface-composer-card {
@@ -65,48 +159,48 @@ html:not([data-ag-color-scheme="dark"]) #antigravity\.agentSidePanelInputBox .su
   border: var(--nb-glow-width, 1.5px) solid transparent !important;
   background:
     linear-gradient(#ffffff, #ffffff) padding-box,
-    var(--nb-glow-ring-light, conic-gradient(
-      from var(--gemini-angle),
-      #4285f4 0%,
-      #9b72cb 22%,
-      #ea4335 42%,
-      #fbbc05 60%,
-      #34a853 78%,
-      #4285f4 100%
-    )) border-box !important;
-  animation: geminiFluidSpin var(--nb-glow-speed, 4.8s) linear infinite !important;
+    var(--nb-glow-ring-light, var(--ai-gradient-conic)) border-box !important;
+  animation: geminiFluidSpin var(--nb-glow-speed, 5.8s) linear infinite !important;
   animation-play-state: var(--nb-glow-play-state, running) !important;
   box-shadow:
-    0 2px 14px rgba(66, 133, 244, 0.16),
-    0 2px 20px rgba(155, 114, 203, 0.12) !important;
+    0 2px 14px rgba(66, 133, 244, 0.14),
+    0 2px 20px rgba(155, 114, 203, 0.11) !important;
+  transition: box-shadow 0.28s ease !important;
 }
 
+html:not([data-ag-color-scheme="dark"]) #antigravity\.agentSidePanelInputBox:hover .surface-composer-card,
 html:not([data-ag-color-scheme="dark"]) #antigravity\.agentSidePanelInputBox:focus-within .surface-composer-card {
   border: calc(var(--nb-glow-width, 1.5px) + 0.5px) solid transparent !important;
-  animation-duration: calc(var(--nb-glow-speed, 4.8s) * 0.67) !important;
-  box-shadow:
-    0 4px 20px rgba(66, 133, 244, 0.26),
-    0 4px 24px rgba(155, 114, 203, 0.22) !important;
+  animation:
+    geminiFluidSpin calc(var(--nb-glow-speed, 5.8s) * 0.72) linear infinite,
+    aiBreathGlowLight 4.4s ease-in-out infinite !important;
+  animation-play-state: var(--nb-glow-play-state, running), var(--nb-glow-play-state, running) !important;
 }
 
-/* 2. 彻底清除 Aura 残留的 Claude 橙色按钮与橙色边框 (#d97757 / #c45f40)，换为 Gemini 流体渐变 */
+/* 2. 语音胶囊与发送按钮：51 节点周期闭环单向无缝流光（零回弹、零色阶跳变） */
 [data-testid="voice-live-pill"],
 button[data-testid="send-button"]:not(:disabled),
 .agy-send-button:not(:disabled) {
-  background: linear-gradient(135deg, #4285f4 0%, #9b72cb 38%, #ea4335 72%, #fbbc05 100%) !important;
-  background-size: 260% 260% !important;
-  animation: geminiPillFlow 4s ease infinite !important;
-  border: 1px solid rgba(168, 199, 250, 0.45) !important;
+  background-image: var(--ai-gradient-flow) !important;
+  background-size: 200% 100% !important;
+  background-repeat: repeat !important;
+  animation: aiGradientFlow 6.8s linear infinite !important;
+  border: 1px solid rgba(168, 199, 250, 0.42) !important;
   color: #ffffff !important;
-  box-shadow: 0 2px 10px rgba(66, 133, 244, 0.35), 0 1px 6px rgba(155, 114, 203, 0.25) !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  box-shadow:
+    0 2px 10px rgba(66, 133, 244, 0.30),
+    0 1px 6px rgba(155, 114, 203, 0.22) !important;
 }
 
 [data-testid="voice-live-pill"]:hover,
 button[data-testid="send-button"]:not(:disabled):hover,
 .agy-send-button:not(:disabled):hover {
-  filter: brightness(1.08) !important;
+  filter: brightness(1.06) !important;
   border-color: #a8c7fa !important;
-  box-shadow: 0 3px 14px rgba(66, 133, 244, 0.48), 0 2px 10px rgba(155, 114, 203, 0.35) !important;
+  box-shadow:
+    0 3px 14px rgba(66, 133, 244, 0.42),
+    0 2px 10px rgba(155, 114, 203, 0.30) !important;
 }
 
 button[data-testid="send-button"]:disabled,
@@ -260,7 +354,7 @@ html:not([data-ag-color-scheme="dark"]) #antigravity\.agentSidePanelInputBox but
   box-shadow: 0 0 6px rgba(197, 34, 31, 0.6);
 }
 
-/* 星云中枢 v2.0：一体式流光玻璃遥测驾驶舱 (Nebula Cockpit Bar) */
+/* 引力中枢：一体式流光玻璃遥测驾驶舱 (Gravity Cockpit Bar) */
 #ag-live-metrics-pill .nb-cockpit-bar {
   display: inline-flex;
   align-items: center;
@@ -489,7 +583,7 @@ html[data-ag-color-scheme="dark"] #ag-live-metrics-tooltip .ag-tt-tag {
   color: #a8c7fa !important;
 }
 html[data-ag-color-scheme="dark"] #ag-live-metrics-tooltip .ag-tt-progress-fill {
-  background: linear-gradient(90deg, #4285f4, #9b72cb, #34a853) !important;
+  background: var(--ai-gradient) !important;
 }
 
 /* 搜索框与通用焦点环统一改为 Google Blue */
@@ -684,10 +778,13 @@ html:not([data-ag-color-scheme="dark"]) [data-testid="conversation-navigator"] o
 }
 
 #ag-suite-update-btn.has-update {
-  background: linear-gradient(135deg, #4285f4 0%, #9b72cb 60%, #ea4335 100%) !important;
+  background-image: var(--ai-gradient-flow) !important;
+  background-size: 200% 100% !important;
+  background-repeat: repeat !important;
+  animation: aiGradientFlow 6.5s linear infinite !important;
   border-color: rgba(255, 255, 255, 0.35) !important;
   color: #ffffff !important;
-  box-shadow: 0 0 12px rgba(66, 133, 244, 0.45);
+  box-shadow: 0 0 12px rgba(66, 133, 244, 0.40);
 }
 
 #ag-suite-update-btn .ag-upd-ico {
@@ -850,8 +947,9 @@ html:not([data-ag-color-scheme="dark"]) #ag-suite-aura-btn:hover {
   border: 1px solid transparent;
 }
 #ag-suite-update-toast .ag-ut-btn.primary {
-  background: linear-gradient(135deg, #4285f4, #9b72cb);
+  background: var(--ai-gradient-diag);
   color: #ffffff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.22);
 }
 #ag-suite-update-toast .ag-ut-btn.ghost {
   background: rgba(255, 255, 255, 0.06);
@@ -1539,6 +1637,23 @@ html [data-nb-metrics-tier="hidden"] #ag-live-metrics-pill {
 [data-testid="conversation-view"][data-nb-pane-morphing="1"] #nb-docked-metrics-strip {
   opacity: 0.18 !important;
   filter: blur(3px) !important;
+}
+
+/* 11. 尊重系统「减弱动态效果」偏好（保留静态 41/51 节点 OKLab 高精度五色渐变） */
+@media (prefers-reduced-motion: reduce) {
+  html #antigravity\.agentSidePanelInputBox .surface-composer-card,
+  .ai-glow-ring,
+  .ai-glow-breathe,
+  [data-testid="voice-live-pill"],
+  button[data-testid="send-button"]:not(:disabled),
+  .agy-send-button:not(:disabled),
+  #ag-suite-update-btn.has-update,
+  #antigravity\.agentSidePanelInputBox button[data-testid="model-selector-trigger"]::before,
+  #ag-live-metrics-pill .nb-cp-pulse,
+  #ag-live-metrics-pill .ag-m-dot {
+    animation: none !important;
+    transition: none !important;
+  }
 }
 
 

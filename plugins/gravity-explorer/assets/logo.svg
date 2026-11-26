@@ -2,8 +2,13 @@
   <defs>
     <linearGradient id="gvExpRing" x1="6" y1="6" x2="58" y2="58" gradientUnits="userSpaceOnUse">
       <stop offset="0%" stop-color="#4285F4"/>
-      <stop offset="38%" stop-color="#9B72CB"/>
-      <stop offset="72%" stop-color="#EA4335"/>
+      <stop offset="12.5%" stop-color="#777DE0"/>
+      <stop offset="25%" stop-color="#9B72CB"/>
+      <stop offset="37.5%" stop-color="#C46589"/>
+      <stop offset="50%" stop-color="#EA4335"/>
+      <stop offset="62.5%" stop-color="#F5852B"/>
+      <stop offset="75%" stop-color="#FBBC05"/>
+      <stop offset="87.5%" stop-color="#A8B440"/>
       <stop offset="100%" stop-color="#34A853"/>
     </linearGradient>
     <linearGradient id="gvExpFolder" x1="16" y1="18" x2="48" y2="48" gradientUnits="userSpaceOnUse">

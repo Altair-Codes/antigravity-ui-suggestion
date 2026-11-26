@@ -13,6 +13,62 @@
   --nb-red: #f28b82;
   --nb-font-sans: 'PingFang SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --nb-font-mono: 'JetBrains Mono', 'SF Mono', Menlo, Monaco, Consolas, monospace;
+
+  /* Google 五色高精度 OKLab 渐变系统 */
+  --ai-blue: #4285F4;
+  --ai-purple: #9B72CB;
+  --ai-red: #EA4335;
+  --ai-yellow: #FBBC05;
+  --ai-green: #34A853;
+  --ai-indigo: #777DE0;
+  --ai-rose: #C46589;
+  --ai-orange: #F5852B;
+  --ai-lime: #A8B440;
+  --ai-cyan: #36B9C5;
+  --ai-stops-linear:
+    #4285F4 0%, #5084F0 2.5%, #5B82EC 5%, #6580E8 7.5%, #6F7FE4 10%, #777DE0 12.5%, #7F7BDB 15%, #8679D7 17.5%, #8E77D3 20%, #9474CF 22.5%,
+    #9B72CB 25%, #A470BE 27.5%, #AC6EB1 30%, #B46CA4 32.5%, #BC6897 35%, #C46589 37.5%, #CC607B 40%, #D45B6C 42.5%, #DB545C 45%, #E34C4B 47.5%,
+    #EA4335 50%, #ED5234 52.5%, #EF6032 55%, #F16D31 57.5%, #F4792E 60%, #F5852B 62.5%, #F79028 65%, #F89C23 67.5%, #FAA61D 70%, #FAB114 72.5%,
+    #FBBC05 75%, #EBBB1E 77.5%, #DBBA2A 80%, #CAB833 82.5%, #B9B63A 85%, #A8B440 87.5%, #96B245 90%, #82B049 92.5%, #6DAE4D 95%, #55AB50 97.5%,
+    #34A853 100%;
+  --ai-stops-loop:
+    #4285F4 0%, #5084F0 2%, #5B82EC 4%, #6580E8 6%, #6F7FE4 8%, #777DE0 10%, #7F7BDB 12%, #8679D7 14%, #8E77D3 16%, #9474CF 18%,
+    #9B72CB 20%, #A470BE 22%, #AC6EB1 24%, #B46CA4 26%, #BC6897 28%, #C46589 30%, #CC607B 32%, #D45B6C 34%, #DB545C 36%, #E34C4B 38%,
+    #EA4335 40%, #ED5234 42%, #EF6032 44%, #F16D31 46%, #F4792E 48%, #F5852B 50%, #F79028 52%, #F89C23 54%, #FAA61D 56%, #FAB114 58%,
+    #FBBC05 60%, #EBBB1E 62%, #DBBA2A 64%, #CAB833 66%, #B9B63A 68%, #A8B440 70%, #96B245 72%, #82B049 74%, #6DAE4D 76%, #55AB50 78%,
+    #34A853 80%, #33AC6D 82%, #32B084 84%, #33B39A 86%, #34B6B0 88%, #36B9C5 90%, #37B0CF 92%, #39A6D9 94%, #3B9CE2 96%, #3F91EB 98%,
+    #4285F4 100%;
+  --ai-gradient: linear-gradient(90deg, var(--ai-stops-linear));
+  --ai-gradient-vertical: linear-gradient(180deg, var(--ai-stops-linear));
+  --ai-gradient-diag: linear-gradient(135deg, var(--ai-stops-linear));
+  --ai-gradient-flow: linear-gradient(90deg, var(--ai-stops-loop));
+  --ai-gradient-conic: conic-gradient(from var(--ai-ring-angle, 0deg), var(--ai-stops-loop));
+}
+
+@supports (background: linear-gradient(90deg in oklab, #4285F4, #34A853)) {
+  :root {
+    --ai-gradient: linear-gradient(90deg in oklab, var(--ai-stops-linear));
+    --ai-gradient-vertical: linear-gradient(180deg in oklab, var(--ai-stops-linear));
+    --ai-gradient-diag: linear-gradient(135deg in oklab, var(--ai-stops-linear));
+    --ai-gradient-flow: linear-gradient(90deg in oklab, var(--ai-stops-loop));
+  }
+}
+
+@supports (background: conic-gradient(from 0deg in oklab, #4285F4, #34A853)) {
+  :root {
+    --ai-gradient-conic: conic-gradient(from var(--ai-ring-angle, 0deg) in oklab, var(--ai-stops-loop));
+  }
+}
+
+@property --ai-ring-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes aiLogoRingSpin {
+  0%   { --ai-ring-angle: 0deg; }
+  100% { --ai-ring-angle: 360deg; }
 }
 
 * {
@@ -65,6 +121,12 @@ body {
   height: 40px;
   border-radius: 11px;
   flex-shrink: 0;
+  padding: 1.5px;
+  border: 1.5px solid transparent;
+  background:
+    linear-gradient(var(--nb-card, #1e1f20), var(--nb-card, #1e1f20)) padding-box,
+    var(--ai-gradient-conic) border-box;
+  animation: aiLogoRingSpin 8s linear infinite;
 }
 
 .nb-title-wrap {
@@ -303,7 +365,7 @@ body {
 }
 
 .nb-btn.primary {
-  background: linear-gradient(135deg, #4285f4, #9b72cb);
+  background: linear-gradient(135deg, #4285F4 0%, #6F7FE4 35%, #9B72CB 70%, #C46589 100%);
   border-color: transparent;
   color: #ffffff;
   font-weight: 600;
@@ -1735,4 +1797,13 @@ html[data-theme="light"] .nb-model-cost {
 
 html[data-theme="light"] .nb-pool-chip {
   background: rgba(0, 0, 0, 0.03);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nb-logo,
+  .ai-glow-ring,
+  .ai-glow-breathe {
+    animation: none !important;
+    transition: none !important;
+  }
 }
