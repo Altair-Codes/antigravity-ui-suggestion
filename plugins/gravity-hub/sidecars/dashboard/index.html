@@ -84,33 +84,31 @@
         </div>
       </section>
 
-      <!-- 卡片 2：多账号顺位轮换与低额度自动切号 -->
+      <!-- 卡片 2：多账号顺位轮换与双限额协同自动切号 -->
       <section class="nb-card">
         <div class="nb-card-head">
           <div class="nb-card-title-group">
-            <h2 class="nb-card-title">多账号备选金库与周额度自动切号</h2>
+            <h2 class="nb-card-title">多账号备选金库与双限额自动切号（每周 + 5 小时协同）</h2>
             <span class="nb-badge" id="nb-vault-count-badge">0 个备选账号</span>
           </div>
           <div class="nb-inline-controls">
             <button type="button" class="nb-btn ghost" id="nb-btn-save-current-acct">+ 保存当前账号入库</button>
             <label class="nb-switch-label">
               <input type="checkbox" id="nb-as-enabled" />
-              <span>启用低额度自动切号</span>
+              <span>启用双限额自动切号</span>
             </label>
           </div>
         </div>
 
         <div class="nb-as-bar">
-          <span class="nb-muted">当监控池</span>
+          <span class="nb-muted">监控池</span>
           <select id="nb-as-pool" class="nb-select">
-            <option value="gemini-weekly">Gemini 核心池 (每周限额)</option>
-            <option value="3p-weekly">Claude / GPT (每周限额)</option>
-            <option value="gemini-argon-wtu-weekly">Gemini 4 Argon (每周限额)</option>
-            <option value="any-weekly">任意模型池 (最紧缩每周限额)</option>
+            <option value="gemini-weekly">Gemini 核心池</option>
+            <option value="3p-weekly">Claude / GPT</option>
+            <option value="gemini-argon-wtu-weekly">Gemini 4 Argon</option>
+            <option value="any-weekly">任意模型池 (任一触线即切)</option>
           </select>
-          <span class="nb-muted">剩余 ≤</span>
-          <input type="number" id="nb-as-threshold" class="nb-input-num" min="1" max="95" value="10" />
-          <span class="nb-muted">% · 冷却</span>
+          <span class="nb-muted">冷却</span>
           <input type="number" id="nb-as-cooldown" class="nb-input-num" min="1" max="180" value="10" />
           <span class="nb-muted">分钟</span>
           <label class="nb-switch-label" style="margin-left:2px;">
@@ -118,6 +116,25 @@
             <span>切号后重载窗口</span>
           </label>
           <button type="button" class="nb-btn" id="nb-btn-as-save">保存策略</button>
+        </div>
+
+        <div class="nb-as-rules-row">
+          <label class="nb-switch-label">
+            <input type="checkbox" id="nb-as-weekly-enabled" checked />
+            <span>每周限额自动切号</span>
+          </label>
+          <span class="nb-muted">周剩余 ≤</span>
+          <input type="number" id="nb-as-threshold" class="nb-input-num" min="1" max="95" value="10" />
+          <span class="nb-muted">%</span>
+          <span class="nb-as-rule-sep"></span>
+          <label class="nb-switch-label">
+            <input type="checkbox" id="nb-as-5h-enabled" checked />
+            <span>5 小时额度自动切号</span>
+          </label>
+          <span class="nb-muted">5h 剩余 ≤</span>
+          <input type="number" id="nb-as-5h-threshold" class="nb-input-num" min="1" max="95" value="10" />
+          <span class="nb-muted">%</span>
+          <span class="nb-muted">(可同时开启，任一触达阈值即自动切号)</span>
         </div>
 
         <div class="nb-muted nb-as-summary" id="nb-as-summary">正在读取多账号备选金库...</div>

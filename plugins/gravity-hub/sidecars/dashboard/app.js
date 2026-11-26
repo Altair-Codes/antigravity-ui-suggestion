@@ -247,9 +247,9 @@
     } catch {}
   }
 
-  async function refreshQuota() {
+  async function refreshQuota(force = false) {
     try {
-      const r = await apiFetch("/api/suite-quota", { method: "GET" });
+      const r = await apiFetch(`/api/suite-quota${force ? "?refresh=1" : ""}`, { method: "GET" });
       if (!r.ok) return;
       const j = await r.json();
       const data = j.data;
@@ -258,7 +258,7 @@
       const updEl = document.getElementById("nb-quota-updated-at");
       if (!grid) return;
       if (!data || !Array.isArray(data.groups) || data.groups.length === 0) {
-        grid.innerHTML = `<div class="nb-empty-hint">正在等待宿主窗口同步当前账号每周 / 5 小时模型配额池...</div>`;
+        grid.innerHTML = `<div class="nb-empty-hint">正在等待宿主窗口或 Language Server 同步当前账号每周 / 5 小时模型配额池...</div>`;
         return;
       }
       if (badge) {
@@ -310,7 +310,7 @@
     const b = e.currentTarget;
     b.disabled = true;
     try {
-      await Promise.all([refreshQuota(), syncAutoSwitch()]);
+      await Promise.all([refreshQuota(true), syncAutoSwitch()]);
       showToast("已刷新当前账号模型额度池与自动切号状态");
     } finally {
       b.disabled = false;
@@ -328,7 +328,10 @@
       const cfg = j.config || {};
       const enEl = document.getElementById("nb-as-enabled");
       const poolEl = document.getElementById("nb-as-pool");
+      const weeklyEnEl = document.getElementById("nb-as-weekly-enabled");
       const thEl = document.getElementById("nb-as-threshold");
+      const fiveHourEnEl = document.getElementById("nb-as-5h-enabled");
+      const fiveHourThEl = document.getElementById("nb-as-5h-threshold");
       const cdEl = document.getElementById("nb-as-cooldown");
       const reloadEl = document.getElementById("nb-as-reload");
       const countBadge = document.getElementById("nb-vault-count-badge");
@@ -336,22 +339,43 @@
       const summaryEl = document.getElementById("nb-as-summary");
       const listEl = document.getElementById("nb-as-order-list");
 
+      const weeklyOn = cfg.weeklyEnabled !== false;
+      const fiveHourOn = cfg.fiveHourEnabled !== false;
+      const weeklyTh = cfg.thresholdPct ?? 10;
+      const fiveHourTh = cfg.fiveHourThresholdPct ?? 10;
+
       if (enEl) enEl.checked = Boolean(cfg.enabled);
       if (poolEl) poolEl.value = cfg.poolKey || "gemini-weekly";
-      if (thEl) thEl.value = String(cfg.thresholdPct ?? 10);
+      if (weeklyEnEl) weeklyEnEl.checked = weeklyOn;
+      if (thEl) thEl.value = String(weeklyTh);
+      if (fiveHourEnEl) fiveHourEnEl.checked = fiveHourOn;
+      if (fiveHourThEl) fiveHourThEl.value = String(fiveHourTh);
       if (cdEl) cdEl.value = String(cfg.cooldownMinutes ?? 10);
       if (reloadEl) reloadEl.checked = cfg.reloadWindow !== false;
       if (countBadge) countBadge.textContent = `${j.vaultCount || 0} 个备选账号`;
+
+      const ruleParts = [];
+      if (weeklyOn) ruleParts.push(`周≤${weeklyTh}%`);
+      if (fiveHourOn) ruleParts.push(`5h≤${fiveHourTh}%`);
+      const ruleText = ruleParts.length > 0 ? ruleParts.join(" · ") : `≤${weeklyTh}%`;
+
       if (activeBadge) {
         activeBadge.style.display = cfg.enabled ? "inline-flex" : "none";
         activeBadge.textContent = j.nextTargetEmail
-          ? `周额度 ≤ ${cfg.thresholdPct}% → ${j.nextTargetEmail.split("@")[0]}`
-          : `周额度 ≤ ${cfg.thresholdPct}% 自动切号`;
+          ? `${ruleText} → ${j.nextTargetEmail.split("@")[0]}`
+          : `${ruleText} 自动切号`;
       }
       if (summaryEl) {
+        const monParts = [];
+        if (typeof j.monitoredPct === "number") {
+          monParts.push(`周 ${j.monitoredPct}%${weeklyOn ? `(≤${weeklyTh}%)` : "(未启用)"}`);
+        }
+        if (typeof j.monitoredFiveHourPct === "number") {
+          monParts.push(`5h ${j.monitoredFiveHourPct}%${fiveHourOn ? `(≤${fiveHourTh}%)` : "(未启用)"}`);
+        }
         const monNote =
-          typeof j.monitoredPct === "number"
-            ? `当前监控池「${j.monitoredLabel || cfg.poolKey}」实时余量 ${j.monitoredPct}%（阈值 ≤ ${cfg.thresholdPct}%） · `
+          monParts.length > 0
+            ? `当前监控池「${j.monitoredLabel || j.monitoredFiveHourLabel || cfg.poolKey}」实时余量 ${monParts.join(" / ")} · `
             : "";
         const coolNote = j.cooldownRemainingSec > 0 ? ` · 冷却剩余 ${Math.ceil(j.cooldownRemainingSec / 60)} 分钟` : "";
         const lastLog = cfg.lastSwitchAt
@@ -388,9 +412,13 @@
               pools.length > 0
                 ? `<div class="nb-acct-pool-tags">${pools
                     .map((p) => {
-                      const pct = typeof p.effectiveWeeklyPct === "number" ? p.effectiveWeeklyPct : p.weeklyPct;
-                      const col = pctColor(pct);
-                      const txt = p.resetRecovered ? `${shortPoolName(p.label, p.key)} 已重置 ≈100%` : `${shortPoolName(p.label, p.key)} 周余 ${pct}%`;
+                      const wPct = typeof p.effectiveWeeklyPct === "number" ? p.effectiveWeeklyPct : p.weeklyPct;
+                      const hPct = typeof p.effectiveFiveHourPct === "number" ? p.effectiveFiveHourPct : p.fiveHourPct;
+                      const minPct = hPct !== null && typeof hPct === "number" ? Math.min(wPct, hPct) : wPct;
+                      const col = pctColor(minPct);
+                      const wTxt = p.resetRecovered ? "周已重置≈100%" : `周 ${wPct}%`;
+                      const hTxt = hPct !== null && typeof hPct === "number" ? ` · ${p.fiveHourResetRecovered ? "5h已重置≈100%" : `5h ${hPct}%`}` : "";
+                      const txt = `${shortPoolName(p.label, p.key)} ${wTxt}${hTxt}`;
                       return `<span class="nb-pool-chip" style="color:${col};border-color:${col}44">${esc(txt)}</span>`;
                     })
                     .join("")}</div>`
@@ -493,21 +521,44 @@
   async function saveAutoSwitchPolicy() {
     const enabled = Boolean(document.getElementById("nb-as-enabled")?.checked);
     const poolKey = document.getElementById("nb-as-pool")?.value || "gemini-weekly";
+    const weeklyEnabledEl = document.getElementById("nb-as-weekly-enabled");
+    const fiveHourEnabledEl = document.getElementById("nb-as-5h-enabled");
+    let weeklyEnabled = weeklyEnabledEl ? Boolean(weeklyEnabledEl.checked) : true;
+    const fiveHourEnabled = fiveHourEnabledEl ? Boolean(fiveHourEnabledEl.checked) : true;
+    if (enabled && !weeklyEnabled && !fiveHourEnabled) {
+      weeklyEnabled = true;
+      if (weeklyEnabledEl) weeklyEnabledEl.checked = true;
+    }
     const thresholdPct = Math.max(1, Math.min(95, parseInt(document.getElementById("nb-as-threshold")?.value || "10", 10) || 10));
+    const fiveHourThresholdPct = Math.max(1, Math.min(95, parseInt(document.getElementById("nb-as-5h-threshold")?.value || "10", 10) || 10));
     const cooldownMinutes = Math.max(1, Math.min(180, parseInt(document.getElementById("nb-as-cooldown")?.value || "10", 10) || 10));
     const reloadWindow = document.getElementById("nb-as-reload")?.checked !== false;
     const r = await apiFetch("/api/suite-auto-switch", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ enabled, poolKey, thresholdPct, cooldownMinutes, reloadWindow })
+      body: JSON.stringify({
+        enabled,
+        poolKey,
+        weeklyEnabled,
+        thresholdPct,
+        fiveHourEnabled,
+        fiveHourThresholdPct,
+        cooldownMinutes,
+        reloadWindow
+      })
     });
     const j = await r.json();
     if (j.ok) {
-      showToast(enabled ? `已启用周额度自动切号（剩余 ≤ ${thresholdPct}% · 冷却 ${cooldownMinutes} 分钟）` : "已关闭低额度自动切号");
+      const ruleNotes = [];
+      if (weeklyEnabled) ruleNotes.push(`周余 ≤ ${thresholdPct}%`);
+      if (fiveHourEnabled) ruleNotes.push(`5h余 ≤ ${fiveHourThresholdPct}%`);
+      showToast(enabled ? `已启用双限额自动切号（${ruleNotes.join(" 或 ")} · 冷却 ${cooldownMinutes} 分钟）` : "已关闭低额度自动切号");
       syncAutoSwitch();
     }
   }
   document.getElementById("nb-as-enabled")?.addEventListener("change", saveAutoSwitchPolicy);
+  document.getElementById("nb-as-weekly-enabled")?.addEventListener("change", saveAutoSwitchPolicy);
+  document.getElementById("nb-as-5h-enabled")?.addEventListener("change", saveAutoSwitchPolicy);
   document.getElementById("nb-as-reload")?.addEventListener("change", saveAutoSwitchPolicy);
   document.getElementById("nb-btn-as-save")?.addEventListener("click", saveAutoSwitchPolicy);
   document.getElementById("nb-btn-save-current-acct")?.addEventListener("click", async (e) => {

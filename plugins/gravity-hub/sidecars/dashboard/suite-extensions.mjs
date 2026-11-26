@@ -62,7 +62,10 @@ const GUARDRAIL_TEMPLATES = {
 const DEFAULT_AUTO_SWITCH_CFG = {
   enabled: false,
   poolKey: "gemini-weekly",
+  weeklyEnabled: true,
   thresholdPct: 10,
+  fiveHourEnabled: true,
+  fiveHourThresholdPct: 10,
   cooldownMinutes: 10,
   reloadWindow: true,
   accountOrder: [],
@@ -458,6 +461,7 @@ export function initSuiteExtensions({
   const lastRouteFile = path.join(dataDir, "suite-last-route.json");
   const accountPrefsFile = path.join(dataDir, "suite-account-prefs.json");
   const autoCompactFile = path.join(dataDir, "suite-auto-compact.json");
+  const quotaCacheFile = path.join(dataDir, "suite-quota-cache.json");
 
   function normalizeHeatmapDays(v) {
     const n = Number(v);
@@ -485,7 +489,11 @@ export function initSuiteExtensions({
     return { ok: true, ...next };
   }
 
-  let cachedQuota = null;
+  const initialDiskQuota = readJsonSafe(quotaCacheFile, null);
+  let cachedQuota = initialDiskQuota && Array.isArray(initialDiskQuota.groups) ? initialDiskQuota : null;
+  let lastAutoSwitchResult = null;
+  let lsQuotaInFlight = null;
+  let lastLsFetchAt = 0;
   let cachedRemote = null;
   let lastRemoteCheckAt = 0;
   let updateInProgress = false;
@@ -600,10 +608,15 @@ export function initSuiteExtensions({
 
   function loadAutoSwitchConfig() {
     const raw = readJsonSafe(autoSwitchFile, {});
+    const weeklyEnabled = raw?.weeklyEnabled !== false;
+    const fiveHourEnabled = raw?.fiveHourEnabled !== false;
     return {
       ...DEFAULT_AUTO_SWITCH_CFG,
       ...(raw && typeof raw === "object" ? raw : {}),
+      weeklyEnabled,
       thresholdPct: Math.max(1, Math.min(95, Number(raw?.thresholdPct ?? DEFAULT_AUTO_SWITCH_CFG.thresholdPct) || 10)),
+      fiveHourEnabled,
+      fiveHourThresholdPct: Math.max(1, Math.min(95, Number(raw?.fiveHourThresholdPct ?? DEFAULT_AUTO_SWITCH_CFG.fiveHourThresholdPct) || 10)),
       cooldownMinutes: Math.max(1, Math.min(180, Number(raw?.cooldownMinutes ?? DEFAULT_AUTO_SWITCH_CFG.cooldownMinutes) || 10))
     };
   }
@@ -614,7 +627,10 @@ export function initSuiteExtensions({
       ...cur,
       ...(typeof patch?.enabled === "boolean" ? { enabled: patch.enabled } : {}),
       ...(typeof patch?.poolKey === "string" && patch.poolKey.trim() ? { poolKey: patch.poolKey.trim() } : {}),
+      ...(typeof patch?.weeklyEnabled === "boolean" ? { weeklyEnabled: patch.weeklyEnabled } : {}),
       ...(patch?.thresholdPct !== undefined ? { thresholdPct: Math.max(1, Math.min(95, Math.round(Number(patch.thresholdPct) || 10))) } : {}),
+      ...(typeof patch?.fiveHourEnabled === "boolean" ? { fiveHourEnabled: patch.fiveHourEnabled } : {}),
+      ...(patch?.fiveHourThresholdPct !== undefined ? { fiveHourThresholdPct: Math.max(1, Math.min(95, Math.round(Number(patch.fiveHourThresholdPct) || 10))) } : {}),
       ...(patch?.cooldownMinutes !== undefined ? { cooldownMinutes: Math.max(1, Math.min(180, Math.round(Number(patch.cooldownMinutes) || 10))) } : {}),
       ...(typeof patch?.reloadWindow === "boolean" ? { reloadWindow: patch.reloadWindow } : {}),
       ...(Array.isArray(patch?.accountOrder)
@@ -662,39 +678,57 @@ export function initSuiteExtensions({
 
   function resolveEffectivePoolSnapshot(snap, poolKey, now = Date.now()) {
     if (!snap || typeof snap !== "object") return null;
+    const normalizeEntry = (p) => {
+      const resetMs = p.weeklyResetTime ? Date.parse(p.weeklyResetTime) : NaN;
+      const resetRecovered = Number.isFinite(resetMs) && now > resetMs;
+      const effectiveWeeklyPct = resetRecovered ? 100 : p.weeklyPct;
+
+      const hasFiveHour = typeof p.fiveHourPct === "number";
+      const hResetMs = p.fiveHourResetTime ? Date.parse(p.fiveHourResetTime) : NaN;
+      const fiveHourResetRecovered = Number.isFinite(hResetMs) && now > hResetMs;
+      const effectiveFiveHourPct = hasFiveHour ? (fiveHourResetRecovered ? 100 : p.fiveHourPct) : null;
+
+      return {
+        ...p,
+        pct: effectiveWeeklyPct,
+        rawPct: p.weeklyPct,
+        effectivePct: Math.min(effectiveWeeklyPct, effectiveFiveHourPct ?? 100),
+        effectiveWeeklyPct,
+        resetRecovered,
+        effectiveFiveHourPct,
+        fiveHourResetRecovered
+      };
+    };
+
     const poolsObj = snap.pools && typeof snap.pools === "object" ? snap.pools : null;
     if (poolsObj) {
       const entries = Object.values(poolsObj).filter((p) => p && typeof p.weeklyPct === "number");
-      let matched = null;
       if (!poolKey || poolKey === "any-weekly") {
-        // 挑选有效余量最低的池子
-        const normalized = entries.map((p) => {
-          const resetMs = p.weeklyResetTime ? Date.parse(p.weeklyResetTime) : NaN;
-          const recovered = Number.isFinite(resetMs) && now > resetMs;
-          return { ...p, effectivePct: recovered ? 100 : p.weeklyPct, resetRecovered: recovered };
-        });
+        const normalized = entries.map(normalizeEntry);
         normalized.sort((a, b) => a.effectivePct - b.effectivePct);
         return normalized[0] || null;
       }
-      matched = poolsObj[poolKey];
+      let matched = poolsObj[poolKey];
       if (!matched) {
         if (poolKey === "gemini-weekly") matched = entries.find((e) => /gemini/i.test(e.key || "") && !/argon/i.test(e.key || ""));
         else if (poolKey === "3p-weekly") matched = entries.find((e) => /3p|claude|gpt/i.test(e.key || "") || /claude|gpt/i.test(e.label || ""));
         else if (poolKey === "gemini-argon-wtu-weekly") matched = entries.find((e) => /argon/i.test(e.key || "") || /argon/i.test(e.label || ""));
       }
       if (matched && typeof matched.weeklyPct === "number") {
-        const resetMs = matched.weeklyResetTime ? Date.parse(matched.weeklyResetTime) : NaN;
-        const recovered = Number.isFinite(resetMs) && now > resetMs;
-        return {
-          ...matched,
-          pct: recovered ? 100 : matched.weeklyPct,
-          rawPct: matched.weeklyPct,
-          resetRecovered: recovered
-        };
+        return normalizeEntry(matched);
       }
     }
     if (poolKey && typeof snap[poolKey] === "number") {
-      return { key: poolKey, pct: snap[poolKey], rawPct: snap[poolKey], resetRecovered: false };
+      return {
+        key: poolKey,
+        pct: snap[poolKey],
+        rawPct: snap[poolKey],
+        effectiveWeeklyPct: snap[poolKey],
+        resetRecovered: false,
+        fiveHourPct: null,
+        effectiveFiveHourPct: null,
+        fiveHourResetRecovered: false
+      };
     }
     return null;
   }
@@ -708,6 +742,9 @@ export function initSuiteExtensions({
         .map((p) => {
           const resetMs = p.weeklyResetTime ? Date.parse(p.weeklyResetTime) : NaN;
           const resetRecovered = Number.isFinite(resetMs) && now > resetMs;
+          const hResetMs = p.fiveHourResetTime ? Date.parse(p.fiveHourResetTime) : NaN;
+          const fiveHourResetRecovered = Number.isFinite(hResetMs) && now > hResetMs;
+          const fiveHourPct = typeof p.fiveHourPct === "number" ? p.fiveHourPct : null;
           return {
             key: p.key || "",
             label: p.label || p.key || "",
@@ -715,7 +752,10 @@ export function initSuiteExtensions({
             effectiveWeeklyPct: resetRecovered ? 100 : p.weeklyPct,
             resetRecovered,
             weeklyResetTime: p.weeklyResetTime || "",
-            fiveHourPct: typeof p.fiveHourPct === "number" ? p.fiveHourPct : null
+            fiveHourPct,
+            effectiveFiveHourPct: fiveHourPct !== null ? (fiveHourResetRecovered ? 100 : fiveHourPct) : null,
+            fiveHourResetRecovered,
+            fiveHourResetTime: p.fiveHourResetTime || ""
           };
         });
     }
@@ -734,14 +774,22 @@ export function initSuiteExtensions({
         effectiveWeeklyPct: v,
         resetRecovered: false,
         weeklyResetTime: "",
-        fiveHourPct: null
+        fiveHourPct: null,
+        effectiveFiveHourPct: null,
+        fiveHourResetRecovered: false,
+        fiveHourResetTime: ""
       });
     }
     return out;
   }
 
-  function pickNextCandidate(orderedAccounts, activeEmail, monitoredBucketId, thresholdPct, snaps, now) {
+  function pickNextCandidate(orderedAccounts, activeEmail, monitoredBucketId, cfg, snaps, now) {
     if (!Array.isArray(orderedAccounts) || orderedAccounts.length < 2) return null;
+    const weeklyTh = Number(cfg?.thresholdPct ?? 10);
+    const fiveHourTh = Number(cfg?.fiveHourThresholdPct ?? 10);
+    const checkWeekly = cfg?.weeklyEnabled !== false;
+    const checkFiveHour = cfg?.fiveHourEnabled !== false;
+
     const activeLower = String(activeEmail || "").toLowerCase();
     const curIdx = orderedAccounts.findIndex((a) => a.email.toLowerCase() === activeLower);
     const rotated = [];
@@ -751,12 +799,24 @@ export function initSuiteExtensions({
       if (acc.email.toLowerCase() !== activeLower) rotated.push(acc);
     }
     if (rotated.length === 0) return null;
-    // 严格按用户设定的切换顺序轮换；跳过近 30 分钟内已知低余额且尚未到每周重置时间的账号
+    // 严格按用户设定的切换顺序轮换；跳过近 30 分钟内已知任一限额不足且尚未重置的账号
     for (const cand of rotated) {
       const snap = findAccountSnapshot(snaps, cand.email);
-      if (snap && monitoredBucketId && now - (snap.updatedAt || 0) < 30 * 60 * 1000) {
-        const eff = resolveEffectivePoolSnapshot(snap, monitoredBucketId, now);
-        if (eff && !eff.resetRecovered && typeof eff.pct === "number" && eff.pct <= thresholdPct) continue;
+      if (snap && now - (snap.updatedAt || 0) < 30 * 60 * 1000) {
+        const eff = resolveEffectivePoolSnapshot(snap, monitoredBucketId || cfg?.poolKey, now);
+        if (eff) {
+          const wBlocked =
+            checkWeekly &&
+            !eff.resetRecovered &&
+            typeof eff.effectiveWeeklyPct === "number" &&
+            eff.effectiveWeeklyPct <= weeklyTh;
+          const hBlocked =
+            checkFiveHour &&
+            !eff.fiveHourResetRecovered &&
+            typeof eff.effectiveFiveHourPct === "number" &&
+            eff.effectiveFiveHourPct <= fiveHourTh;
+          if (wBlocked || hBlocked) continue;
+        }
       }
       return cand;
     }
@@ -777,30 +837,43 @@ export function initSuiteExtensions({
     }
   }
 
-  function extractMonitoredWeeklyPct(quotaPayload, poolKey) {
+  function extractMonitoredPoolMetrics(quotaPayload, poolKey) {
     const groups = Array.isArray(quotaPayload?.groups) ? quotaPayload.groups : [];
-    const weeklyEntries = [];
+    const entries = [];
     for (const g of groups) {
       const wPct = typeof g.weeklyPct === "number" ? g.weeklyPct : (typeof g.pct === "number" ? g.pct : null);
-      if (wPct === null) continue;
-      weeklyEntries.push({
+      const hPct = typeof g.fiveHourPct === "number" ? g.fiveHourPct : null;
+      if (wPct === null && hPct === null) continue;
+      entries.push({
         bucketId: g.weeklyBucketId || g.key || "",
         key: g.key || "",
         label: g.label || g.key || "",
-        pct: wPct
+        weeklyPct: wPct,
+        fiveHourPct: hPct
       });
     }
-    if (weeklyEntries.length === 0) return null;
+    if (entries.length === 0) return { weekly: null, fiveHour: null };
+
     if (poolKey === "any-weekly") {
-      weeklyEntries.sort((a, b) => a.pct - b.pct);
-      return weeklyEntries[0];
+      const weeklyList = entries.filter((e) => typeof e.weeklyPct === "number").sort((a, b) => a.weeklyPct - b.weeklyPct);
+      const fiveHList = entries.filter((e) => typeof e.fiveHourPct === "number").sort((a, b) => a.fiveHourPct - b.fiveHourPct);
+      return {
+        weekly: weeklyList[0] ? { ...weeklyList[0], pct: weeklyList[0].weeklyPct } : null,
+        fiveHour: fiveHList[0] ? { ...fiveHList[0], pct: fiveHList[0].fiveHourPct } : null
+      };
     }
-    const exact = weeklyEntries.find((e) => e.bucketId === poolKey || e.key === poolKey);
-    if (exact) return exact;
-    if (poolKey === "gemini-weekly") return weeklyEntries.find((e) => /gemini/i.test(e.bucketId) && !/argon/i.test(e.bucketId)) || weeklyEntries[0];
-    if (poolKey === "3p-weekly") return weeklyEntries.find((e) => /3p|claude|gpt/i.test(e.bucketId) || /claude|gpt/i.test(e.label)) || null;
-    if (poolKey === "gemini-argon-wtu-weekly") return weeklyEntries.find((e) => /argon/i.test(e.bucketId) || /argon/i.test(e.label)) || null;
-    return null;
+
+    let matched = entries.find((e) => e.bucketId === poolKey || e.key === poolKey);
+    if (!matched) {
+      if (poolKey === "gemini-weekly") matched = entries.find((e) => /gemini/i.test(e.bucketId) && !/argon/i.test(e.bucketId)) || entries[0];
+      else if (poolKey === "3p-weekly") matched = entries.find((e) => /3p|claude|gpt/i.test(e.bucketId) || /claude|gpt/i.test(e.label)) || null;
+      else if (poolKey === "gemini-argon-wtu-weekly") matched = entries.find((e) => /argon/i.test(e.bucketId) || /argon/i.test(e.label)) || null;
+    }
+    if (!matched) return { weekly: null, fiveHour: null };
+    return {
+      weekly: typeof matched.weeklyPct === "number" ? { ...matched, pct: matched.weeklyPct } : null,
+      fiveHour: typeof matched.fiveHourPct === "number" ? { ...matched, pct: matched.fiveHourPct } : null
+    };
   }
 
   function evaluateAutoSwitch(quotaPayload) {
@@ -833,34 +906,38 @@ export function initSuiteExtensions({
       return { triggered: false };
     }
 
-    const monitored = extractMonitoredWeeklyPct(quotaPayload, cfg.poolKey);
-    if (!monitored || monitored.pct > cfg.thresholdPct) {
-      return { triggered: false, monitored };
+    const metrics = extractMonitoredPoolMetrics(quotaPayload, cfg.poolKey);
+    const weeklyHit = Boolean(cfg.weeklyEnabled !== false && metrics.weekly && metrics.weekly.pct <= cfg.thresholdPct);
+    const fiveHourHit = Boolean(cfg.fiveHourEnabled !== false && metrics.fiveHour && metrics.fiveHour.pct <= cfg.fiveHourThresholdPct);
+    const monitored = weeklyHit ? metrics.weekly : fiveHourHit ? metrics.fiveHour : (metrics.weekly || metrics.fiveHour);
+
+    if (!weeklyHit && !fiveHourHit) {
+      return { triggered: false, monitored, metrics };
     }
 
     const now = Date.now();
     const cooldownMs = cfg.cooldownMinutes * 60 * 1000;
     if (cfg.lastSwitchAt && now - cfg.lastSwitchAt < cooldownMs) {
-      return { triggered: false, reason: "cooldown", monitored };
+      return { triggered: false, reason: "cooldown", monitored, metrics };
     }
 
     const vault = getVaultSnapshot();
     const activeEmail = curEmail || vault.currentEmail;
     const orderedAccounts = buildOrderedAccounts(vault.accounts, cfg.accountOrder);
     if (orderedAccounts.length < 2) {
-      return { triggered: false, reason: "no_candidate_accounts", monitored };
+      return { triggered: false, reason: "no_candidate_accounts", monitored, metrics };
     }
 
     const target = pickNextCandidate(
       orderedAccounts,
       activeEmail,
-      monitored.bucketId,
-      cfg.thresholdPct,
+      monitored?.bucketId || cfg.poolKey,
+      cfg,
       cfg.accountQuotaSnapshots || {},
       now
     );
     if (!target) {
-      return { triggered: false, reason: "all_candidates_below_threshold", monitored };
+      return { triggered: false, reason: "all_candidates_below_threshold", monitored, metrics };
     }
 
     try {
@@ -872,7 +949,10 @@ export function initSuiteExtensions({
       if (typeof recordAccountSwitch === "function") {
         try { recordAccountSwitch(switched.email || target.email); } catch {}
       }
-      const reason = `${monitored.label} 每周剩余 ${monitored.pct}% ≤ ${cfg.thresholdPct}%`;
+      const reasonParts = [];
+      if (weeklyHit) reasonParts.push(`${metrics.weekly.label} 每周剩余 ${metrics.weekly.pct}% ≤ ${cfg.thresholdPct}%`);
+      if (fiveHourHit) reasonParts.push(`${metrics.fiveHour.label} 5小时剩余 ${metrics.fiveHour.pct}% ≤ ${cfg.fiveHourThresholdPct}%`);
+      const reason = reasonParts.join(" 且 ");
       writeJsonSafe(autoSwitchFile, {
         ...cfg,
         lastSwitchAt: now,
@@ -892,10 +972,11 @@ export function initSuiteExtensions({
         fromEmail: activeEmail,
         toEmail: switched.email || target.email,
         reason,
-        monitored
+        monitored,
+        metrics
       };
     } catch (err) {
-      return { triggered: false, error: err instanceof Error ? err.message : String(err), monitored };
+      return { triggered: false, error: err instanceof Error ? err.message : String(err), monitored, metrics };
     }
   }
 
@@ -1031,22 +1112,140 @@ export function initSuiteExtensions({
     return { ok: false, error: `未知操作: ${action}` };
   }
 
+  function normalizeLsQuotaPayload(us, summary) {
+    const summaryGroups = summary?.response?.groups || [];
+    let groups = [];
+    if (Array.isArray(summaryGroups) && summaryGroups.length > 0) {
+      groups = summaryGroups.map((g) => {
+        const buckets = Array.isArray(g.buckets) ? g.buckets : [];
+        const weekly = buckets.find((bk) => bk.window === "weekly" || /weekly/i.test(bk.bucketId || ""));
+        const fiveH = buckets.find((bk) => bk.window === "5h" || /5h/i.test(bk.bucketId || ""));
+        const weeklyPct = weekly && typeof weekly.remainingFraction === "number" ? Math.round(weekly.remainingFraction * 100) : null;
+        const fiveHourPct = fiveH && typeof fiveH.remainingFraction === "number" ? Math.round(fiveH.remainingFraction * 100) : null;
+        let cnLabel = g.displayName || "模型池";
+        if (/Gemini Models/i.test(cnLabel)) cnLabel = "Gemini 核心池";
+        else if (/Claude and GPT/i.test(cnLabel)) cnLabel = "Claude / GPT";
+        return {
+          key: (weekly && weekly.bucketId) || (fiveH && fiveH.bucketId) || cnLabel,
+          label: cnLabel,
+          description: g.description || "",
+          weeklyBucketId: (weekly && weekly.bucketId) || "",
+          weeklyPct,
+          weeklyResetTime: (weekly && weekly.resetTime) || "",
+          fiveHourPct,
+          fiveHourResetTime: (fiveH && fiveH.resetTime) || "",
+          pct: weeklyPct !== null ? weeklyPct : fiveHourPct,
+          resetTime: (weekly && weekly.resetTime) || (fiveH && fiveH.resetTime) || ""
+        };
+      });
+    } else {
+      const configs = us?.cascadeModelConfigData?.clientModelConfigs || [];
+      const bucketMap = new Map();
+      for (const c of configs) {
+        const label = String(c.label || "");
+        const rem = c.quotaInfo && typeof c.quotaInfo.remainingFraction === "number" ? c.quotaInfo.remainingFraction : null;
+        const resetTime = (c.quotaInfo && c.quotaInfo.resetTime) || "";
+        if (rem === null) continue;
+        let groupKey = "gemini-weekly";
+        let groupLabel = "Gemini 核心池";
+        if (/Argon/i.test(label)) {
+          groupKey = "gemini-argon-wtu-weekly";
+          groupLabel = "Gemini 4 Argon";
+        } else if (/Claude|GPT/i.test(label)) {
+          groupKey = "3p-weekly";
+          groupLabel = "Claude / GPT";
+        }
+        const pct = Math.round(rem * 100);
+        const prev = bucketMap.get(groupKey);
+        if (!prev) {
+          bucketMap.set(groupKey, { key: groupKey, weeklyBucketId: groupKey, label: groupLabel, weeklyPct: pct, pct, resetTime, weeklyResetTime: resetTime });
+        } else if (pct < prev.pct) {
+          prev.pct = pct;
+          prev.weeklyPct = pct;
+        }
+      }
+      groups = Array.from(bucketMap.values());
+    }
+    return {
+      email: us?.email || "",
+      planName: us?.planStatus?.planInfo?.planName || us?.userTier?.name || "",
+      groups
+    };
+  }
+
+  async function fetchQuotaFromLanguageServer(force = false) {
+    const lsAddress = process.env.ANTIGRAVITY_LS_ADDRESS || "";
+    const csrfToken = process.env.ANTIGRAVITY_CSRF_TOKEN || "";
+    if (!lsAddress || !csrfToken) return cachedQuota;
+
+    const now = Date.now();
+    if (!force && now - lastLsFetchAt < 8000 && cachedQuota) return cachedQuota;
+    if (lsQuotaInFlight) return await lsQuotaInFlight;
+
+    lsQuotaInFlight = (async () => {
+      lastLsFetchAt = Date.now();
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 2500);
+      try {
+        const opts = {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-codeium-csrf-token": csrfToken },
+          body: "{}",
+          signal: ctrl.signal
+        };
+        const [statusRes, summaryRes] = await Promise.allSettled([
+          fetch(`http://${lsAddress}/exa.language_server_pb.LanguageServerService/GetUserStatus`, opts).then((r) => (r.ok ? r.json() : null)),
+          fetch(`http://${lsAddress}/exa.language_server_pb.LanguageServerService/RetrieveUserQuotaSummary`, opts).then((r) => (r.ok ? r.json() : null))
+        ]);
+        const us = statusRes.status === "fulfilled" && statusRes.value?.userStatus ? statusRes.value.userStatus : null;
+        const summary = summaryRes.status === "fulfilled" ? summaryRes.value : null;
+        if (us || summary) {
+          const payload = normalizeLsQuotaPayload(us, summary);
+          if (payload.groups.length > 0 || payload.email) {
+            updateQuotaCache(payload);
+          }
+        }
+      } catch {} finally {
+        clearTimeout(timer);
+        lsQuotaInFlight = null;
+      }
+      return cachedQuota;
+    })();
+
+    return await lsQuotaInFlight;
+  }
+
   function updateQuotaCache(payload) {
     if (!payload || typeof payload !== "object") return { ok: false, error: "Invalid quota payload" };
     cachedQuota = {
       ...payload,
       updatedAt: Date.now()
     };
-    const autoSwitch = evaluateAutoSwitch(cachedQuota);
-    return { ok: true, updatedAt: cachedQuota.updatedAt, autoSwitch };
+    try { writeJsonSafe(quotaCacheFile, cachedQuota); } catch {}
+    lastAutoSwitchResult = evaluateAutoSwitch(cachedQuota);
+    return { ok: true, updatedAt: cachedQuota.updatedAt, autoSwitch: lastAutoSwitchResult };
   }
 
-  function getQuotaCache() {
+  async function getQuotaCacheAsync({ force = false } = {}) {
+    const empty = !cachedQuota || !Array.isArray(cachedQuota.groups) || cachedQuota.groups.length === 0;
+    const stale = !cachedQuota || Date.now() - (cachedQuota.updatedAt || 0) > 20000;
+    if (force || empty) {
+      await fetchQuotaFromLanguageServer(true);
+    } else if (stale) {
+      fetchQuotaFromLanguageServer(false).catch(() => {});
+    }
     return {
       ok: true,
-      data: cachedQuota
+      data: cachedQuota,
+      autoSwitch: lastAutoSwitchResult
     };
   }
+
+  // 启动后快速预拉取一次实时配额并每 30 秒静默刷新，确保浮窗与面板毫秒级秒开
+  const lsInitTimer = setTimeout(() => { fetchQuotaFromLanguageServer(false).catch(() => {}); }, 350);
+  if (typeof lsInitTimer.unref === "function") lsInitTimer.unref();
+  const lsPollTimer = setInterval(() => { fetchQuotaFromLanguageServer(false).catch(() => {}); }, 30000);
+  if (typeof lsPollTimer.unref === "function") lsPollTimer.unref();
 
   function getAutoSwitchState() {
     const cfg = loadAutoSwitchConfig();
@@ -1059,7 +1258,7 @@ export function initSuiteExtensions({
       ordered,
       activeEmail,
       monitoredBucket,
-      cfg.thresholdPct,
+      cfg,
       cfg.accountQuotaSnapshots || {},
       now
     );
@@ -1069,15 +1268,17 @@ export function initSuiteExtensions({
       cfg.lastSwitchAt && now - cfg.lastSwitchAt < cooldownMs
         ? Math.ceil((cooldownMs - (now - cfg.lastSwitchAt)) / 1000)
         : 0;
-    const monitored = cachedQuota ? extractMonitoredWeeklyPct(cachedQuota, cfg.poolKey) : null;
+    const metrics = cachedQuota ? extractMonitoredPoolMetrics(cachedQuota, cfg.poolKey) : { weekly: null, fiveHour: null };
     return {
       ok: true,
       config: {
         ...cfg,
         accountOrder: ordered.map((a) => a.email)
       },
-      monitoredPct: monitored ? monitored.pct : null,
-      monitoredLabel: monitored ? monitored.label : "",
+      monitoredPct: metrics.weekly ? metrics.weekly.pct : null,
+      monitoredLabel: metrics.weekly ? metrics.weekly.label : "",
+      monitoredFiveHourPct: metrics.fiveHour ? metrics.fiveHour.pct : null,
+      monitoredFiveHourLabel: metrics.fiveHour ? metrics.fiveHour.label : "",
       cooldownRemainingSec,
       vaultCount: ordered.length,
       currentEmail: activeEmail,
@@ -1268,7 +1469,7 @@ sleep 1
       } else if (urlObj.pathname === "/api/suite-update/action" && req.method === "POST") {
         result = await handleUpdateAction(bodyObj);
       } else if (urlObj.pathname === "/api/suite-quota" && req.method === "GET") {
-        result = getQuotaCache();
+        result = await getQuotaCacheAsync({ force: urlObj.searchParams.get("refresh") === "1" });
       } else if (urlObj.pathname === "/api/suite-quota" && req.method === "POST") {
         result = updateQuotaCache(bodyObj);
       } else if (urlObj.pathname === "/api/suite-auto-switch" && req.method === "GET") {
@@ -1334,7 +1535,10 @@ sleep 1
     Oe.api("/api/suite-update", async () => await checkSuiteUpdate({ force: false }), "GET");
     Oe.api("/api/suite-update/action", async (e) => await handleUpdateAction(parseBody(e)), "POST");
 
-    Oe.api("/api/suite-quota", () => getQuotaCache(), "GET");
+    Oe.api("/api/suite-quota", async (e, req) => {
+      const force = Boolean(req?.url && String(req.url).includes("refresh=1"));
+      return await getQuotaCacheAsync({ force });
+    }, "GET");
     Oe.api("/api/suite-quota", (e) => updateQuotaCache(parseBody(e)), "POST");
 
     Oe.api("/api/suite-auto-switch", () => getAutoSwitchState(), "GET");

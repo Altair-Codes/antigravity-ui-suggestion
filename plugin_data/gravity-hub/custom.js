@@ -307,7 +307,8 @@ try {
     anchor.parentElement.insertBefore(btn, auraBtnEl || anchor);
   }
 
-  // 2. 通过 Antigravity 原生 RetrieveUserQuotaSummary + GetUserStatus 同步每周/5h额度、底栏实时胶囊与运行中只读查额度
+  // 2. 通过 Antigravity 原生 RetrieveUserQuotaSummary + GetUserStatus 与 Sidecar Bridge 协同同步每周/5h额度、底栏实时胶囊与运行中只读查额度
+  const QUOTA_LOCAL_CACHE_KEY = "nb_quota_cache_v1";
   const quotaState = (window.__NB_QUOTA_STATE__ = window.__NB_QUOTA_STATE__ || {
     payload: null,
     autoSwitch: null,
@@ -316,6 +317,23 @@ try {
     inFlight: false,
     baselineByKey: {}
   });
+  if (!quotaState.payload) {
+    try {
+      const cachedRaw = localStorage.getItem(QUOTA_LOCAL_CACHE_KEY);
+      if (cachedRaw) {
+        const cachedObj = JSON.parse(cachedRaw);
+        if (cachedObj && Array.isArray(cachedObj.groups) && cachedObj.groups.length > 0) {
+          quotaState.payload = {
+            email: cachedObj.email || "",
+            planName: cachedObj.planName || "",
+            groups: cachedObj.groups
+          };
+          quotaState.updatedAt = Number(cachedObj.updatedAt || Date.now());
+          recordQuotaBaseline(quotaState.payload);
+        }
+      }
+    } catch {}
+  }
 
   function escHtml(str) {
     return String(str ?? "")
@@ -454,9 +472,13 @@ try {
       ? `${p.planName ? p.planName + " · " : ""}${p.email}`
       : p?.planName || "正在读取账号额度";
 
+    const asRuleParts = [];
+    if (as?.config?.weeklyEnabled !== false) asRuleParts.push(`周≤${as.config.thresholdPct}%`);
+    if (as?.config?.fiveHourEnabled !== false) asRuleParts.push(`5h≤${as.config.fiveHourThresholdPct ?? 10}%`);
+    const asRuleText = asRuleParts.length > 0 ? asRuleParts.join(" · ") : `≤${as?.config?.thresholdPct ?? 10}%`;
     const asTag =
       as && as.config?.enabled
-        ? `<span class="nb-qp-as-tag">周余 ≤ ${as.config.thresholdPct}% → ${escHtml((as.nextTargetEmail || "自动切号").split("@")[0])}</span>`
+        ? `<span class="nb-qp-as-tag">${asRuleText} → ${escHtml((as.nextTargetEmail || "自动切号").split("@")[0])}</span>`
         : "";
 
     const poolsHtml =
@@ -1116,119 +1138,193 @@ try {
     });
   }
 
+  function persistLocalQuotaCache(payload, updatedAt) {
+    try {
+      if (payload && Array.isArray(payload.groups) && payload.groups.length > 0) {
+        localStorage.setItem(
+          QUOTA_LOCAL_CACHE_KEY,
+          JSON.stringify({
+            email: payload.email || "",
+            planName: payload.planName || "",
+            groups: payload.groups,
+            updatedAt: Number(updatedAt || Date.now())
+          })
+        );
+      }
+    } catch {}
+  }
+
   async function syncNativeModelQuotas(force = false) {
     const b = window.__AG_SUITE_BRIDGE__;
     const csrf = window.__APP_CONFIG__ && window.__APP_CONFIG__.csrfToken;
-    if (!b || !csrf) return;
+    if (!b) return;
     const now = Date.now();
     if (quotaState.inFlight) return;
     if (!force && now - quotaState.lastSyncAttemptAt < 7000) return;
     quotaState.inFlight = true;
     quotaState.lastSyncAttemptAt = now;
     try {
-      const reqOpts = {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Codeium-Csrf-Token": csrf
-        },
-        body: JSON.stringify({})
-      };
-      const [statusRes, summaryRes] = await Promise.allSettled([
-        fetch("/exa.language_server_pb.LanguageServerService/GetUserStatus", reqOpts).then((r) => (r.ok ? r.json() : null)),
-        fetch("/exa.language_server_pb.LanguageServerService/RetrieveUserQuotaSummary", reqOpts).then((r) => (r.ok ? r.json() : null))
-      ]);
+      let payload = null;
+      let autoSwitchNotice = null;
 
-      const us = (statusRes.status === "fulfilled" && statusRes.value && statusRes.value.userStatus) || {};
-      const summaryGroups =
-        (summaryRes.status === "fulfilled" && summaryRes.value && summaryRes.value.response && summaryRes.value.response.groups) || [];
-
-      let groups = [];
-      if (Array.isArray(summaryGroups) && summaryGroups.length > 0) {
-        groups = summaryGroups.map((g) => {
-          const buckets = Array.isArray(g.buckets) ? g.buckets : [];
-          const weekly = buckets.find((bk) => bk.window === "weekly" || /weekly/i.test(bk.bucketId || ""));
-          const fiveH = buckets.find((bk) => bk.window === "5h" || /5h/i.test(bk.bucketId || ""));
-          const weeklyPct = weekly && typeof weekly.remainingFraction === "number" ? Math.round(weekly.remainingFraction * 100) : null;
-          const fiveHourPct = fiveH && typeof fiveH.remainingFraction === "number" ? Math.round(fiveH.remainingFraction * 100) : null;
-          let cnLabel = g.displayName || "模型池";
-          if (/Gemini Models/i.test(cnLabel)) cnLabel = "Gemini 核心池";
-          else if (/Claude and GPT/i.test(cnLabel)) cnLabel = "Claude / GPT";
-          return {
-            key: (weekly && weekly.bucketId) || (fiveH && fiveH.bucketId) || cnLabel,
-            label: cnLabel,
-            description: g.description || "",
-            weeklyBucketId: (weekly && weekly.bucketId) || "",
-            weeklyPct,
-            weeklyResetTime: (weekly && weekly.resetTime) || "",
-            fiveHourPct,
-            fiveHourResetTime: (fiveH && fiveH.resetTime) || "",
-            pct: weeklyPct !== null ? weeklyPct : fiveHourPct,
-            resetTime: (weekly && weekly.resetTime) || (fiveH && fiveH.resetTime) || ""
+      if (csrf) {
+        const ac = typeof AbortController !== "undefined" ? new AbortController() : null;
+        const timer = ac ? setTimeout(() => { try { ac.abort(); } catch {} }, 2500) : null;
+        try {
+          const reqOpts = {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Codeium-Csrf-Token": csrf
+            },
+            body: JSON.stringify({}),
+            signal: ac ? ac.signal : undefined
           };
-        });
-      } else {
-        // 回退至 GetUserStatus 的单模型额度聚合
-        const configs = (us.cascadeModelConfigData && us.cascadeModelConfigData.clientModelConfigs) || [];
-        const bucketMap = new Map();
-        for (const c of configs) {
-          const label = String(c.label || "");
-          const rem = c.quotaInfo && typeof c.quotaInfo.remainingFraction === "number" ? c.quotaInfo.remainingFraction : null;
-          const resetTime = (c.quotaInfo && c.quotaInfo.resetTime) || "";
-          if (rem === null) continue;
-          let groupKey = "gemini-weekly";
-          let groupLabel = "Gemini 核心池";
-          if (/Argon/i.test(label)) {
-            groupKey = "gemini-argon-wtu-weekly";
-            groupLabel = "Gemini 4 Argon";
-          } else if (/Claude|GPT/i.test(label)) {
-            groupKey = "3p-weekly";
-            groupLabel = "Claude / GPT";
+          const [statusRes, summaryRes] = await Promise.allSettled([
+            fetch("/exa.language_server_pb.LanguageServerService/GetUserStatus", reqOpts).then((r) => (r.ok ? r.json() : null)),
+            fetch("/exa.language_server_pb.LanguageServerService/RetrieveUserQuotaSummary", reqOpts).then((r) => (r.ok ? r.json() : null))
+          ]);
+
+          const us = (statusRes.status === "fulfilled" && statusRes.value && statusRes.value.userStatus) || {};
+          const summaryGroups =
+            (summaryRes.status === "fulfilled" && summaryRes.value && summaryRes.value.response && summaryRes.value.response.groups) || [];
+
+          let groups = [];
+          if (Array.isArray(summaryGroups) && summaryGroups.length > 0) {
+            groups = summaryGroups.map((g) => {
+              const buckets = Array.isArray(g.buckets) ? g.buckets : [];
+              const weekly = buckets.find((bk) => bk.window === "weekly" || /weekly/i.test(bk.bucketId || ""));
+              const fiveH = buckets.find((bk) => bk.window === "5h" || /5h/i.test(bk.bucketId || ""));
+              const weeklyPct = weekly && typeof weekly.remainingFraction === "number" ? Math.round(weekly.remainingFraction * 100) : null;
+              const fiveHourPct = fiveH && typeof fiveH.remainingFraction === "number" ? Math.round(fiveH.remainingFraction * 100) : null;
+              let cnLabel = g.displayName || "模型池";
+              if (/Gemini Models/i.test(cnLabel)) cnLabel = "Gemini 核心池";
+              else if (/Claude and GPT/i.test(cnLabel)) cnLabel = "Claude / GPT";
+              return {
+                key: (weekly && weekly.bucketId) || (fiveH && fiveH.bucketId) || cnLabel,
+                label: cnLabel,
+                description: g.description || "",
+                weeklyBucketId: (weekly && weekly.bucketId) || "",
+                weeklyPct,
+                weeklyResetTime: (weekly && weekly.resetTime) || "",
+                fiveHourPct,
+                fiveHourResetTime: (fiveH && fiveH.resetTime) || "",
+                pct: weeklyPct !== null ? weeklyPct : fiveHourPct,
+                resetTime: (weekly && weekly.resetTime) || (fiveH && fiveH.resetTime) || ""
+              };
+            });
+          } else {
+            // 回退至 GetUserStatus 的单模型额度聚合
+            const configs = (us.cascadeModelConfigData && us.cascadeModelConfigData.clientModelConfigs) || [];
+            const bucketMap = new Map();
+            for (const c of configs) {
+              const label = String(c.label || "");
+              const rem = c.quotaInfo && typeof c.quotaInfo.remainingFraction === "number" ? c.quotaInfo.remainingFraction : null;
+              const resetTime = (c.quotaInfo && c.quotaInfo.resetTime) || "";
+              if (rem === null) continue;
+              let groupKey = "gemini-weekly";
+              let groupLabel = "Gemini 核心池";
+              if (/Argon/i.test(label)) {
+                groupKey = "gemini-argon-wtu-weekly";
+                groupLabel = "Gemini 4 Argon";
+              } else if (/Claude|GPT/i.test(label)) {
+                groupKey = "3p-weekly";
+                groupLabel = "Claude / GPT";
+              }
+              const pct = Math.round(rem * 100);
+              const prev = bucketMap.get(groupKey);
+              if (!prev) {
+                bucketMap.set(groupKey, { key: groupKey, weeklyBucketId: groupKey, label: groupLabel, weeklyPct: pct, pct, resetTime, weeklyResetTime: resetTime });
+              } else if (pct < prev.pct) {
+                prev.pct = pct;
+                prev.weeklyPct = pct;
+              }
+            }
+            groups = Array.from(bucketMap.values());
           }
-          const pct = Math.round(rem * 100);
-          const prev = bucketMap.get(groupKey);
-          if (!prev) {
-            bucketMap.set(groupKey, { key: groupKey, weeklyBucketId: groupKey, label: groupLabel, weeklyPct: pct, pct, resetTime, weeklyResetTime: resetTime });
-          } else if (pct < prev.pct) {
-            prev.pct = pct;
-            prev.weeklyPct = pct;
+
+          if (groups.length > 0) {
+            payload = {
+              email: us.email || "",
+              planName: (us.planStatus && us.planStatus.planInfo && us.planStatus.planInfo.planName) || (us.userTier && us.userTier.name) || "",
+              groups
+            };
+          }
+        } catch {} finally {
+          if (timer) clearTimeout(timer);
+        }
+      }
+
+      if (payload && Array.isArray(payload.groups) && payload.groups.length > 0) {
+        quotaState.payload = payload;
+        quotaState.updatedAt = Date.now();
+        recordQuotaBaseline(payload);
+        persistLocalQuotaCache(payload, quotaState.updatedAt);
+
+        const [postRes, asRes] = await Promise.allSettled([
+          fetch(`${b.origin}/api/suite-quota`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Suite-Token": b.token },
+            body: JSON.stringify(payload)
+          }).then((r) => (r.ok ? r.json() : null)),
+          fetch(`${b.origin}/api/suite-auto-switch`, {
+            method: "GET",
+            headers: { "X-Suite-Token": b.token }
+          }).then((r) => (r.ok ? r.json() : null))
+        ]);
+        if (asRes.status === "fulfilled" && asRes.value && asRes.value.ok) {
+          quotaState.autoSwitch = asRes.value;
+        }
+        if (postRes.status === "fulfilled" && postRes.value && postRes.value.autoSwitch && postRes.value.autoSwitch.triggered) {
+          autoSwitchNotice = postRes.value.autoSwitch;
+        }
+      } else {
+        // 宿主缺少 csrfToken 或 LS RPC 超时/为空时，直接走 Sidecar Bridge 秒级缓存/直连回退
+        const [getRes, asRes] = await Promise.allSettled([
+          fetch(`${b.origin}/api/suite-quota${force ? "?refresh=1" : ""}`, {
+            method: "GET",
+            headers: { "X-Suite-Token": b.token }
+          }).then((r) => (r.ok ? r.json() : null)),
+          fetch(`${b.origin}/api/suite-auto-switch`, {
+            method: "GET",
+            headers: { "X-Suite-Token": b.token }
+          }).then((r) => (r.ok ? r.json() : null))
+        ]);
+        if (asRes.status === "fulfilled" && asRes.value && asRes.value.ok) {
+          quotaState.autoSwitch = asRes.value;
+        }
+        if (getRes.status === "fulfilled" && getRes.value && getRes.value.ok) {
+          const d = getRes.value.data;
+          if (d && Array.isArray(d.groups) && d.groups.length > 0) {
+            const bridgePayload = {
+              email: d.email || "",
+              planName: d.planName || "",
+              groups: d.groups
+            };
+            quotaState.payload = bridgePayload;
+            quotaState.updatedAt = Number(d.updatedAt || Date.now());
+            recordQuotaBaseline(bridgePayload);
+            persistLocalQuotaCache(bridgePayload, quotaState.updatedAt);
+          }
+          if (getRes.value.autoSwitch && getRes.value.autoSwitch.triggered) {
+            autoSwitchNotice = getRes.value.autoSwitch;
           }
         }
-        groups = Array.from(bucketMap.values());
       }
 
-      const payload = {
-        email: us.email || "",
-        planName: (us.planStatus && us.planStatus.planInfo && us.planStatus.planInfo.planName) || (us.userTier && us.userTier.name) || "",
-        groups
-      };
-      quotaState.payload = payload;
-      quotaState.updatedAt = Date.now();
-      recordQuotaBaseline(payload);
-
-      const [postRes, asRes] = await Promise.allSettled([
-        fetch(`${b.origin}/api/suite-quota`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "X-Suite-Token": b.token },
-          body: JSON.stringify(payload)
-        }).then((r) => (r.ok ? r.json() : null)),
-        fetch(`${b.origin}/api/suite-auto-switch`, {
-          method: "GET",
-          headers: { "X-Suite-Token": b.token }
-        }).then((r) => (r.ok ? r.json() : null))
-      ]);
-
-      if (asRes.status === "fulfilled" && asRes.value && asRes.value.ok) {
-        quotaState.autoSwitch = asRes.value;
-      }
-      if (postRes.status === "fulfilled" && postRes.value && postRes.value.autoSwitch && postRes.value.autoSwitch.triggered) {
+      if (autoSwitchNotice && autoSwitchNotice.triggered) {
         showMiniNotice(
-          `⚡ ${postRes.value.autoSwitch.reason}，已自动切换账号至 ${postRes.value.autoSwitch.toEmail}`,
+          `⚡ ${autoSwitchNotice.reason}，已自动切换账号至 ${autoSwitchNotice.toEmail}`,
           false
         );
       }
       ensureLiveQuotaPill();
       renderLiveQuotaPill();
+      if (isQuotaPopoverOpen()) {
+        const pop = document.getElementById("nb-live-quota-popover");
+        if (pop) renderQuotaPopoverContent(pop, lastPopoverLocked);
+      }
+      window.__NB_QUOTA_UI__?.enhanceOpenModelMenu?.();
     } catch {} finally {
       quotaState.inFlight = false;
     }
@@ -2001,13 +2097,10 @@ try {
       window.__NB_QUOTA_UI__?.checkAndTriggerAutoCompact?.();
     }, 2500);
     initLastRoutePersistence();
-    setTimeout(() => syncNativeModelQuotas(true), 800);
-    setTimeout(() => {
-      if (!quotaState.payload) syncNativeModelQuotas(true);
-      else syncNativeModelQuotas(false);
-    }, 3200);
-    setTimeout(() => syncNativeModelQuotas(false), 8000);
-    setInterval(() => syncNativeModelQuotas(false), 60000);
+    setTimeout(() => syncNativeModelQuotas(false), 50);
+    setTimeout(() => syncNativeModelQuotas(true), 1200);
+    setTimeout(() => syncNativeModelQuotas(false), 6000);
+    setInterval(() => syncNativeModelQuotas(false), 45000);
     setTimeout(checkUpdatesOnce, 4500);
   } else {
     ensureCliButton();

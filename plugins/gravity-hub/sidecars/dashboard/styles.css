@@ -522,6 +522,25 @@ body {
   border: 1px solid var(--nb-border);
 }
 
+.nb-as-rules-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+  padding: 8px 11px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px dashed var(--nb-border);
+}
+
+.nb-as-rule-sep {
+  width: 1px;
+  height: 16px;
+  background: var(--nb-border);
+  margin: 0 2px;
+}
+
 .nb-as-summary {
   margin-top: 8px;
 }
