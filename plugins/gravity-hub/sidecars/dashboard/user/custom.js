@@ -31,6 +31,115 @@ try {
   const bridge = ctxObj && ctxObj.suiteBridge;
   window.__AG_LAST_PATCH_CTX__ = ctxObj || null;
 
+  function isSuiteActive() {
+    const c1 = window.__AG_LAST_PATCH_CTX__?.config;
+    const c2 = window.__AG_PATCH_CTX__?.config;
+    if (c1 && c1.enabled === false) return false;
+    if (c2 && c2.enabled === false) return false;
+    return true;
+  }
+
+  window.__ag_suite_teardown_fn = function teardownGravityHostUi() {
+    try {
+      if (window.__ag_suite_host_interval_id) {
+        clearInterval(window.__ag_suite_host_interval_id);
+        window.__ag_suite_host_interval_id = null;
+      }
+      if (window.__ag_suite_quota_interval_id) {
+        clearInterval(window.__ag_suite_quota_interval_id);
+        window.__ag_suite_quota_interval_id = null;
+      }
+      if (window.__ag_suite_route_interval_id) {
+        clearInterval(window.__ag_suite_route_interval_id);
+        window.__ag_suite_route_interval_id = null;
+      }
+      if (window.__ag_suite_notice_timer) {
+        clearTimeout(window.__ag_suite_notice_timer);
+        window.__ag_suite_notice_timer = null;
+      }
+      if (window.__nb_preset_scheme_observer) {
+        try { window.__nb_preset_scheme_observer.disconnect(); } catch {}
+        window.__nb_preset_scheme_observer = null;
+      }
+      if (window.__nb_appearance_observer) {
+        try { window.__nb_appearance_observer.disconnect(); } catch {}
+        window.__nb_appearance_observer = null;
+      }
+      if (window.__nb_model_menu_obs_v2) {
+        try { window.__nb_model_menu_obs_v2.disconnect(); } catch {}
+        window.__nb_model_menu_obs_v2 = null;
+      }
+      if (window.__ag_slash_skill_i18n_observer) {
+        try { window.__ag_slash_skill_i18n_observer.disconnect(); } catch {}
+        window.__ag_slash_skill_i18n_observer = null;
+      }
+      const box = document.getElementById("antigravity.agentSidePanelInputBox");
+      if (box && box.__nb_resize_obs_v3) {
+        try { box.__nb_resize_obs_v3.disconnect(); } catch {}
+        box.__nb_resize_obs_v3 = null;
+      }
+      const mText = document.getElementById("ag-live-metrics-text");
+      if (mText && mText.__nb_mut_obs_v3) {
+        try { mText.__nb_mut_obs_v3.disconnect(); } catch {}
+        mText.__nb_mut_obs_v3 = null;
+      }
+      const compSt = window.__NB_COMPOSER_STATE__;
+      if (compSt) {
+        if (compSt.rafId) cancelAnimationFrame(compSt.rafId);
+        clearTimeout(compSt.morphTimer);
+        clearTimeout(compSt.morphHardCapTimer);
+        compSt.rafId = 0;
+        compSt.morphTimer = 0;
+        compSt.morphHardCapTimer = 0;
+        compSt.isMorphing = false;
+      }
+
+      window.__ag_suite_host_timers_v1 = false;
+      window.__ag_suite_last_route_v1 = false;
+      window.__nb_preset_scheme_obs_v1 = false;
+      window.__nb_appearance_obs_v1 = false;
+
+      if (typeof window.__ag_clear_slash_fn === "function") {
+        window.__ag_clear_slash_fn();
+      }
+
+      const removeIds = [
+        "ag-suite-cli-btn",
+        "ag-suite-aura-btn",
+        "ag-suite-vault-btn",
+        "ag-suite-explorer-btn",
+        "ag-suite-update-btn",
+        "ag-suite-mini-notice",
+        "ag-suite-update-toast",
+        "nb-live-quota-popover",
+        "nb-live-quota-pill",
+        "nb-docked-metrics-strip",
+        "nb-tt-tps-monitor-row"
+      ];
+      for (const id of removeIds) {
+        document.getElementById(id)?.remove();
+      }
+      document.querySelectorAll('[data-nb-injected="1"], .nb-menu-qheader, .nb-menu-qbadge').forEach((el) => el.remove());
+
+      const stripAttrs = [
+        "data-nb-quota-level",
+        "data-nb-metrics-tier",
+        "data-nb-dock-tier",
+        "data-nb-hide-sep",
+        "data-nb-pane-morphing",
+        "data-nb-no-trail"
+      ];
+      for (const attr of stripAttrs) {
+        document.querySelectorAll(`[${attr}]`).forEach((el) => el.removeAttribute(attr));
+      }
+    } catch {}
+  };
+
+  if (ctxObj && ctxObj.config && ctxObj.config.enabled === false) {
+    window.__ag_suite_teardown_fn();
+    return;
+  }
+
   // 0. 零重启即时同步预设属性与中英文切回自愈（修复从 English 切回 zh-CN 时老版节点缓存跳过重译的问题）
   function syncPresetsAndI18nState(curCtx) {
     try {
@@ -107,14 +216,20 @@ try {
   if (!window.__nb_preset_scheme_obs_v1) {
     window.__nb_preset_scheme_obs_v1 = true;
     try {
-      new MutationObserver(() => {
+      if (window.__nb_preset_scheme_observer) {
+        try { window.__nb_preset_scheme_observer.disconnect(); } catch {}
+      }
+      const presetObs = new MutationObserver(() => {
+        if (!isSuiteActive()) return;
         const latest = window.__AG_LAST_PATCH_CTX__ || window.__AG_PATCH_CTX__;
         if (!latest || !latest.config || !latest.config.presets) return;
         const root = document.documentElement;
         const scheme = root.getAttribute("data-ag-color-scheme") === "dark" ? "dark" : "light";
         const wanted = scheme === "dark" ? (latest.config.presets.dark || "default") : (latest.config.presets.light || "default");
         if (root.getAttribute("data-ag-preset") !== wanted) root.setAttribute("data-ag-preset", wanted);
-      }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-ag-color-scheme"] });
+      });
+      presetObs.observe(document.documentElement, { attributes: true, attributeFilter: ["data-ag-color-scheme"] });
+      window.__nb_preset_scheme_observer = presetObs;
     } catch {}
   }
 
@@ -1661,9 +1776,15 @@ try {
       };
     } catch {}
     window.addEventListener("popstate", scheduleSave, { passive: true });
-    window.addEventListener("pagehide", () => postRouteNow(true), { passive: true });
-    window.addEventListener("beforeunload", () => postRouteNow(true), { passive: true });
-    setInterval(() => {
+    window.addEventListener("pagehide", () => {
+      if (isSuiteActive()) postRouteNow(true);
+    }, { passive: true });
+    window.addEventListener("beforeunload", () => {
+      if (isSuiteActive()) postRouteNow(true);
+    }, { passive: true });
+    if (window.__ag_suite_route_interval_id) clearInterval(window.__ag_suite_route_interval_id);
+    window.__ag_suite_route_interval_id = setInterval(() => {
+      if (!isSuiteActive()) return;
       if (trackingReady && getCurrentRoute() !== lastSavedRoute) scheduleSave();
     }, 2000);
 
@@ -2289,6 +2410,7 @@ try {
   }
 
   window.__ag_suite_host_tick_fn = () => {
+    if (!isSuiteActive()) return;
     ensureCliButton();
     ensureComposerResponsiveObserver();
     window.__NB_QUOTA_UI__?.ensureLiveQuotaPill();
@@ -2304,18 +2426,27 @@ try {
     ensureLiveQuotaPill();
     ensureComposerResponsiveObserver();
     refreshAutoCompactConfig(true);
-    window.addEventListener("focus", () => refreshAutoCompactConfig(true), { passive: true });
+    window.addEventListener("focus", () => {
+      if (isSuiteActive()) refreshAutoCompactConfig(true);
+    }, { passive: true });
     if (window.__ag_suite_host_interval_id) clearInterval(window.__ag_suite_host_interval_id);
     window.__ag_suite_host_interval_id = setInterval(() => window.__ag_suite_host_tick_fn?.(), 2500);
     initLastRoutePersistence();
-    setTimeout(() => syncNativeModelQuotas(false), 50);
-    setTimeout(() => syncNativeModelQuotas(true), 1200);
-    setTimeout(() => syncNativeModelQuotas(false), 6000);
-    setInterval(() => syncNativeModelQuotas(false), 45000);
-    setTimeout(checkUpdatesOnce, 4500);
+    setTimeout(() => { if (isSuiteActive()) syncNativeModelQuotas(false); }, 50);
+    setTimeout(() => { if (isSuiteActive()) syncNativeModelQuotas(true); }, 1200);
+    setTimeout(() => { if (isSuiteActive()) syncNativeModelQuotas(false); }, 6000);
+    if (window.__ag_suite_quota_interval_id) clearInterval(window.__ag_suite_quota_interval_id);
+    window.__ag_suite_quota_interval_id = setInterval(() => {
+      if (isSuiteActive()) syncNativeModelQuotas(false);
+    }, 45000);
+    setTimeout(() => { if (isSuiteActive()) checkUpdatesOnce(); }, 4500);
   } else {
     if (window.__ag_suite_host_interval_id) clearInterval(window.__ag_suite_host_interval_id);
     window.__ag_suite_host_interval_id = setInterval(() => window.__ag_suite_host_tick_fn?.(), 2500);
+    if (window.__ag_suite_quota_interval_id) clearInterval(window.__ag_suite_quota_interval_id);
+    window.__ag_suite_quota_interval_id = setInterval(() => {
+      if (isSuiteActive()) syncNativeModelQuotas(false);
+    }, 45000);
     ensureCliButton();
     ensureLiveQuotaPill();
     ensureComposerResponsiveObserver();
@@ -2593,12 +2724,17 @@ try {
   if (!window.__nb_appearance_obs_v1) {
     window.__nb_appearance_obs_v1 = true;
     try {
+      if (window.__nb_appearance_observer) {
+        try { window.__nb_appearance_observer.disconnect(); } catch {}
+      }
       const appObs = new MutationObserver(() => {
+        if (!isSuiteActive()) return;
         syncHostAppearanceFromThemeVars(0);
         checkTpsMonitorResetFromThemeVars();
         syncTpsTooltipRow();
       });
       appObs.observe(document.documentElement, { attributes: true, attributeFilter: ["style"] });
+      window.__nb_appearance_observer = appObs;
     } catch {}
   }
 })(typeof ctx !== "undefined" ? ctx : (typeof boot !== "undefined" ? boot : null));
@@ -2995,8 +3131,14 @@ try {
 
   if (window.__ag_slash_skill_i18n_observer) {
     try { window.__ag_slash_skill_i18n_observer.disconnect(); } catch {}
+    window.__ag_slash_skill_i18n_observer = null;
+  }
+  if (window.__AG_LAST_PATCH_CTX__?.config?.enabled === false) {
+    clearSlashMenuDom();
+    return;
   }
   const obs = new MutationObserver((mutations) => {
+    if (!isChineseModeActive()) return;
     for (let i = 0; i < mutations.length; i++) {
       const m = mutations[i];
       if (m.type === "childList" || m.type === "characterData") {

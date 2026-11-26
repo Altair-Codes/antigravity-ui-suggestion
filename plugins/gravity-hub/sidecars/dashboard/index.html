@@ -23,13 +23,24 @@
           </div>
         </div>
         <div class="nb-quick-actions">
+          <button type="button" class="nb-btn ghost" id="nb-btn-top-theme-toggle" title="暂时关闭引力主题与界面修改，恢复原生外观（保留全部配置）">⏸ 暂停主题</button>
           <button type="button" class="nb-btn ghost" id="nb-btn-top-reload" title="重新编译并向所有窗口热推送样式与脚本">↻ 热重载</button>
           <button type="button" class="nb-btn ghost" id="nb-btn-top-check" title="检查 GitHub 远端套件更新">↑ 检查更新</button>
           <button type="button" class="nb-btn primary" id="nb-btn-top-cli" title="在当前项目目录启动 agy CLI 并自动注入系统代理">&gt;_ 启动 CLI</button>
         </div>
       </div>
 
-      <!-- 状态横幅区：纯净模式提醒 / 新版本更新提醒 -->
+      <!-- 状态横幅区：主题暂停提醒 / 纯净模式提醒 / 新版本更新提醒 -->
+      <div id="nb-banner-paused" class="nb-banner paused" style="display:none;">
+        <div class="nb-banner-main">
+          <div>
+            <div class="nb-banner-title">⏸ 引力主题修改已暂时关闭（已还原原生 Antigravity 外观）</div>
+            <div class="nb-banner-sub">所有主题预设、流光参数、字体与语言配置均已完整保留，随时可一键恢复。</div>
+          </div>
+          <button type="button" class="nb-btn primary" id="nb-btn-resume-theme">▶ 一键恢复引力主题</button>
+        </div>
+      </div>
+
       <div id="nb-banner-cdp" class="nb-banner warn" style="display:none;">
         <div class="nb-banner-main">
           <div>
@@ -381,10 +392,13 @@
             <h2 class="nb-card-title">引力主题引擎与双语汉化</h2>
             <span class="nb-badge">Google Gemini 五色流光</span>
           </div>
-          <label class="nb-switch-label">
-            <input type="checkbox" id="nb-cfg-enabled" checked />
-            <span>启用引力视觉与汉化注入</span>
-          </label>
+          <div class="nb-inline-controls" style="gap:8px;">
+            <button type="button" class="nb-btn ghost nb-btn-sm" id="nb-btn-studio-theme-toggle">⏸ 暂停主题</button>
+            <label class="nb-switch-label">
+              <input type="checkbox" id="nb-cfg-enabled" checked />
+              <span>启用引力视觉与汉化注入</span>
+            </label>
+          </div>
         </div>
 
         <div class="nb-form-row">
@@ -823,7 +837,68 @@
           </div>
         </div>
       </section>
+
+      <section class="nb-card nb-card-danger">
+        <div class="nb-card-head">
+          <div class="nb-card-title-group">
+            <h2 class="nb-card-title">主题还原与彻底卸载中心</h2>
+            <span class="nb-badge" id="nb-theme-state-badge">主题已启用</span>
+          </div>
+        </div>
+
+        <div class="nb-form-row">
+          <div>
+            <div class="nb-row-title">暂时关闭主题修改（一键还原原生外观）</div>
+            <div class="nb-muted">立即移除注入的流光边框、遥测舱、顶栏按钮与界面汉化；完整保留所有预设与账号配置，随时可一键恢复。</div>
+          </div>
+          <div class="nb-inline-controls">
+            <button type="button" class="nb-btn ghost" id="nb-btn-sys-theme-toggle">⏸ 暂停并还原原生</button>
+            <button type="button" class="nb-btn ghost" id="nb-btn-sys-reload-win" title="刷新当前 Antigravity 宿主窗口使界面状态完全对齐">↻ 重载窗口</button>
+          </div>
+        </div>
+
+        <div class="nb-danger-row">
+          <div class="nb-form-row" style="border-top:none;padding:0;">
+            <div>
+              <div class="nb-row-title" style="color:#f28b82;">彻底清除引力套件并还原原生 Antigravity</div>
+              <div class="nb-muted">卸载引力三扩展（gravity-hub / gravity-explorer / gravity-vault）、清理全部配置数据与无侵入启动器、移除快捷方式调试参数并还原官方 app.asar 备份；绝不影响 Antigravity 本体、您的对话历史与官方账号。</div>
+            </div>
+            <button type="button" class="nb-btn danger" id="nb-btn-open-uninstall">🗑 彻底清除扩展并还原原生</button>
+          </div>
+        </div>
+      </section>
     </main>
+  </div>
+
+  <!-- 彻底清除扩展二次确认弹窗 -->
+  <div id="nb-uninstall-modal" class="nb-modal-backdrop" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="nb-uninstall-title">
+    <div class="nb-modal">
+      <div class="nb-modal-head">
+        <h3 class="nb-modal-title" id="nb-uninstall-title">⚠ 彻底清除引力套件并还原原生 Antigravity</h3>
+        <button type="button" class="nb-modal-close" id="nb-btn-close-uninstall" aria-label="关闭">×</button>
+      </div>
+      <div class="nb-modal-body">
+        <div class="nb-muted" id="nb-uninstall-summary">正在扫描待清理的引力套件目录与启动参数...</div>
+        <div class="nb-uninstall-list" id="nb-uninstall-list"></div>
+        <div class="nb-preserve-box" id="nb-uninstall-preserve">
+          ✅ 将保留：Antigravity 官方应用本体、全部历史对话记录 (conversations/)、官方登录态与无关第三方扩展。
+        </div>
+        <div class="nb-modal-checks">
+          <label class="nb-switch-label">
+            <input type="checkbox" id="nb-uninstall-relaunch" checked />
+            <span>清理完成后自动重启为官方原生 Antigravity（不带调试参数）</span>
+          </label>
+          <label class="nb-switch-label">
+            <input type="checkbox" id="nb-uninstall-ack" />
+            <span>我已确认彻底清除引力三扩展及全部套件配置数据</span>
+          </label>
+        </div>
+      </div>
+      <div class="nb-modal-actions">
+        <button type="button" class="nb-btn ghost" id="nb-btn-cancel-uninstall">取消</button>
+        <button type="button" class="nb-btn danger" id="nb-btn-confirm-uninstall" disabled>确认彻底清除并还原原生</button>
+      </div>
+    </div>
   </div>
 
   <div id="nb-popover-tooltip" class="nb-popover-host" style="display:none;"></div>

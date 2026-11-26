@@ -225,25 +225,71 @@
     }
   });
 
+  function syncThemeEnabledUi(enabled) {
+    const isEnabled = enabled !== false;
+    const enEl = document.getElementById("nb-cfg-enabled");
+    if (enEl) enEl.checked = isEnabled;
+
+    const topBtn = document.getElementById("nb-btn-top-theme-toggle");
+    if (topBtn) {
+      topBtn.textContent = isEnabled ? "⏸ 暂停主题" : "▶ 恢复主题";
+      topBtn.classList.toggle("warn-action", !isEnabled);
+      topBtn.classList.toggle("ghost", isEnabled);
+      topBtn.title = isEnabled
+        ? "暂时关闭引力主题与界面修改，恢复原生外观（保留全部配置）"
+        : "一键恢复之前配置好的引力流光主题与界面汉化";
+    }
+
+    const studioBtn = document.getElementById("nb-btn-studio-theme-toggle");
+    if (studioBtn) {
+      studioBtn.textContent = isEnabled ? "⏸ 暂停主题" : "▶ 恢复主题";
+      studioBtn.classList.toggle("primary", !isEnabled);
+      studioBtn.classList.toggle("ghost", isEnabled);
+    }
+
+    const sysBtn = document.getElementById("nb-btn-sys-theme-toggle");
+    if (sysBtn) {
+      sysBtn.textContent = isEnabled ? "⏸ 暂停并还原原生" : "▶ 恢复引力主题";
+      sysBtn.classList.toggle("primary", !isEnabled);
+      sysBtn.classList.toggle("ghost", isEnabled);
+    }
+
+    const stateBadge = document.getElementById("nb-theme-state-badge");
+    if (stateBadge) {
+      stateBadge.textContent = isEnabled ? "主题已启用" : "已暂停（原生界面）";
+      stateBadge.classList.toggle("ok", isEnabled);
+    }
+
+    const pausedBanner = document.getElementById("nb-banner-paused");
+    if (pausedBanner) {
+      pausedBanner.style.display = isEnabled ? "none" : "block";
+    }
+  }
+
   // 3. CDP 状态与模型额度池同步
   async function refreshStatus() {
     try {
       const r = await apiFetch("/api/status", { method: "GET" });
       if (!r.ok) return;
       const j = await r.json();
+      const themeEnabled = j.enabled !== false;
+      syncThemeEnabledUi(themeEnabled);
       const pill = document.getElementById("nb-cdp-pill");
       const banner = document.getElementById("nb-banner-cdp");
       if (pill) {
-        if (j.connected) {
+        pill.classList.remove("warn", "paused");
+        if (!themeEnabled) {
+          pill.textContent = "⏸ 主题已暂停";
+          pill.classList.add("paused");
+        } else if (j.connected) {
           pill.textContent = `● 已挂载 (${j.targetCount} 窗口)`;
-          pill.classList.remove("warn");
         } else {
           pill.textContent = "○ 纯净未挂载";
           pill.classList.add("warn");
         }
       }
       if (banner) {
-        banner.style.display = j.connected ? "none" : "block";
+        banner.style.display = themeEnabled && !j.connected ? "block" : "none";
       }
     } catch {}
   }
@@ -2432,8 +2478,7 @@
       if (cfgRes && cfgRes.config) {
         currentConfig = cfgRes.config;
         const c = currentConfig;
-        const enEl = document.getElementById("nb-cfg-enabled");
-        if (enEl) enEl.checked = c.enabled !== false;
+        syncThemeEnabledUi(c.enabled !== false);
 
         const langSeg = document.getElementById("nb-cfg-lang-seg");
         langSeg?.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b.dataset.val === (c.language || "zh-CN")));
@@ -2529,15 +2574,167 @@
       if (r.ok) {
         const j = await r.json();
         currentConfig = j.config || currentConfig;
+        if (currentConfig && typeof currentConfig.enabled === "boolean") {
+          syncThemeEnabledUi(currentConfig.enabled);
+        }
         showToast(toastMsg || "✦ 引力视觉配置已实时热生效");
+        return true;
       }
     } catch {
       showToast("保存配置失败");
     }
+    return false;
+  }
+
+  async function toggleThemeEnabled(nextEnabled) {
+    const ok = await patchConfig(
+      { enabled: Boolean(nextEnabled) },
+      nextEnabled
+        ? "▶ 已恢复引力视觉引擎与界面汉化（原有配置全部保留）"
+        : "⏸ 已暂停引力主题修改并还原原生外观（配置已保留，随时可恢复）"
+    );
+    if (ok) refreshStatus();
   }
 
   document.getElementById("nb-cfg-enabled")?.addEventListener("change", (e) => {
-    patchConfig({ enabled: e.currentTarget.checked }, e.currentTarget.checked ? "已启用引力视觉引擎" : "已恢复宿主原始界面");
+    toggleThemeEnabled(e.currentTarget.checked);
+  });
+  document.getElementById("nb-btn-top-theme-toggle")?.addEventListener("click", () => {
+    const isEnabled = currentConfig ? currentConfig.enabled !== false : true;
+    toggleThemeEnabled(!isEnabled);
+  });
+  document.getElementById("nb-btn-resume-theme")?.addEventListener("click", () => toggleThemeEnabled(true));
+  document.getElementById("nb-btn-studio-theme-toggle")?.addEventListener("click", () => {
+    const isEnabled = currentConfig ? currentConfig.enabled !== false : true;
+    toggleThemeEnabled(!isEnabled);
+  });
+  document.getElementById("nb-btn-sys-theme-toggle")?.addEventListener("click", () => {
+    const isEnabled = currentConfig ? currentConfig.enabled !== false : true;
+    toggleThemeEnabled(!isEnabled);
+  });
+  document.getElementById("nb-btn-sys-reload-win")?.addEventListener("click", async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    try {
+      const r = await apiFetch("/api/reload-window", { method: "POST" });
+      showToast(r.ok ? "↻ 已触发宿主窗口刷新" : "刷新窗口失败");
+    } catch {
+      showToast("刷新窗口请求失败");
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  // 彻底清除扩展二次确认弹窗逻辑
+  const uninstallModal = document.getElementById("nb-uninstall-modal");
+  const uninstallListEl = document.getElementById("nb-uninstall-list");
+  const uninstallSummaryEl = document.getElementById("nb-uninstall-summary");
+  const uninstallPreserveEl = document.getElementById("nb-uninstall-preserve");
+  const uninstallAckEl = document.getElementById("nb-uninstall-ack");
+  const uninstallRelaunchEl = document.getElementById("nb-uninstall-relaunch");
+  const uninstallConfirmBtn = document.getElementById("nb-btn-confirm-uninstall");
+
+  function closeUninstallModal() {
+    if (uninstallModal) uninstallModal.style.display = "none";
+  }
+
+  async function openUninstallModal() {
+    if (!uninstallModal) return;
+    if (uninstallAckEl) uninstallAckEl.checked = false;
+    if (uninstallConfirmBtn) {
+      uninstallConfirmBtn.disabled = true;
+      uninstallConfirmBtn.textContent = "确认彻底清除并还原原生";
+    }
+    if (uninstallSummaryEl) uninstallSummaryEl.textContent = "正在扫描待清理的引力套件目录与启动参数...";
+    if (uninstallListEl) uninstallListEl.innerHTML = `<div class="nb-muted">扫描中...</div>`;
+    uninstallModal.style.display = "flex";
+
+    try {
+      const r = await apiFetch("/api/suite-uninstall/preview", { method: "GET" });
+      const j = await r.json();
+      if (!r.ok || !j.ok) {
+        if (uninstallSummaryEl) uninstallSummaryEl.textContent = `预览扫描失败：${j.error || "未知错误"}`;
+        if (uninstallListEl) uninstallListEl.innerHTML = "";
+        return;
+      }
+      const items = Array.isArray(j.items) ? j.items : [];
+      if (uninstallSummaryEl) {
+        uninstallSummaryEl.textContent = items.length > 0
+          ? `共检测到 ${items.length} 项引力套件产物（删除 ${j.summary?.removeCount ?? 0} 项 / 还原 ${j.summary?.restoreCount ?? 0} 项 / 清理快捷方式 ${j.summary?.shortcutCount ?? 0} 项）：`
+          : "未检测到残留文件或已清除干净。";
+      }
+      if (uninstallListEl) {
+        uninstallListEl.innerHTML = items.length > 0
+          ? items.map((it) => {
+              const isRestore = it.action === "restore" || it.action === "strip-cdp-arg";
+              const tagText = it.action === "restore" ? "还原备份" : it.action === "strip-cdp-arg" ? "移除参数" : "删除";
+              return `
+                <div class="nb-uninstall-item">
+                  <div>
+                    <div><b>${esc(it.label)}</b></div>
+                    <div class="nb-uninstall-path">${esc(it.path)}</div>
+                  </div>
+                  <span class="nb-uninstall-tag ${isRestore ? "restore" : ""}">${tagText}</span>
+                </div>
+              `;
+            }).join("")
+          : `<div class="nb-muted">当前无待清理条目。</div>`;
+      }
+      if (uninstallPreserveEl && Array.isArray(j.preservedNotes) && j.preservedNotes.length > 0) {
+        uninstallPreserveEl.innerHTML = j.preservedNotes.map((n) => `<div>✅ ${esc(n)}</div>`).join("");
+      }
+    } catch {
+      if (uninstallSummaryEl) uninstallSummaryEl.textContent = "无法连接服务端预览接口，请重试";
+      if (uninstallListEl) uninstallListEl.innerHTML = "";
+    }
+  }
+
+  document.getElementById("nb-btn-open-uninstall")?.addEventListener("click", openUninstallModal);
+  document.getElementById("nb-btn-close-uninstall")?.addEventListener("click", closeUninstallModal);
+  document.getElementById("nb-btn-cancel-uninstall")?.addEventListener("click", closeUninstallModal);
+  uninstallModal?.addEventListener("click", (e) => {
+    if (e.target === uninstallModal) closeUninstallModal();
+  });
+  uninstallAckEl?.addEventListener("change", () => {
+    if (uninstallConfirmBtn) uninstallConfirmBtn.disabled = !uninstallAckEl.checked;
+  });
+  uninstallConfirmBtn?.addEventListener("click", async () => {
+    if (!uninstallAckEl?.checked) return;
+    uninstallConfirmBtn.disabled = true;
+    uninstallConfirmBtn.textContent = "正在彻底清除...";
+    try {
+      const relaunchNative = uninstallRelaunchEl ? Boolean(uninstallRelaunchEl.checked) : true;
+      const r = await apiFetch("/api/suite-uninstall", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirm: true, relaunchNative })
+      });
+      const j = await r.json();
+      if (j.ok) {
+        closeUninstallModal();
+        syncThemeEnabledUi(false);
+        const openBtn = document.getElementById("nb-btn-open-uninstall");
+        if (openBtn) {
+          openBtn.disabled = true;
+          openBtn.textContent = "✓ 扩展已彻底清除";
+        }
+        const pill = document.getElementById("nb-cdp-pill");
+        if (pill) {
+          pill.textContent = "✓ 已还原原生";
+          pill.classList.remove("warn");
+          pill.classList.add("paused");
+        }
+        showToast(j.message || "已彻底清除引力套件并还原原生 Antigravity");
+      } else {
+        showToast(`清除失败：${j.error || "未知错误"}`);
+        uninstallConfirmBtn.disabled = false;
+        uninstallConfirmBtn.textContent = "确认彻底清除并还原原生";
+      }
+    } catch {
+      showToast("执行清除请求失败");
+      uninstallConfirmBtn.disabled = false;
+      uninstallConfirmBtn.textContent = "确认彻底清除并还原原生";
+    }
   });
 
   document.querySelectorAll("#nb-cfg-lang-seg button").forEach((btn) => {

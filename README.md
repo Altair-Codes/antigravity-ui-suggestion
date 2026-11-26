@@ -121,6 +121,23 @@ powershell -ExecutionPolicy Bypass -File .\install-win.ps1
 
 ---
 
+## 🔄 暂停主题还原与彻底卸载
+
+- **暂时关闭主题修改 / 一键恢复**：在引力中枢顶栏点击 `⏸ 暂停主题`（或前往「视觉与流光舱」/「护栏与系统中枢」→「主题还原与彻底卸载中心」），可立即移除流光边框、遥测舱、顶栏快捷按钮、侧边栏账号胶囊与双语汉化，即时恢复 Antigravity 原生外观；**所有预设、字体、流光参数与账号配置均完整保留**，点击 `▶ 恢复主题` 即可一键无缝还原。
+- **彻底清除扩展并还原原生 Antigravity**：
+  - **应用内一键卸载**：进入「引力中枢 → 🛡 护栏与系统中枢 → 主题还原与彻底卸载中心」，点击 **「🗑 彻底清除扩展并还原原生」**，在二次确认弹窗核对待清理路径后执行彻底清除（可勾选自动重启为官方原生 Antigravity）。
+  - **macOS 终端彻底卸载**：
+    ```bash
+    ./uninstall-mac.sh            # 交互确认后清除（支持 --dry-run 预览 / --yes 免确认 / --no-relaunch）
+    ```
+  - **Windows PowerShell 彻底卸载**：
+    ```powershell
+    powershell -ExecutionPolicy Bypass -File .\uninstall-win.ps1   # 支持 -DryRun 预览 / -Force 免确认 / -NoRelaunch
+    ```
+  > 彻底清除仅清理引力套件三扩展（`gravity-hub` / `gravity-explorer` / `gravity-vault`）、配置数据、无侵入启动器、快捷方式 `--remote-debugging-port` 参数与 `app.asar.bak` 备份，**绝不删除 Antigravity 官方本体、您的对话记录 (`conversations/`)、官方登录状态或无关第三方扩展**。
+
+---
+
 ## ✨ 包含组件与核心特性
 
 | 模块 | 核心特性与视觉效果 |
@@ -152,6 +169,8 @@ antigravity-ui-suggestion/ (branch: main)
 ├── enable-cdp.mjs             # 跨平台 CDP 调试端口自愈脚本
 ├── install-mac.sh             # macOS 一键安装脚本（生成 Antigravity Gravity.app 无侵入启动器）
 ├── install-win.ps1            # Windows PowerShell 一键安装脚本
+├── uninstall-mac.sh           # macOS 彻底卸载并还原原生 Antigravity 脚本
+├── uninstall-win.ps1          # Windows PowerShell 彻底卸载并还原原生脚本
 ├── version.json               # 套件版本清单 (v2.1.5)
 └── README.md                  # 本说明文档
 ```

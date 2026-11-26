@@ -24,3 +24,4 @@ description: 控制、检查与配置 Antigravity 引力中枢 (gravity-hub) 插
 - `GET / POST /api/suite-account-prefs`：账号统计隐藏/归属与热力图窗口偏好。
 - `GET / POST /api/suite-quota` & `/api/suite-auto-switch`：模型周/5h额度池与多账号顺位自动轮换策略。
 - `GET / POST /api/suite-guardrails`：防幻觉工程纪律护栏（`off` / `standard` / `strict`）实时切换。
+- `GET /api/suite-uninstall/preview` & `POST /api/suite-uninstall`：预览或彻底清除引力套件三扩展、配置数据与启动器并还原原生 Antigravity（支持 `confirm` / `dryRun` / `relaunchNative`）。

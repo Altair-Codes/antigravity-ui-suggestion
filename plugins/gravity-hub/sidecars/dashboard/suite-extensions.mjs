@@ -435,7 +435,8 @@ export function initSuiteExtensions({
   reloadAll,
   accountVault,
   recordAccountSwitch,
-  reloadHostWindow
+  reloadHostWindow,
+  disableThemeBeforeUninstall
 }) {
   const appDataDir = process.env.ANTIGRAVITY_APP_DATA_DIR || path.join(os.homedir(), ".gemini", "antigravity");
   const bootLogFile = path.join(appDataDir, "sidecar_data", "gravity-suite-boot.log");
@@ -1663,6 +1664,441 @@ sleep 1
     autoEnsureCdpModeOnStartup();
   }, 1500);
 
+  function findAntigravityAsarAndExe() {
+    const home = os.homedir();
+    const candidates = [];
+    let runningExe = "";
+    let appPath = "";
+
+    if (process.platform === "win32") {
+      try {
+        runningExe = execFileSync(
+          "powershell.exe",
+          ["-NoProfile", "-Command", "(Get-Process -Name Antigravity -ErrorAction SilentlyContinue | Select-Object -First 1).Path"],
+          { encoding: "utf8", timeout: 2500, windowsHide: true, stdio: ["ignore", "pipe", "ignore"] }
+        ).trim();
+        if (runningExe) candidates.push(path.join(path.dirname(runningExe), "resources", "app.asar"));
+      } catch {}
+      const localApp = process.env.LOCALAPPDATA || path.join(home, "AppData", "Local");
+      const prog = process.env.ProgramFiles || "C:\\Program Files";
+      const prog86 = process.env["ProgramFiles(x86)"] || "C:\\Program Files (x86)";
+      candidates.push(
+        path.join(localApp, "Programs", "Antigravity", "resources", "app.asar"),
+        path.join(localApp, "Programs", "antigravity", "resources", "app.asar"),
+        path.join(localApp, "Programs", "Google Antigravity", "resources", "app.asar"),
+        path.join(prog, "Antigravity", "resources", "app.asar"),
+        path.join(prog, "Google Antigravity", "resources", "app.asar"),
+        path.join(prog86, "Antigravity", "resources", "app.asar")
+      );
+    } else if (process.platform === "darwin") {
+      appPath = fs.existsSync("/Applications/Antigravity.app")
+        ? "/Applications/Antigravity.app"
+        : fs.existsSync(path.join(home, "Applications", "Antigravity.app"))
+          ? path.join(home, "Applications", "Antigravity.app")
+          : "/Applications/Antigravity.app";
+      candidates.push(
+        "/Applications/Antigravity.app/Contents/Resources/app.asar",
+        path.join(home, "Applications", "Antigravity.app", "Contents", "Resources", "app.asar")
+      );
+    } else {
+      candidates.push(
+        "/opt/Antigravity/resources/app.asar",
+        "/opt/antigravity/resources/app.asar",
+        "/usr/share/antigravity/resources/app.asar",
+        "/usr/lib/antigravity/resources/app.asar"
+      );
+    }
+
+    for (const c of candidates) {
+      try {
+        if (c && fs.existsSync(c) && fs.statSync(c).isFile()) {
+          if (!runningExe && process.platform === "win32") {
+            const maybeExe = path.join(path.dirname(path.dirname(c)), "Antigravity.exe");
+            if (fs.existsSync(maybeExe)) runningExe = maybeExe;
+          }
+          return { asarPath: c, exePath: runningExe, appPath };
+        }
+      } catch {}
+    }
+    return { asarPath: null, exePath: runningExe, appPath };
+  }
+
+  function findWindowsShortcutsWithCdp() {
+    if (process.platform !== "win32") return [];
+    const ps = [
+      "$ErrorActionPreference = 'SilentlyContinue'",
+      "$wsh = New-Object -ComObject WScript.Shell",
+      "$roots = @([Environment]::GetFolderPath('Desktop'), (Join-Path $env:APPDATA 'Microsoft\\Windows\\Start Menu\\Programs'))",
+      "foreach ($r in $roots) {",
+      "  if ($r -and (Test-Path $r)) {",
+      "    Get-ChildItem -Path $r -Filter '*Antigravity*.lnk' -Recurse | ForEach-Object {",
+      "      $sc = $wsh.CreateShortcut($_.FullName)",
+      "      if ($sc.Arguments -match 'remote-debugging-port') { Write-Output $_.FullName }",
+      "    }",
+      "  }",
+      "}"
+    ].join("\n");
+    try {
+      const encoded = Buffer.from(ps, "utf16le").toString("base64");
+      const out = execFileSync(
+        "powershell.exe",
+        ["-NoProfile", "-EncodedCommand", encoded],
+        { encoding: "utf8", timeout: 3000, windowsHide: true, stdio: ["ignore", "pipe", "ignore"] }
+      );
+      return out.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+    } catch {
+      return [];
+    }
+  }
+
+  function stripWindowsShortcutCdpArg(lnkPath) {
+    if (process.platform !== "win32" || !lnkPath) return false;
+    const esc = String(lnkPath).replace(/'/g, "''");
+    const ps = [
+      "$ErrorActionPreference = 'Stop'",
+      `$p = '${esc}'`,
+      "if (Test-Path -LiteralPath $p) {",
+      "  $wsh = New-Object -ComObject WScript.Shell",
+      "  $sc = $wsh.CreateShortcut($p)",
+      "  $next = ($sc.Arguments -replace '(?i)(^|\\s)--remote-debugging-port(=\\S+)?', ' ').Trim()",
+      "  if ($next -ne $sc.Arguments) { $sc.Arguments = $next; $sc.Save() }",
+      "}"
+    ].join("\n");
+    try {
+      const encoded = Buffer.from(ps, "utf16le").toString("base64");
+      execFileSync("powershell.exe", ["-NoProfile", "-EncodedCommand", encoded], {
+        timeout: 3000,
+        windowsHide: true,
+        stdio: "ignore"
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function collectUninstallPlan() {
+    const home = os.homedir();
+    const suiteNames = [
+      "gravity-hub",
+      "gravity-explorer",
+      "gravity-vault",
+      "aura-dashboard",
+      "nebula-hub",
+      "workspace-file-tree",
+      "file-launcher"
+    ];
+    const pluginsRoot = path.join(home, ".gemini", "config", "plugins");
+    const pluginDataRoot = path.join(appDataDir, "plugin_data");
+    const sidecarDataRoot = path.join(appDataDir, "sidecar_data");
+
+    const items = [];
+    const seen = new Set();
+    const pushItem = (item) => {
+      if (!item || !item.path || seen.has(item.path)) return;
+      seen.add(item.path);
+      items.push(item);
+    };
+
+    for (const name of suiteNames) {
+      const pDir = path.join(pluginsRoot, name);
+      if (fs.existsSync(pDir)) {
+        pushItem({
+          category: "plugin",
+          label: `扩展目录 (${name})`,
+          path: pDir,
+          action: "remove",
+          kind: "dir"
+        });
+      }
+      const dDir = path.join(pluginDataRoot, name);
+      if (fs.existsSync(dDir)) {
+        pushItem({
+          category: "plugin_data",
+          label: `配置与主题数据 (${name})`,
+          path: dDir,
+          action: "remove",
+          kind: "dir"
+        });
+      }
+      const sDir = path.join(sidecarDataRoot, name);
+      if (fs.existsSync(sDir)) {
+        pushItem({
+          category: "sidecar_data",
+          label: `Sidecar 运行数据 (${name})`,
+          path: sDir,
+          action: "remove",
+          kind: "dir"
+        });
+      }
+    }
+
+    if (fs.existsSync(dataDir)) {
+      const resolvedDataDir = path.resolve(dataDir);
+      const isCoreData = resolvedDataDir.includes("gravity-hub") || resolvedDataDir.includes("nebula-hub") || resolvedDataDir.includes("aura-dashboard");
+      if (isCoreData && !seen.has(resolvedDataDir)) {
+        pushItem({
+          category: "plugin_data",
+          label: "引力中枢运行数据目录",
+          path: resolvedDataDir,
+          action: "remove",
+          kind: "dir"
+        });
+      }
+    }
+
+    if (fs.existsSync(bootLogFile)) {
+      pushItem({
+        category: "log",
+        label: "引力套件启动日志",
+        path: bootLogFile,
+        action: "remove",
+        kind: "file"
+      });
+    }
+
+    if (process.platform === "darwin") {
+      const launchers = [
+        "/Applications/Antigravity Gravity.app",
+        path.join(home, "Applications", "Antigravity Gravity.app"),
+        "/Applications/Antigravity Nebula.app",
+        "/Applications/Antigravity Aura.app"
+      ];
+      for (const lp of launchers) {
+        if (fs.existsSync(lp)) {
+          pushItem({
+            category: "launcher",
+            label: `无侵入 CDP 启动器 (${path.basename(lp)})`,
+            path: lp,
+            action: "remove",
+            kind: "dir"
+          });
+        }
+      }
+      const launcherLog = "/tmp/antigravity-gravity-launcher.log";
+      if (fs.existsSync(launcherLog)) {
+        pushItem({
+          category: "log",
+          label: "启动器运行日志",
+          path: launcherLog,
+          action: "remove",
+          kind: "file"
+        });
+      }
+    }
+
+    const { asarPath } = findAntigravityAsarAndExe();
+    if (asarPath) {
+      const bakPath = `${asarPath}.bak`;
+      const pendingPath = `${asarPath}.cdp_pending`;
+      if (fs.existsSync(bakPath)) {
+        pushItem({
+          category: "asar",
+          label: "还原官方原生 app.asar 备份",
+          path: bakPath,
+          targetPath: asarPath,
+          action: "restore",
+          kind: "file"
+        });
+      }
+      if (fs.existsSync(pendingPath)) {
+        pushItem({
+          category: "asar",
+          label: "清除待应用的 CDP 补丁缓存",
+          path: pendingPath,
+          action: "remove",
+          kind: "file"
+        });
+      }
+    }
+
+    if (process.platform === "win32") {
+      for (const lnk of findWindowsShortcutsWithCdp()) {
+        pushItem({
+          category: "shortcut",
+          label: `移除快捷方式调试参数 (${path.basename(lnk)})`,
+          path: lnk,
+          action: "strip-cdp-arg",
+          kind: "file"
+        });
+      }
+    }
+
+    const removeCount = items.filter((i) => i.action === "remove").length;
+    const restoreCount = items.filter((i) => i.action === "restore").length;
+    const shortcutCount = items.filter((i) => i.action === "strip-cdp-arg").length;
+
+    return {
+      ok: true,
+      platform: process.platform,
+      items,
+      summary: {
+        totalCount: items.length,
+        removeCount,
+        restoreCount,
+        shortcutCount
+      },
+      preservedNotes: [
+        "保留官方 Antigravity 应用本体与全部历史对话记录 (conversations/)",
+        "保留官方账号配置与登录状态 (app_storage.json)",
+        "不触碰非引力套件的第三方扩展（如 swarm 等）"
+      ]
+    };
+  }
+
+  function spawnNativeRelaunchAndCleanup({ delayedRemovePaths = [], restoreAsar = null, relaunchNative = true } = {}) {
+    if (process.platform === "darwin") {
+      const appPath = fs.existsSync("/Applications/Antigravity.app")
+        ? "/Applications/Antigravity.app"
+        : path.join(os.homedir(), "Applications", "Antigravity.app");
+      const proc = findDarwinAntigravityProcess(appPath);
+      const oldPid = proc?.pid || "";
+      const lockFile = path.join(os.homedir(), "Library", "Application Support", "Antigravity", "SingletonLock");
+      const rmLines = delayedRemovePaths.map((p) => `rm -rf -- ${shellEscapePosix(p)} 2>/dev/null || true`).join("\n");
+      const restoreLine = restoreAsar
+        ? `mv -f -- ${shellEscapePosix(restoreAsar.bakPath)} ${shellEscapePosix(restoreAsar.asarPath)} 2>/dev/null || true`
+        : "";
+      const relaunchLine = relaunchNative && fs.existsSync(appPath)
+        ? `/usr/bin/open -a ${shellEscapePosix(appPath)}`
+        : "";
+      const sh = `
+sleep 0.8
+if [ -n "${oldPid}" ] || /usr/bin/pgrep -x Antigravity >/dev/null 2>&1; then
+  /usr/bin/osascript -e 'tell application "Antigravity" to quit' >/dev/null 2>&1 || true
+  i=0
+  while [ "$i" -lt 40 ]; do
+    if [ -n "${oldPid}" ] && ! kill -0 "${oldPid}" 2>/dev/null; then break; fi
+    if [ -z "${oldPid}" ] && ! /usr/bin/pgrep -x Antigravity >/dev/null 2>&1; then break; fi
+    sleep 0.2
+    i=$((i + 1))
+  done
+  if [ -n "${oldPid}" ] && kill -0 "${oldPid}" 2>/dev/null; then
+    kill -TERM "${oldPid}" 2>/dev/null || true
+    sleep 1
+  fi
+  j=0
+  while [ "$j" -lt 20 ]; do
+    [ ! -L ${shellEscapePosix(lockFile)} ] && [ ! -e ${shellEscapePosix(lockFile)} ] && break
+    sleep 0.15
+    j=$((j + 1))
+  done
+  sleep 0.6
+fi
+${rmLines}
+${restoreLine}
+${relaunchLine}
+`;
+      const child = spawn("/usr/bin/nohup", ["/bin/sh", "-c", sh], { detached: true, stdio: "ignore" });
+      child.unref();
+      return true;
+    }
+
+    if (process.platform === "win32") {
+      const { exePath } = findAntigravityAsarAndExe();
+      const escPs = (s) => String(s || "").replace(/'/g, "''");
+      const rmBlock = delayedRemovePaths
+        .map((p) => `if (Test-Path -LiteralPath '${escPs(p)}') { Remove-Item -LiteralPath '${escPs(p)}' -Recurse -Force -ErrorAction SilentlyContinue }`)
+        .join("\n");
+      const restoreBlock = restoreAsar
+        ? `if (Test-Path -LiteralPath '${escPs(restoreAsar.bakPath)}') { Move-Item -LiteralPath '${escPs(restoreAsar.bakPath)}' -Destination '${escPs(restoreAsar.asarPath)}' -Force -ErrorAction SilentlyContinue }`
+        : "";
+      const lines = [
+        "$ErrorActionPreference = 'SilentlyContinue'",
+        "Start-Sleep -Milliseconds 900",
+        "$runningPath = (Get-Process -Name Antigravity -ErrorAction SilentlyContinue | Select-Object -First 1).Path",
+        `if (-not $runningPath) { $runningPath = '${escPs(exePath)}' }`,
+        "Stop-Process -Name Antigravity -ErrorAction SilentlyContinue",
+        "Wait-Process -Name Antigravity -Timeout 10 -ErrorAction SilentlyContinue",
+        "Start-Sleep -Milliseconds 600",
+        restoreBlock,
+        rmBlock,
+        relaunchNative ? "if ($runningPath -and (Test-Path -LiteralPath $runningPath)) { Start-Process -FilePath $runningPath }" : ""
+      ].filter(Boolean).join("\n");
+      const encoded = Buffer.from(lines, "utf16le").toString("base64");
+      const child = spawn("powershell.exe", ["-NoProfile", "-WindowStyle", "Hidden", "-EncodedCommand", encoded], {
+        detached: true,
+        stdio: "ignore",
+        windowsHide: true
+      });
+      child.unref();
+      return true;
+    }
+
+    return false;
+  }
+
+  async function executeCompleteUninstall({ confirm = false, dryRun = false, relaunchNative = true } = {}) {
+    const plan = collectUninstallPlan();
+    if (dryRun) {
+      return { ...plan, dryRun: true };
+    }
+    if (confirm !== true) {
+      return { ok: false, error: "需要显式确认 (confirm: true) 才能执行彻底清除" };
+    }
+
+    if (typeof disableThemeBeforeUninstall === "function") {
+      try { await disableThemeBeforeUninstall(); } catch {}
+    }
+
+    const removed = [];
+    const restored = [];
+    const failed = [];
+    const delayedRemovePaths = [];
+    let restoreAsar = null;
+
+    for (const item of plan.items) {
+      if (item.action === "remove") {
+        try {
+          fs.rmSync(item.path, { recursive: true, force: true });
+          if (fs.existsSync(item.path)) {
+            delayedRemovePaths.push(item.path);
+          } else {
+            removed.push(item.path);
+          }
+        } catch (err) {
+          delayedRemovePaths.push(item.path);
+          failed.push({ path: item.path, error: err instanceof Error ? err.message : String(err) });
+        }
+      } else if (item.action === "restore") {
+        try {
+          fs.copyFileSync(item.path, item.targetPath);
+          try { fs.rmSync(item.path, { force: true }); } catch {}
+          restored.push(item.targetPath);
+        } catch (err) {
+          restoreAsar = { bakPath: item.path, asarPath: item.targetPath };
+          failed.push({ path: item.path, error: err instanceof Error ? err.message : String(err) });
+        }
+      } else if (item.action === "strip-cdp-arg") {
+        if (stripWindowsShortcutCdpArg(item.path)) {
+          restored.push(item.path);
+        } else {
+          failed.push({ path: item.path, error: "未能更新快捷方式参数" });
+        }
+      }
+    }
+
+    let relaunchScheduled = false;
+    if (relaunchNative || delayedRemovePaths.length > 0 || restoreAsar) {
+      relaunchScheduled = spawnNativeRelaunchAndCleanup({
+        delayedRemovePaths,
+        restoreAsar,
+        relaunchNative: Boolean(relaunchNative)
+      });
+    }
+
+    return {
+      ok: true,
+      removed,
+      restored,
+      failed,
+      delayedCount: delayedRemovePaths.length + (restoreAsar ? 1 : 0),
+      relaunchScheduled,
+      message: relaunchScheduled
+        ? "已彻底清除引力套件并正在重启为官方原生 Antigravity"
+        : "已彻底清除引力套件，手动重新打开官方 Antigravity 即恢复原生界面"
+    };
+  }
+
   // 启动带随机 Token 的本地 CORS 桥接服务，专供 Antigravity 宿主窗口 (custom.js) 直接调用
   const bridgeToken = crypto.randomBytes(16).toString("hex");
   let bridgeOrigin = "";
@@ -1753,6 +2189,10 @@ sleep 1
         result = { ok: true, reloaded: true };
       } else if (urlObj.pathname === "/api/suite-relaunch-cdp" && req.method === "POST") {
         result = relaunchAntigravityWithCdp();
+      } else if (urlObj.pathname === "/api/suite-uninstall/preview" && req.method === "GET") {
+        result = collectUninstallPlan();
+      } else if (urlObj.pathname === "/api/suite-uninstall" && req.method === "POST") {
+        result = await executeCompleteUninstall(bodyObj);
       } else {
         status = 404;
       }
@@ -1826,6 +2266,8 @@ sleep 1
     Oe.api("/api/suite-tps-monitor", () => getTpsMonitorState(), "GET");
     Oe.api("/api/suite-tps-monitor", (e) => saveTpsMonitorState(parseBody(e)), "POST");
     Oe.api("/api/suite-relaunch-cdp", () => relaunchAntigravityWithCdp(), "POST");
+    Oe.api("/api/suite-uninstall/preview", () => collectUninstallPlan(), "GET");
+    Oe.api("/api/suite-uninstall", async (e) => await executeCompleteUninstall(parseBody(e)), "POST");
 
     Oe.api("/suite-panel-addon.js", () => {
       const src = panelAddonPath && fs.existsSync(panelAddonPath)
