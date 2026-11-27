@@ -20,8 +20,17 @@
   const prevNameEl = document.getElementById("gv-prev-name");
   const prevMetaEl = document.getElementById("gv-prev-meta");
   const prevBodyEl = document.getElementById("gv-prev-body");
+  const outlineBtnEl = document.getElementById("gv-prev-outline-btn");
+  const outlinePanelEl = document.getElementById("gv-outline-panel");
   const ctxMenuEl = document.getElementById("gv-context-menu");
   const toastEl = document.getElementById("gv-toast");
+
+  const escHtml = (s) =>
+    String(s ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
 
   let currentRoot = "";
   let currentWorkspaceUri = "";
@@ -33,6 +42,8 @@
   let selectedPaths = new Map(); // relPath -> item
   let lastAnchorPath = "";
   let previewedItem = null;
+  let currentOutlineItems = [];
+  let outlineOpen = false;
 
   const BADGE_MAP = {
     ".md": ["M", "#4285F4"], ".markdown": ["M", "#4285F4"],
@@ -95,8 +106,41 @@
     showToast(toastMsg || "已复制");
   }
 
-  function formatMention(relPath) {
-    return /[\s"'`]/.test(relPath) ? `@"${relPath}"` : `@${relPath}`;
+  function formatMention(relPath, lineStart, lineEnd) {
+    const posix = String(relPath || "").replace(/\\/g, "/");
+    const suffix = lineStart ? (lineEnd && lineEnd > lineStart ? `#L${lineStart}-L${lineEnd}` : `#L${lineStart}`) : "";
+    const target = `${posix}${suffix}`;
+    return /[\s"'`]/.test(target) ? `@"${target}"` : `@${target}`;
+  }
+
+  function renderOutlinePanel() {
+    if (!outlinePanelEl || !outlineBtnEl) return;
+    if (!currentOutlineItems.length) {
+      outlineBtnEl.hidden = true;
+      outlinePanelEl.hidden = true;
+      outlinePanelEl.innerHTML = "";
+      return;
+    }
+    outlineBtnEl.hidden = false;
+    outlineBtnEl.textContent = `☰ 大纲 (${currentOutlineItems.length})`;
+    outlinePanelEl.hidden = !outlineOpen;
+    if (!outlineOpen) return;
+
+    outlinePanelEl.innerHTML = currentOutlineItems
+      .map((it) => {
+        const pad = Math.max(0, (it.level - 1) * 10);
+        const rangeTxt = it.lineEnd > it.lineStart ? `L${it.lineStart}-L${it.lineEnd}` : `L${it.lineStart}`;
+        return `
+          <div class="gv-outline-item" data-ls="${it.lineStart}" data-le="${it.lineEnd}" style="padding-left:${6 + pad}px">
+            <div class="gv-outline-left">
+              <span class="gv-outline-kind">${escHtml(it.kind)}</span>
+              <span class="gv-outline-name" title="${escHtml(it.name)}">${escHtml(it.name)}</span>
+            </div>
+            <button type="button" class="gv-outline-ref" data-ref-ls="${it.lineStart}" data-ref-le="${it.lineEnd}" title="复制精确行段 @引用">@${rangeTxt}</button>
+          </div>
+        `;
+      })
+      .join("");
   }
 
   async function openNative(item) {
@@ -113,18 +157,28 @@
   async function openPreview(item) {
     if (!item || item.isDirectory) return;
     previewedItem = item;
+    currentOutlineItems = [];
+    outlineOpen = false;
+    renderOutlinePanel();
     drawerEl.hidden = false;
     resizerEl.hidden = false;
     prevNameEl.textContent = item.name;
     prevMetaEl.textContent = formatSize(item.size, false);
     prevBodyEl.innerHTML = '<div class="gv-empty">加载中...</div>';
     breadcrumbEl.textContent = item.fullPath;
-    const payload = await api("/api/preview", { root: currentRoot, fullPath: item.fullPath, path: item.relPath });
+    const [payload, outlineRes] = await Promise.all([
+      api("/api/preview", { root: currentRoot, fullPath: item.fullPath, path: item.relPath }),
+      api("/api/outline", { root: currentRoot, fullPath: item.fullPath, path: item.relPath }).catch(() => null)
+    ]);
     window.GravityPreview.render(prevBodyEl, payload, async (act) => {
       if (act === "open-tab") await openNative(item);
       if (act === "open-os") await api("/api/open-os", { root: currentRoot, fullPath: item.fullPath });
       if (act === "reveal") await api("/api/reveal", { root: currentRoot, fullPath: item.fullPath });
     });
+    if (outlineRes?.ok && Array.isArray(outlineRes.items) && outlineRes.items.length > 0) {
+      currentOutlineItems = outlineRes.items;
+      renderOutlinePanel();
+    }
   }
 
   function buildFlatList(dirRel, depth) {
@@ -412,6 +466,27 @@
   document.getElementById("gv-prev-open-tab").addEventListener("click", () => previewedItem && openNative(previewedItem));
   document.getElementById("gv-prev-copy-at").addEventListener("click", () => {
     if (previewedItem) copyText(formatMention(previewedItem.relPath), `已复制 ${formatMention(previewedItem.relPath)}`);
+  });
+  outlineBtnEl?.addEventListener("click", () => {
+    outlineOpen = !outlineOpen;
+    renderOutlinePanel();
+  });
+  outlinePanelEl?.addEventListener("click", (e) => {
+    const refBtn = e.target.closest("button[data-ref-ls]");
+    if (refBtn && previewedItem) {
+      e.stopPropagation();
+      const ls = Number(refBtn.dataset.refLs);
+      const le = Number(refBtn.dataset.refLe);
+      const mention = formatMention(previewedItem.relPath, ls, le);
+      copyText(mention, `已复制行段引用 ${mention}`);
+      return;
+    }
+    const row = e.target.closest(".gv-outline-item");
+    if (row) {
+      const ls = Number(row.dataset.ls);
+      const le = Number(row.dataset.le);
+      window.GravityPreview?.scrollToLine?.(prevBodyEl, ls, le);
+    }
   });
 
   // 拖拽调整预览高度

@@ -11,7 +11,8 @@ import {
   safeResolveInRoot,
   listDirectory,
   searchTree,
-  readPreviewPayload
+  readPreviewPayload,
+  extractFileOutline
 } from "./explorer-core.mjs";
 
 const execFileAsync = promisify(execFile);
@@ -326,6 +327,12 @@ app.api("/api/preview", (data) => {
   const root = resolveWorkspaceRoot(data, activeWorkspaceRoot);
   activeWorkspaceRoot = root;
   return readPreviewPayload({ root, path: data?.path, fullPath: data?.fullPath });
+});
+
+app.api("/api/outline", (data) => {
+  const root = resolveWorkspaceRoot(data, activeWorkspaceRoot);
+  activeWorkspaceRoot = root;
+  return extractFileOutline({ root, path: data?.path, fullPath: data?.fullPath });
 });
 
 app.api("/api/open-native-tab", async (data) => {

@@ -1,6 +1,6 @@
 <div align="center">
 
-# Antigravity 引力套件 (Gravity Suite v2.1.5)
+# Antigravity 引力套件 (Gravity Suite v2.2.0)
 
 **Google Antigravity 2.x 下一代 AI 智能体工作台 × 纯 Node.js 22+ 原生全中文三扩展增强套件**
 
@@ -25,9 +25,9 @@
 
 **Google Antigravity** 是面向现代软件工程的下一代自主 AI 智能体工作台——集成深度规划、多智能体编排、终端闭环校验与浏览器交互能力。在此基础上，**引力套件 (`Gravity Suite`)** 由三大原生 **Node.js 22+ ESM + `node:sqlite`** 扩展组成，全程零外部运行时依赖：
 
-- **引力中枢 (`gravity-hub`)**：Google Gemini 五色高精度 OKLab 流体引擎、120+ 斜杠技能双语翻译引擎、零遮挡实时遥测玻璃舱、多账号周/5h 双限额协同自动切号、原生 `node:sqlite` 算力洞察与 5 项防幻觉工程护栏。
-- **引力目录 (`gravity-explorer`)**：macOS 访达（Finder）风格四栏文件树、语法高亮/Markdown/CSV/图片秒开分栏预览与跨窗口拖拽 `@引用`。
-- **引力文库 (`gravity-vault`)**：毫秒级三层会话/项目/全局产物隔离、`★` 防压缩收藏清单、一键 `@引用` 复制与按日无覆盖归档。
+- **引力中枢 (`gravity-hub`)**：Google Gemini 五色高精度 OKLab 流体引擎、120+ 斜杠技能双语翻译引擎、零遮挡实时遥测玻璃舱（含前缀缓存命中率）、多账号周/5h 双限额协同自动切号、原生 `node:sqlite` 算力洞察、**「📚 历史目录」真增量检索与防幻读漂移校验**，以及 4 档节俭防幻觉工程护栏。
+- **引力目录 (`gravity-explorer`)**：macOS 访达（Finder）风格四栏文件树、语法高亮/Markdown/CSV/图片秒开分栏预览、**本地代码/文档骨架大纲与 `@行段引用`**、以及跨窗口拖拽 `@引用`。
+- **引力文库 (`gravity-vault`)**：毫秒级三层会话/项目/全局产物隔离、`★` 防压缩收藏清单（联动历史目录）、一键 `@引用` 复制与按日无覆盖归档。
 
 > [!NOTE]
 > **零改包・完整保留官方签名与热更新**：所有插件与主题资产均安装于用户目录 `~/.gemini/` 下，**绝不篡改 Antigravity 官方二进制与 macOS 苹果签名**；官方热更新重启后，Sidecar 会在 2 秒内自动唤醒激活主题模式。
@@ -87,7 +87,7 @@
 在任意一台电脑打开 Antigravity，直接复制下面这段话发给对话框里的 AI 即可完成克隆与安装：
 
 ```text
-请帮我克隆 https://github.com/Altair-Codes/antigravity-ui-suggestion.git 主分支到临时目录，并根据我当前操作系统自动执行仓库里的安装脚本（macOS 运行 bash install-mac.sh，Windows 运行 powershell -ExecutionPolicy Bypass -File install-win.ps1），为我一键同步安装整套引力套件 (Gravity Suite v2.1.5)、Google Gemini 五色流光主题、全量简体中文与三个中文扩展（引力中枢、引力目录、引力文库）。全程不要在会话内强杀正在运行的 Antigravity 进程，装完校验插件状态并提示我重启客户端生效。
+请帮我克隆 https://github.com/Altair-Codes/antigravity-ui-suggestion.git 主分支到临时目录，并根据我当前操作系统自动执行仓库里的安装脚本（macOS 运行 bash install-mac.sh，Windows 运行 powershell -ExecutionPolicy Bypass -File install-win.ps1），为我一键同步安装整套引力套件 (Gravity Suite v2.2.0)、Google Gemini 五色流光主题、全量简体中文与三个中文扩展（引力中枢、引力目录、引力文库）。全程不要在会话内强杀正在运行的 Antigravity 进程，装完校验插件状态并提示我重启客户端生效。
 ```
 
 ---
@@ -143,10 +143,10 @@ powershell -ExecutionPolicy Bypass -File .\install-win.ps1
 | 模块 | 核心特性与视觉效果 |
 | :--- | :--- |
 | **Google Gemini 五色高精度 OKLab 流体视觉** | 严格保留 **蓝 `#4285F4` → 紫 `#9B72CB` → 红 `#EA4335` → 黄 `#FBBC05` → 绿 `#34A853`** 五大核心锚点，在 **OKLab 色彩空间**下每两色间细分 10 个过渡区间（线性 **41 节点**、环形闭环经青色 `#36B9C5` 共 **51 节点**），消除红紫发灰与黄绿发暗断层；支持线/环双态、`prefers-reduced-motion` 降级与柔和呼吸光晕。 |
-| **零遮挡遥测玻璃舱 & 模型胶囊** | • **流光玻璃模型胶囊**：`[data-testid="model-selector-trigger"]` 配备呼吸额度脉冲点、悬停实时额度详情浮窗、下拉菜单互斥隐藏及内嵌周余徽章，窄屏自动弹性省略文本避免碰撞。<br>• **零遮挡一体式遥测舱**（`.nb-cockpit-bar`）：展示 `⚡ 速率` ｜ `⏱ 首字` ｜ `🧠 上下文水位条` ｜ `✦ 输出`；以右侧控制组（`极速模式` / 语音 / 发送）真实左边界为硬碰撞线，极窄分屏下自动无缝切换为底栏上方独立迷你信息条 (`docked-top`)，展开/收起右侧分栏同步触发 GPU 高斯模糊柔和过渡，全程零遮挡不生硬。 |
-| **引力中枢** (`gravity-hub`) | • **三舱 Bento 原生中文控制台** + **Node 22 原生 `node:sqlite` 算力统计**：真实账号数与会话去重计数，支持隐藏或一键归属「早期未跟踪历史数据」，近 30/90 天/1 年活跃热力图，以及明确标注估算口径的 5h/7d 预算提示。<br>• **可选对话超阈值自动 `/compact`**：「会话记忆区」默认关闭以防干扰长对话，可在引力中枢按需开启并自定义阈值（默认 `500k`），在智能体空闲且输入框无草稿时自动执行 `/compact`。<br>• **斜杠命令 (`/`) 与 120+ 技能全量双语引擎**：统一呈现 **`中文名称 (英文原名)`** 并为个人专属技能点亮 **`★`** 星标。<br>• **官方热更新自动激活** + **5 项防幻觉工程护栏 (`rules/AGENTS.md`)** + **多账号周/5h 双限额协同自动轮换**。 |
-| **引力目录** (`gravity-explorer`) | • **纯 Node.js ESM**：零外部前端打包依赖，呈现 macOS 访达四栏列表视图（`名称 \| 修改日期 \| 大小 \| 种类`）、水蓝立体文件夹与彩色文稿角标、圆角奇偶斑马纹与路径面包屑。<br>• **轻量分栏预览**：秒开代码语法高亮、Markdown 排版、CSV 表格与棋盘格图片尺寸查看；支持双击在原生 `fileView` 标签打开、多选、跨窗口拖拽 `@引用`、访达定位与安全移至废纸篓。 |
-| **引力文库** (`gravity-vault`) | • **纯 Node.js 22+ (`node:sqlite`)**：毫秒级冷启扫描会话产物与交付物，精准隔离 **当前会话 / 当前项目 / 全部范围**，支持来源 × 类型复合筛选。<br>• **一键 `复制引用`、`★` 防压缩收藏清单与按日整理**：点击文件名支持右侧 `fileView` 分栏直开或内置轻量预览，并严格遵循零弹窗不打扰规范。 |
+| **零遮挡遥测玻璃舱 & 模型胶囊** | • **流光玻璃模型胶囊**：`[data-testid="model-selector-trigger"]` 配备呼吸额度脉冲点、悬停实时额度详情浮窗、下拉菜单互斥隐藏及内嵌周余徽章，窄屏自动弹性省略文本避免碰撞。<br>• **零遮挡一体式遥测舱**（`.nb-cockpit-bar`）：展示 `⚡ 速率` ｜ `⏱ 首字` ｜ `🧠 上下文水位条` ｜ `✦ 输出`；悬停浮窗实时显示 **前缀缓存命中率** 与热/冷状态提醒；极窄分屏自动切换为底栏上方独立迷你信息条 (`docked-top`)，全程零遮挡不生硬。 |
+| **引力中枢** (`gravity-hub`) | • **四舱 Bento 原生中文控制台** + **Node 22 原生 `node:sqlite`**：新增 **「📚 历史目录」** 舱位——基于文件标识与字节偏移真增量读取 `transcript.jsonl`，结合 **中文双字 Bigram + FTS5 + 精确路径/错误码** 四路检索，浏览/搜索/校验全程 **0 额外模型调用**。<br>• **防幻读与省额度闭环**：区分 `用户确认` / `工具实测` / `曾调用·结果未核` / `助手陈述` 四级证据；0 Token 实时校验文件 `未变 / ⚠已变更待复核 / ✕来源缺失`；提供默认 **≤3 条 / ≤1,200B** 确定性稳定前缀摘录包与可选「同项目跨会话」检索（含切号清空隔离与 Windows 路径归一）。<br>• **4 档节俭防幻觉护栏 (`rules/AGENTS.md`)**：支持 `关闭 / 极简 Lite / 标准 / 严格`，精简常驻体积并融入大文件定位切片读纪律；完整保留多账号自动切号、算力洞察与可选自动 `/compact`。 |
+| **引力目录** (`gravity-explorer`) | • **纯 Node.js ESM**：零外部前端打包依赖，呈现 macOS 访达四栏列表视图（`名称 \| 修改日期 \| 大小 \| 种类`）、水蓝立体文件夹与彩色文稿角标、圆角奇偶斑马纹与路径面包屑。<br>• **轻量分栏预览 & 骨架大纲 `@行段引用`**：秒开代码语法高亮、Markdown 排版、CSV 表格与图片查看；内置按 `mtime` 缓存的 JS/TS/ESM/Python/Go/Java/Vue/Markdown **骨架大纲**，支持点击高亮与一键复制 `@relPath#L起-L止` 精确行段引用，避免整文件盲读。 |
+| **引力文库** (`gravity-vault`) | • **纯 Node.js 22+ (`node:sqlite`)**：毫秒级冷启扫描会话产物与交付物，精准隔离 **当前会话 / 当前项目 / 全部范围**，支持来源 × 类型复合筛选。<br>• **联动防压缩收藏 & 轻量规则**：与历史目录共享 `★` 收藏清单并支持按日无覆盖归档，精简常驻规则减少对话上下文开销。 |
 
 ---
 
@@ -158,20 +158,21 @@ antigravity-ui-suggestion/ (branch: main)
 │   ├── promo/                 # 1080p 宣传视频 MP4、封面海报与 README 预览 GIF
 │   └── screenshots/           # 6 张脱敏核心功能高清截图
 ├── docs/
-│   ├── implementation_plan.md # 套件架构与五色 OKLab 视觉设计
-│   └── walkthrough.md         # v2.1.5 功能说明与实测验证报告
+│   ├── implementation_plan.md # 套件架构、五色 OKLab 视觉与历史索引/缓存雷达设计
+│   └── walkthrough.md         # v2.2.0 功能说明、压测与防幻读实测验收报告
 ├── plugins/
-│   ├── gravity-hub/           # 引力中枢（中文三舱 Bento 控制台 + node:sqlite 遥测 + 扩展服务）
-│   ├── gravity-explorer/      # 引力目录（访达四栏目录树 + 轻量分栏预览）
+│   ├── gravity-hub/           # 引力中枢（中文四舱 Bento 控制台 + 历史目录 + node:sqlite 遥测）
+│   ├── gravity-explorer/      # 引力目录（访达四栏目录树 + 骨架大纲 @行段引用 + 轻量预览）
 │   └── gravity-vault/         # 引力文库（会话产物与交付文档管理）
 ├── plugin_data/
 │   └── gravity-hub/           # 预置 config.json、OKLab 五色流光 custom.css、斜杠双语 custom.js、i18n.override.json
+├── tests/                     # 本地零依赖测试集（增量索引、1 万轮压测、防幻读、大纲与 Win 兼容）
 ├── enable-cdp.mjs             # 跨平台 CDP 调试端口自愈脚本
 ├── install-mac.sh             # macOS 一键安装脚本（生成 Antigravity Gravity.app 无侵入启动器）
 ├── install-win.ps1            # Windows PowerShell 一键安装脚本
 ├── uninstall-mac.sh           # macOS 彻底卸载并还原原生 Antigravity 脚本
 ├── uninstall-win.ps1          # Windows PowerShell 彻底卸载并还原原生脚本
-├── version.json               # 套件版本清单 (v2.1.5)
+├── version.json               # 套件版本清单 (v2.2.0)
 └── README.md                  # 本说明文档
 ```
 

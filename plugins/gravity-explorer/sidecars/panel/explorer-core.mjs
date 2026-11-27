@@ -303,3 +303,218 @@ export function readPreviewPayload({ root, path: relPath, fullPath }) {
 
   return { ...base, kind: previewKind, content, truncated };
 }
+
+const outlineCache = new Map(); // fullPath -> { sig, items, totalLines }
+const OUTLINE_TEXT_EXTS = new Set([
+  ".md", ".markdown", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx",
+  ".py", ".go", ".java", ".vue"
+]);
+
+function findBraceBlockEnd(lines, startIdx) {
+  let depth = 0;
+  let seenOpen = false;
+  const maxIdx = Math.min(lines.length - 1, startIdx + 399);
+  for (let i = startIdx; i <= maxIdx; i++) {
+    const line = lines[i].replace(/\/\/.*$/, "").replace(/(['"`])(?:\\.|(?!\1).)*\1/g, "");
+    for (let c = 0; c < line.length; c++) {
+      if (line[c] === "{") {
+        depth += 1;
+        seenOpen = true;
+      } else if (line[c] === "}") {
+        depth -= 1;
+        if (seenOpen && depth <= 0) return i + 1;
+      }
+    }
+    if (!seenOpen && i > startIdx + 2) break;
+  }
+  return startIdx + 1;
+}
+
+function findIndentBlockEnd(lines, startIdx) {
+  const baseIndent = (lines[startIdx].match(/^(\s*)/)?.[1] || "").length;
+  let lastNonEmpty = startIdx;
+  const maxIdx = Math.min(lines.length - 1, startIdx + 299);
+  for (let i = startIdx + 1; i <= maxIdx; i++) {
+    const trimmed = lines[i].trim();
+    if (!trimmed) continue;
+    const indent = (lines[i].match(/^(\s*)/)?.[1] || "").length;
+    if (indent <= baseIndent && !trimmed.startsWith("#")) break;
+    lastNonEmpty = i;
+  }
+  return lastNonEmpty + 1;
+}
+
+export function parseOutlineFromText(content, ext = "") {
+  const lines = String(content || "").split(/\r?\n/);
+  const lowExt = String(ext || "").toLowerCase();
+  const items = [];
+
+  if (lowExt === ".md" || lowExt === ".markdown") {
+    let inFence = false;
+    const headings = [];
+    for (let i = 0; i < lines.length; i++) {
+      const trimmed = lines[i].trim();
+      if (trimmed.startsWith("```")) {
+        inFence = !inFence;
+        continue;
+      }
+      if (inFence) continue;
+      const m = lines[i].match(/^(#{1,3})\s+(.+?)\s*#*$/);
+      if (m) {
+        headings.push({
+          kind: `H${m[1].length}`,
+          name: m[2].trim().slice(0, 80),
+          lineStart: i + 1,
+          lineEnd: lines.length,
+          level: m[1].length
+        });
+      }
+    }
+    for (let i = 0; i < headings.length; i++) {
+      const cur = headings[i];
+      for (let j = i + 1; j < headings.length; j++) {
+        if (headings[j].level <= cur.level) {
+          cur.lineEnd = Math.max(cur.lineStart, headings[j].lineStart - 1);
+          break;
+        }
+      }
+      items.push(cur);
+      if (items.length >= 120) break;
+    }
+    return { totalLines: lines.length, items };
+  }
+
+  const pushBrace = (kind, name, idx, level = 1) => {
+    items.push({
+      kind,
+      name: String(name).slice(0, 80),
+      lineStart: idx + 1,
+      lineEnd: findBraceBlockEnd(lines, idx),
+      level
+    });
+  };
+
+  if ([".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx", ".vue"].includes(lowExt)) {
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      let m;
+      if (lowExt === ".vue" && (m = line.match(/^\s*<(template|script|style)\b/i))) {
+        items.push({ kind: "block", name: `<${m[1]}>`, lineStart: i + 1, lineEnd: i + 1, level: 1 });
+      } else if ((m = line.match(/^\s*(?:export\s+(?:default\s+)?)?(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(/))) {
+        pushBrace("fn", m[1], i, 1);
+      } else if ((m = line.match(/^\s*(?:export\s+)?class\s+([A-Za-z_$][\w$]*)\b/))) {
+        pushBrace("class", m[1], i, 1);
+      } else if ((m = line.match(/^\s*(?:export\s+)?const\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>\s*\{/))) {
+        pushBrace("fn", m[1], i, 1);
+      } else if ((m = line.match(/^\s*(?:app|Oe|router)\.(?:api|get|post|put|delete)\(\s*["'`]([^"'`]+)["'`]/))) {
+        pushBrace("api", m[1], i, 2);
+      }
+      if (items.length >= 120) break;
+    }
+    return { totalLines: lines.length, items };
+  }
+
+  if (lowExt === ".py") {
+    for (let i = 0; i < lines.length; i++) {
+      const m = lines[i].match(/^(\s*)(?:(async\s+def|def)|class)\s+([A-Za-z_]\w*)/);
+      if (m) {
+        const isCls = !m[2];
+        const level = m[1].length > 0 ? 2 : 1;
+        items.push({
+          kind: isCls ? "class" : "def",
+          name: m[3],
+          lineStart: i + 1,
+          lineEnd: findIndentBlockEnd(lines, i),
+          level
+        });
+        if (items.length >= 120) break;
+      }
+    }
+    return { totalLines: lines.length, items };
+  }
+
+  if (lowExt === ".go") {
+    for (let i = 0; i < lines.length; i++) {
+      let m;
+      if ((m = lines[i].match(/^func\s+(?:\([^)]+\)\s+)?([A-Za-z_]\w*)\s*\(/))) {
+        pushBrace("func", m[1], i, 1);
+      } else if ((m = lines[i].match(/^type\s+([A-Za-z_]\w*)\s+(struct|interface)\b/))) {
+        pushBrace(m[2], m[1], i, 1);
+      }
+      if (items.length >= 120) break;
+    }
+    return { totalLines: lines.length, items };
+  }
+
+  if (lowExt === ".java") {
+    for (let i = 0; i < lines.length; i++) {
+      let m;
+      if ((m = lines[i].match(/^\s*(?:public|private|protected)?\s*(?:abstract|final|static)?\s*(class|interface|enum|record)\s+([A-Za-z_]\w*)/))) {
+        pushBrace(m[1], m[2], i, 1);
+      } else if ((m = lines[i].match(/^\s*(?:public|private|protected)\s+(?:static\s+)?[\w<>\[\]]+\s+([A-Za-z_]\w*)\s*\([^;]*\)\s*\{/))) {
+        pushBrace("method", m[1], i, 2);
+      }
+      if (items.length >= 120) break;
+    }
+    return { totalLines: lines.length, items };
+  }
+
+  return { totalLines: lines.length, items: [] };
+}
+
+export function extractFileOutline({ root, path: relPath, fullPath }) {
+  const rootAbs = resolve(root);
+  const target = fullPath && isInsideRoot(rootAbs, fullPath)
+    ? resolve(fullPath)
+    : safeResolveInRoot(rootAbs, relPath);
+
+  if (!target) return { ok: false, error: "路径超出工作区边界", items: [] };
+  if (!existsSync(target)) return { ok: false, error: "文件不存在", items: [] };
+
+  const st = statSync(target);
+  if (st.isDirectory()) return { ok: true, items: [], totalLines: 0 };
+
+  const ext = extname(target).toLowerCase();
+  const relPosix = toPosixRel(rootAbs, target);
+  if (!OUTLINE_TEXT_EXTS.has(ext) || st.size > MAX_TEXT_BYTES) {
+    return { ok: true, name: basename(target), relPath: relPosix, fullPath: target, ext, totalLines: 0, items: [] };
+  }
+
+  const sig = `${Math.floor(st.mtimeMs || 0)}:${st.size}`;
+  const cached = outlineCache.get(target);
+  if (cached && cached.sig === sig) {
+    return {
+      ok: true,
+      name: basename(target),
+      relPath: relPosix,
+      fullPath: target,
+      ext,
+      totalLines: cached.totalLines,
+      items: cached.items,
+      cacheHit: true
+    };
+  }
+
+  const probe = readFileSync(target);
+  if (isProbablyBinary(probe)) {
+    return { ok: true, name: basename(target), relPath: relPosix, fullPath: target, ext, totalLines: 0, items: [] };
+  }
+
+  const parsed = parseOutlineFromText(probe.toString("utf8"), ext);
+  outlineCache.set(target, { sig, items: parsed.items, totalLines: parsed.totalLines });
+  if (outlineCache.size > 200) {
+    const firstKey = outlineCache.keys().next().value;
+    outlineCache.delete(firstKey);
+  }
+
+  return {
+    ok: true,
+    name: basename(target),
+    relPath: relPosix,
+    fullPath: target,
+    ext,
+    totalLines: parsed.totalLines,
+    items: parsed.items,
+    cacheHit: false
+  };
+}

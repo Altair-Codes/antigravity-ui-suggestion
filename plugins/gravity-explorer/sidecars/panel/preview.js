@@ -63,7 +63,7 @@
     const html = [];
     html.push('<div class="gv-code-wrap"><table class="gv-code-table"><tbody>');
     for (let i = 0; i < maxLines; i++) {
-      html.push(`<tr><td class="gv-ln">${i + 1}</td><td class="gv-lc">${highlightLine(lines[i], isJson)}</td></tr>`);
+      html.push(`<tr data-line="${i + 1}"><td class="gv-ln">${i + 1}</td><td class="gv-lc">${highlightLine(lines[i], isJson)}</td></tr>`);
     }
     html.push("</tbody></table>");
     if (lines.length > maxLines) {
@@ -86,7 +86,8 @@
     const out = ['<div class="gv-md-body">'];
     let inFence = false;
     let fenceBuf = [];
-    for (const line of lines) {
+    for (let idx = 0; idx < lines.length; idx++) {
+      const line = lines[idx];
       if (line.trim().startsWith("```")) {
         if (!inFence) {
           inFence = true;
@@ -104,7 +105,7 @@
       const h = line.match(/^(#{1,4})\s+(.*)$/);
       if (h) {
         const lvl = h[1].length;
-        out.push(`<h${lvl} class="gv-md-h${lvl}">${formatInlineMd(h[2])}</h${lvl}>`);
+        out.push(`<h${lvl} class="gv-md-h${lvl}" data-line="${idx + 1}">${formatInlineMd(h[2])}</h${lvl}>`);
       } else if (/^>\s?/.test(line)) {
         out.push(`<blockquote class="gv-md-quote">${formatInlineMd(line.replace(/^>\s?/, ""))}</blockquote>`);
       } else if (/^\s*[-*]\s+/.test(line)) {
@@ -218,5 +219,22 @@
     renderCode(container, payload.content, payload.ext);
   }
 
-  window.GravityPreview = { render: renderPreview };
+  function scrollToLine(container, lineStart, lineEnd) {
+    if (!container || !lineStart) return;
+    container.querySelectorAll(".gv-line-hi").forEach((el) => el.classList.remove("gv-line-hi"));
+    const target = container.querySelector(`[data-line="${lineStart}"]`);
+    if (target) {
+      target.scrollIntoView({ behavior: "smooth", block: "center" });
+      const end = Math.max(lineStart, lineEnd || lineStart);
+      for (let ln = lineStart; ln <= Math.min(end, lineStart + 60); ln++) {
+        container.querySelector(`[data-line="${ln}"]`)?.classList.add("gv-line-hi");
+      }
+      clearTimeout(window.__gvHiTimer);
+      window.__gvHiTimer = setTimeout(() => {
+        container.querySelectorAll(".gv-line-hi").forEach((el) => el.classList.remove("gv-line-hi"));
+      }, 2400);
+    }
+  }
+
+  window.GravityPreview = { render: renderPreview, scrollToLine };
 })();

@@ -74,11 +74,14 @@
           <span id="gv-prev-meta" class="gv-drawer-meta"></span>
         </div>
         <div class="gv-drawer-actions">
+          <button id="gv-prev-outline-btn" class="gv-mini-btn" title="显示 / 收起代码与文档骨架大纲" hidden>☰ 大纲</button>
+          <span class="gv-help-q" title="纯本地按 mtime 缓存提取代码/Markdown 骨架大纲（0 Token）：点击条目跳转高亮，点击右侧 @L起-L止 复制精确行段引用，减少 AI 整文件盲读">?</span>
           <button id="gv-prev-copy-at" class="gv-mini-btn" title="复制 @相对路径 引用">@引用</button>
           <button id="gv-prev-open-tab" class="gv-mini-btn primary" title="在主标签页打开">↗ 主标签</button>
           <button id="gv-prev-close" class="gv-icon-btn" title="关闭预览">✕</button>
         </div>
       </div>
+      <div id="gv-outline-panel" class="gv-outline-panel" hidden></div>
       <div id="gv-prev-body" class="gv-drawer-body"></div>
     </section>
 

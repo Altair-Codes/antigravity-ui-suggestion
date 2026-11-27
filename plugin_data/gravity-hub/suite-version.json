@@ -1,11 +1,12 @@
 {
-  "version": "2.1.5",
-  "publishedAt": "2026-11-26T17:15:00+08:00",
+  "version": "2.2.0",
+  "publishedAt": "2026-11-27T10:45:00+08:00",
   "repoUrl": "https://github.com/Altair-Codes/antigravity-ui-suggestion",
   "branch": "main",
   "highlights": [
-    "自动上下文压缩 (/compact) 默认改为关闭，并修复双重插入导致误发 /compact/compact 的问题，支持在引力中枢按需开启",
-    "仓库与在线更新源全面切换至 Altair-Codes/antigravity-ui-suggestion，并修复 Windows PowerShell 5.1 安装脚本双引号解析报错",
-    "新增 1080p 脱敏宣传视频、动态预览 GIF 与 6 张核心功能截图，全面升级 README 图文介绍"
+    "引力中枢新增「📚 历史目录」第四舱位：Node 22+ node:sqlite 字节偏移真增量索引，支持中文双字 Bigram + FTS5 + 精确路径/错误码四路秒搜（0 额外模型调用）",
+    "防幻读四级证据划分与 0 Token 实时文件漂移校验，内置 ≤3 条 / ≤1,200B 确定性稳定前缀摘录打包器与 4 档节俭护栏（新增 Lite 档）",
+    "前缀缓存命中率实时雷达：基于真实 cache_read/(uncached+cache_read) 口径，在遥测浮窗与历史目录提供热缓存保护与冷缓存开新会话建议",
+    "支持可选开启的同项目跨会话证据检索（含切号 epoch 清空与 Windows 路径归一），引力目录新增本地代码/Markdown 骨架大纲与精确 @行段引用"
   ]
 }

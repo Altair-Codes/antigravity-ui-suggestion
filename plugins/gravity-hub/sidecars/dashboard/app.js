@@ -107,6 +107,8 @@
   function bindDataTooltips(rootEl) {
     if (!rootEl) return;
     rootEl.querySelectorAll("[data-tooltip-html]").forEach((node) => {
+      if (node.dataset.nbTipBound === "1") return;
+      node.dataset.nbTipBound = "1";
       node.addEventListener("mouseenter", (e) => {
         showPopover(node.getAttribute("data-tooltip-html"), e.clientX, e.clientY);
       });
@@ -116,7 +118,25 @@
         }
       });
       node.addEventListener("mouseleave", () => hidePopover(60));
+      node.addEventListener("click", (e) => {
+        if (!node.classList.contains("nb-help-q")) return;
+        e.stopPropagation();
+        const r = node.getBoundingClientRect();
+        showPopover(node.getAttribute("data-tooltip-html"), r.left + r.width / 2, r.top);
+      });
+      node.addEventListener("focus", () => {
+        if (!node.classList.contains("nb-help-q")) return;
+        const r = node.getBoundingClientRect();
+        showPopover(node.getAttribute("data-tooltip-html"), r.left + r.width / 2, r.top);
+      });
+      node.addEventListener("blur", () => hidePopover(60));
     });
+    if (!window.__nb_tip_doc_click_v1) {
+      window.__nb_tip_doc_click_v1 = true;
+      document.addEventListener("click", (e) => {
+        if (!e.target?.closest?.(".nb-help-q")) hidePopover(0);
+      });
+    }
   }
 
   function lsGet(key, fallback) {
@@ -152,13 +172,15 @@
     if (panelThemePref === "auto") applyPanelTheme("auto");
   });
 
-  // 1. 三舱 Tab 切换（持久化记忆上次停留舱位）
+  // 1. 四舱 Tab 切换（持久化记忆上次停留舱位）
   const tabs = document.querySelectorAll(".nb-tab");
   const views = {
     cockpit: document.getElementById("nb-view-cockpit"),
+    history: document.getElementById("nb-view-history"),
     studio: document.getElementById("nb-view-studio"),
     system: document.getElementById("nb-view-system")
   };
+  let onHistoryTabActivated = null;
   function activateTab(target) {
     const valid = views[target] ? target : "cockpit";
     tabs.forEach((b) => b.classList.toggle("active", b.dataset.tab === valid));
@@ -166,6 +188,9 @@
       if (el) el.classList.toggle("active", k === valid);
     });
     hidePopover(0);
+    if (valid === "history" && typeof onHistoryTabActivated === "function") {
+      onHistoryTabActivated();
+    }
   }
   tabs.forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -290,6 +315,9 @@
       }
       if (banner) {
         banner.style.display = themeEnabled && !j.connected ? "block" : "none";
+      }
+      if (j.activeCascadeId && j.activeCascadeId !== window.__nb_active_conv_id) {
+        window.__nb_active_conv_id = j.activeCascadeId;
       }
     } catch {}
   }
@@ -2918,11 +2946,24 @@
           b.classList.toggle("active", b.dataset.tier === grRes.tier);
         });
         if (badge) {
-          badge.textContent = grRes.tier === "strict" ? "严格 5 项护栏" : grRes.tier === "standard" ? "标准 3 项护栏" : "已关闭";
+          badge.textContent =
+            grRes.tier === "strict"
+              ? "严格 5 项护栏"
+              : grRes.tier === "standard"
+              ? "标准 3 项护栏"
+              : grRes.tier === "lite"
+              ? "极简省流护栏"
+              : "已关闭";
         }
         if (desc) {
+          const tierName =
+            grRes.tier === "strict"
+              ? "严格 5 项节俭护栏"
+              : grRes.tier === "standard"
+              ? "标准 3 项节俭护栏"
+              : "极简省 Token 护栏";
           desc.textContent = grRes.enabled
-            ? `已写入生效（${grRes.tier === "strict" ? "严格 5 项完整工程护栏" : "标准 3 项核心护栏"} · ${grRes.bytes} 字节）`
+            ? `已写入生效（${tierName} · ${grRes.bytes} 字节 · 静态零缓存破坏）`
             : "当前已关闭工程纪律护栏";
         }
       }
@@ -2980,7 +3021,15 @@
       });
       const j = await r.json();
       if (j.ok) {
-        showToast(tier === "off" ? "已关闭防幻觉工程护栏" : `已切换为「${tier === "strict" ? "严格 5 项护栏" : "标准 3 项护栏"}」`);
+        const label =
+          tier === "strict"
+            ? "严格 5 项护栏"
+            : tier === "standard"
+            ? "标准 3 项护栏"
+            : tier === "lite"
+            ? "极简省流护栏"
+            : "";
+        showToast(tier === "off" ? "已关闭防幻觉工程护栏" : `已切换为「${label}」`);
         syncSystemCenter();
       }
     });
@@ -3128,6 +3177,640 @@
     showToast(`已忽略 v${ver} 更新提醒`);
   });
 
+  // 历史目录模块（零额外 Token · 真增量检索、防幻读漂移校验、同项目跨会话与稳定前缀摘录）
+  const historyState = {
+    convId: "",
+    query: "",
+    evidenceType: "all",
+    pinnedOnly: false,
+    crossSessionEnabled: false,
+    scope: "session",
+    scopeInfo: { scopeUsed: "session", scopeFallback: false, projectLabel: "", sessionCount: 1 },
+    accountEpoch: 0,
+    items: [],
+    expanded: new Set(), // "${convId}:${turnIndex}"
+    selected: new Map(), // "${convId}:${turnIndex}" -> { conversationId, turnIndex }
+    detailCache: new Map(),
+    verifyCache: new Map(),
+    packResult: null,
+    packPreviewOpen: false,
+    searchTimer: null,
+    lastSyncedAt: 0
+  };
+
+  function turnKey(convId, turnIndex) {
+    return `${convId}:${turnIndex}`;
+  }
+
+  function syncCrossScopeControls() {
+    const chk = document.getElementById("nb-hist-cross-enabled");
+    if (chk) chk.checked = Boolean(historyState.crossSessionEnabled);
+    document.querySelectorAll("#nb-hist-scope-seg button").forEach((b) => {
+      const sc = b.dataset.scope;
+      if (sc === "project") {
+        b.disabled = !historyState.crossSessionEnabled;
+        b.title = historyState.crossSessionEnabled ? "检索已确认归属的同项目历史会话" : "请先勾选「启用同项目跨会话」";
+      }
+      b.classList.toggle("active", sc === historyState.scope);
+    });
+  }
+
+  function handleAccountEpochCheck(resp) {
+    const ep = Number(resp?.accountEpoch);
+    if (!Number.isFinite(ep) || ep <= 0) return false;
+    if (historyState.accountEpoch > 0 && ep !== historyState.accountEpoch) {
+      historyState.accountEpoch = ep;
+      historyState.items = [];
+      historyState.expanded.clear();
+      historyState.selected.clear();
+      historyState.detailCache.clear();
+      historyState.verifyCache.clear();
+      historyState.packResult = null;
+      historyState.packPreviewOpen = false;
+      refreshPackPreview();
+      renderHistoryList(0);
+      showToast("检测到账号切换，已自动清空历史目录视图");
+      return true;
+    }
+    historyState.accountEpoch = ep;
+    return false;
+  }
+
+  const EV_LABEL_MAP = {
+    user_confirm: "用户确认",
+    tool_verified: "工具实测",
+    tool_called: "曾调用·结果未核",
+    assistant_note: "助手陈述"
+  };
+
+  function fmtHistTime(ms) {
+    if (!ms) return "";
+    const d = new Date(ms);
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+
+  function renderHistoryCacheStats(cs) {
+    const rateEl = document.getElementById("nb-hist-cache-rate");
+    const badgeEl = document.getElementById("nb-hist-cache-badge");
+    const ratioEl = document.getElementById("nb-hist-cache-ratio");
+    const uncEl = document.getElementById("nb-hist-cache-uncached");
+    const avgEl = document.getElementById("nb-hist-cache-avg");
+    const advEl = document.getElementById("nb-hist-cache-advisory");
+    if (!rateEl || !badgeEl) return;
+
+    const rate = cs?.lastHitRatePct;
+    rateEl.textContent = rate === null || rate === undefined ? "--" : `${rate}%`;
+    ratioEl.textContent = cs?.lastInputTokens > 0
+      ? `${fmtCompactInt(cs.lastCacheReadTokens)} / ${fmtCompactInt(cs.lastInputTokens)}`
+      : "-- / --";
+    uncEl.textContent = cs?.lastInputTokens > 0 ? fmtCompactInt(cs.lastUncachedInputTokens) : "--";
+    avgEl.textContent = cs?.avgHitRatePct === null || cs?.avgHitRatePct === undefined ? "--" : `${cs.avgHitRatePct}%`;
+
+    badgeEl.classList.remove("ok", "warn");
+    const st = cs?.status || "warmup";
+    if (st === "hot") {
+      badgeEl.textContent = "热缓存 · 省额度";
+      badgeEl.classList.add("ok");
+    } else if (st === "warm") {
+      badgeEl.textContent = "温缓存";
+    } else if (st === "cold") {
+      badgeEl.textContent = "缓存已冷";
+      badgeEl.classList.add("warn");
+    } else {
+      badgeEl.textContent = "预热中";
+    }
+
+    if (advEl) {
+      const adv = cs?.advisory;
+      if (adv && adv.text) {
+        advEl.style.display = "block";
+        advEl.classList.toggle("cold", adv.level === "cold_high_ctx");
+        advEl.classList.toggle("hot", adv.level === "hot_keep");
+        advEl.textContent = adv.text;
+      } else {
+        advEl.style.display = "none";
+      }
+    }
+  }
+
+  async function refreshPackPreview() {
+    const barEl = document.getElementById("nb-hist-pack-bar");
+    const statEl = document.getElementById("nb-hist-pack-stat");
+    const driftEl = document.getElementById("nb-hist-pack-drift");
+    const prevWrap = document.getElementById("nb-hist-pack-preview");
+    const preEl = document.getElementById("nb-hist-pack-text");
+    if (!barEl) return;
+
+    const picked = Array.from(historyState.selected.values());
+    if (!picked.length || !historyState.convId) {
+      barEl.style.display = "none";
+      if (prevWrap) prevWrap.style.display = "none";
+      historyState.packResult = null;
+      historyState.packPreviewOpen = false;
+      return;
+    }
+
+    barEl.style.display = "flex";
+    try {
+      const r = await apiFetch("/api/suite-history/pack", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          conversationId: historyState.convId,
+          selections: picked,
+          maxItems: 3,
+          maxBytes: 1200
+        })
+      });
+      if (!r.ok) return;
+      const j = await r.json();
+      if (!j.ok) return;
+      historyState.packResult = j;
+      if (statEl) {
+        statEl.textContent = `已选 ${j.itemCount}/3 条 · ${j.utf8Bytes} / ${j.maxBytes} B · 约 ${j.estimatedTokens} tok`;
+      }
+      if (driftEl) {
+        const hasDrift = Boolean(j.driftSummary?.hasDrift);
+        driftEl.style.display = hasDrift ? "inline-flex" : "none";
+        if (hasDrift) {
+          driftEl.textContent = `⚠ 含 ${j.driftSummary.changedFiles} 变更 / ${j.driftSummary.missingFiles} 缺失`;
+        }
+      }
+      if (prevWrap && preEl) {
+        prevWrap.style.display = historyState.packPreviewOpen ? "block" : "none";
+        if (historyState.packPreviewOpen) preEl.textContent = j.text || "";
+      }
+    } catch {}
+  }
+
+  function renderHistoryList(elapsedMs) {
+    const listEl = document.getElementById("nb-history-list");
+    const metaEl = document.getElementById("nb-hist-result-meta");
+    if (!listEl) return;
+    const items = historyState.items || [];
+    if (metaEl) {
+      const msTxt = typeof elapsedMs === "number" ? ` · ${elapsedMs} ms` : "";
+      const pinTip = historyState.pinnedOnly ? " · 仅看收藏" : "";
+      const sc = historyState.scopeInfo;
+      let scopeTxt = "仅展示当前会话";
+      if (sc?.scopeUsed === "project") {
+        scopeTxt = `同项目跨会话 (${sc.projectLabel || "已确认"} · ${sc.sessionCount || 1} 会话)`;
+      } else if (historyState.scope === "project" && sc?.scopeFallback) {
+        scopeTxt = "未确认其他同项目会话，已收敛为当前会话";
+      }
+      metaEl.textContent = `本地 0 Token 检索 · 命中 ${items.length} 轮${msTxt}${pinTip} · ${scopeTxt}`;
+    }
+    if (!items.length) {
+      listEl.innerHTML = `<div class="nb-empty-hint">${historyState.convId ? "当前筛选条件下暂无匹配的轮次记录" : "未检测到当前活动会话，请先在 Antigravity 打开任意对话"}</div>`;
+      return;
+    }
+
+    listEl.innerHTML = items.map((it) => {
+      const evClass = it.primaryEvidence || "assistant_note";
+      const evLabel = EV_LABEL_MAP[evClass] || "助手陈述";
+      const files = Array.isArray(it.files) ? it.files : [];
+      const shownFiles = files.slice(0, 3);
+      const extraFiles = Math.max(0, files.length - 3);
+      const errs = Array.isArray(it.errorCodes) ? it.errorCodes.slice(0, 3) : [];
+      const hitTag = it.hitRatePct !== null && it.hitRatePct !== undefined
+        ? `<span class="nb-hist-time">命中 ${it.hitRatePct}%</span>`
+        : "";
+      const tKey = turnKey(it.conversationId, it.turnIndex);
+      const isExpanded = historyState.expanded.has(tKey);
+      const isChecked = historyState.selected.has(tKey);
+      const detail = historyState.detailCache.get(tKey);
+      const verify = historyState.verifyCache.get(tKey);
+      const extSessionTag = it.isCurrentSession === false
+        ? `<span class="nb-hist-session-tag" title="${esc(it.sessionTitle || it.conversationId)}">同项目 · ${esc(it.sessionTitle || it.conversationId.slice(0, 8))}</span>`
+        : "";
+
+      let detailHtml = "";
+      if (isExpanded) {
+        if (!detail) {
+          detailHtml = `<div class="nb-hist-detail"><div class="nb-muted">正在按字节偏移定点读取第 ${it.turnIndex} 轮详情与文件漂移校验...</div></div>`;
+        } else {
+          const toolsHtml = (detail.tools || []).slice(0, 6).map((t) => {
+            const stText = t.status === "verified" ? "实测返回" : "曾调用·结果未核";
+            return `<div><b>${esc(t.name)}</b> <span class="nb-muted">(${esc(stText)})</span>${t.outputPreview ? `<div class="nb-muted">${esc(t.outputPreview)}</div>` : ""}</div>`;
+          }).join("");
+          const verifyFiles = verify?.files || [];
+          const verifyHtml = verifyFiles.length
+            ? `<div class="nb-hist-chips">${verifyFiles.map((f) => {
+                const cls = f.status === "missing" ? "missing" : f.status === "changed" ? "changed" : f.status === "unchanged" ? "unchanged" : "unresolved";
+                const vBadge = f.vaultPinned ? " ★文库" : "";
+                return `<span class="nb-hist-drift-pill ${cls}" title="${esc(f.path)}">${esc(f.basename)} · ${esc(f.label)}${vBadge}</span>`;
+              }).join("")}</div>`
+            : "";
+          detailHtml = `
+            <div class="nb-hist-detail">
+              ${verifyHtml ? `<div><div class="nb-hist-detail-label">0 Token 本地文件实时校验</div>${verifyHtml}</div>` : ""}
+              <div>
+                <div class="nb-hist-detail-label">用户消息 · 出处 conv:${esc(it.conversationId.slice(0, 8))} transcript.jsonl#L${it.lineStart}-L${it.lineEnd}</div>
+                <div class="nb-hist-detail-block">${esc(detail.userText || it.displayTitle || it.title)}</div>
+              </div>
+              ${toolsHtml ? `<div><div class="nb-hist-detail-label">工具调用与核验</div><div class="nb-hist-detail-block">${toolsHtml}</div></div>` : ""}
+              ${detail.assistantText ? `<div><div class="nb-hist-detail-label">助手历史陈述（仅作历史参考，改动源码前须实查）</div><div class="nb-hist-detail-block">${esc(detail.assistantText)}</div></div>` : ""}
+            </div>
+          `;
+        }
+      }
+
+      return `
+        <article class="nb-hist-card ${it.pinned ? "pinned" : ""} ${isChecked ? "selected" : ""}" data-conv="${esc(it.conversationId)}" data-turn="${it.turnIndex}">
+          <div class="nb-hist-card-head" data-action="toggle-turn" data-conv="${esc(it.conversationId)}" data-turn="${it.turnIndex}">
+            <label class="nb-hist-check-wrap" data-action="stop-prop" title="勾选加入稳定前缀摘录包（最多 3 条）">
+              <input type="checkbox" class="nb-hist-check" data-action="select-turn" data-conv="${esc(it.conversationId)}" data-turn="${it.turnIndex}" ${isChecked ? "checked" : ""} />
+            </label>
+            <div class="nb-hist-card-left">
+              <div class="nb-hist-card-top">
+                <span class="nb-hist-turn-tag">Turn #${it.turnIndex}</span>
+                ${extSessionTag}
+                <span class="nb-hist-ev-pill ${esc(evClass)}">${esc(evLabel)}</span>
+                ${it.vaultPinnedCount > 0 ? `<span class="nb-hist-vault-tag">★ 文库关联(${it.vaultPinnedCount})</span>` : ""}
+                <span class="nb-hist-time">${esc(fmtHistTime(it.createdAtMs))} · L${it.lineStart}-${it.lineEnd}</span>
+                ${hitTag}
+              </div>
+              <div class="nb-hist-title">${esc(it.displayTitle || it.title)}</div>
+              ${it.summary && it.summary !== it.title ? `<div class="nb-hist-summary">${esc(it.summary)}</div>` : ""}
+              ${(shownFiles.length || errs.length) ? `
+                <div class="nb-hist-chips">
+                  ${shownFiles.map((f) => `<span class="nb-hist-file-chip" title="${esc(f)}">${esc(f.split(/[\\/]/).pop() || f)}</span>`).join("")}
+                  ${extraFiles > 0 ? `<span class="nb-hist-file-chip">+${extraFiles}</span>` : ""}
+                  ${errs.map((e) => `<span class="nb-hist-err-chip">${esc(e)}</span>`).join("")}
+                </div>
+              ` : ""}
+            </div>
+            <div class="nb-hist-card-actions">
+              <button type="button" class="nb-btn ghost nb-btn-sm nb-hist-pin-btn ${it.pinned ? "active" : ""}" data-action="pin-turn" data-conv="${esc(it.conversationId)}" data-turn="${it.turnIndex}" title="${it.pinned ? "取消收藏" : "★ 收藏此轮次（优先置顶且重建保留）"}">${it.pinned ? "★" : "☆"}</button>
+              <button type="button" class="nb-btn ghost nb-btn-sm" data-action="nav-turn" data-conv="${esc(it.conversationId)}" data-turn="${it.turnIndex}" title="跳转到对应会话轮次并高亮">↗ 定位</button>
+              <button type="button" class="nb-btn ghost nb-btn-sm" data-action="copy-turn" data-conv="${esc(it.conversationId)}" data-turn="${it.turnIndex}" title="复制带实时漂移核验与出处的纯文本摘录">⎘ 出处</button>
+            </div>
+          </div>
+          ${detailHtml}
+        </article>
+      `;
+    }).join("");
+  }
+
+  async function resolveCurrentConversationId() {
+    if (window.__nb_active_conv_id) return window.__nb_active_conv_id;
+    try {
+      const r = await apiFetch("/api/status", { method: "GET" });
+      if (r.ok) {
+        const j = await r.json();
+        if (j?.activeCascadeId) {
+          window.__nb_active_conv_id = j.activeCascadeId;
+          return j.activeCascadeId;
+        }
+      }
+    } catch {}
+    return "";
+  }
+
+  async function loadHistoryOverview(forceSync = false) {
+    const convBadge = document.getElementById("nb-hist-conv-badge");
+    const statusBadge = document.getElementById("nb-hist-status-badge");
+    try {
+      const convId = await resolveCurrentConversationId();
+      if (forceSync && convId) {
+        historyState.detailCache.clear();
+        historyState.verifyCache.clear();
+        await apiFetch("/api/suite-history/sync", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ conversationId: convId, scope: historyState.scope })
+        });
+      }
+      const q = convId ? `?conversationId=${encodeURIComponent(convId)}&limit=80` : "?limit=80";
+      const r = await apiFetch(`/api/suite-history/overview${q}`, { method: "GET" });
+      if (!r.ok) return;
+      const j = await r.json();
+      if (handleAccountEpochCheck(j)) return;
+
+      historyState.crossSessionEnabled = Boolean(j.crossSessionEnabled);
+      if (!historyState.crossSessionEnabled) historyState.scope = "session";
+      syncCrossScopeControls();
+
+      historyState.convId = j.conversationId || convId || "";
+      historyState.lastSyncedAt = Date.now();
+      if (convBadge) {
+        convBadge.textContent = historyState.convId
+          ? `${j.title || "当前会话"} (${historyState.convId.slice(0, 8)})`
+          : "未检测到活动会话";
+      }
+      if (statusBadge) {
+        statusBadge.classList.remove("ok", "warn");
+        if (j.schemaStatus === "missing_transcript") {
+          statusBadge.textContent = "缺失转录已降级";
+          statusBadge.classList.add("warn");
+        } else {
+          statusBadge.textContent = `已同步 ${j.turnCount || 0} 轮`;
+          statusBadge.classList.add("ok");
+        }
+      }
+      renderHistoryCacheStats(j.cacheStats);
+      if (historyState.query || historyState.evidenceType !== "all" || historyState.pinnedOnly || historyState.scope === "project") {
+        await runHistorySearch();
+      } else {
+        historyState.scopeInfo = { scopeUsed: "session", scopeFallback: false, projectLabel: "", sessionCount: 1 };
+        historyState.items = Array.isArray(j.items) ? j.items : [];
+        renderHistoryList(j.elapsedMs);
+      }
+      refreshPackPreview();
+    } catch {
+      showToast("读取历史目录失败");
+    }
+  }
+
+  async function runHistorySearch() {
+    if (!historyState.convId) {
+      renderHistoryList(0);
+      return;
+    }
+    try {
+      const qs = new URLSearchParams({
+        conversationId: historyState.convId,
+        q: historyState.query,
+        type: historyState.evidenceType,
+        pinnedOnly: historyState.pinnedOnly ? "1" : "0",
+        scope: historyState.crossSessionEnabled ? historyState.scope : "session",
+        limit: "80"
+      });
+      const r = await apiFetch(`/api/suite-history/search?${qs.toString()}`, { method: "GET" });
+      if (!r.ok) return;
+      const j = await r.json();
+      if (handleAccountEpochCheck(j)) return;
+
+      historyState.crossSessionEnabled = Boolean(j.crossSessionEnabled);
+      if (!historyState.crossSessionEnabled) historyState.scope = "session";
+      syncCrossScopeControls();
+      historyState.scopeInfo = {
+        scopeUsed: j.scopeUsed || "session",
+        scopeFallback: Boolean(j.scopeFallback),
+        projectLabel: j.projectLabel || "",
+        sessionCount: j.sessionCount || 1
+      };
+      historyState.items = Array.isArray(j.items) ? j.items : [];
+      renderHistoryList(j.elapsedMs);
+    } catch {}
+  }
+
+  onHistoryTabActivated = () => {
+    loadHistoryOverview(false);
+  };
+
+  document.getElementById("nb-hist-cross-enabled")?.addEventListener("change", async (e) => {
+    const enabled = Boolean(e.currentTarget.checked);
+    try {
+      const r = await apiFetch("/api/suite-history/prefs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ crossSessionEnabled: enabled })
+      });
+      const j = await r.json();
+      if (j.ok) {
+        historyState.crossSessionEnabled = Boolean(j.crossSessionEnabled);
+        historyState.scope = historyState.crossSessionEnabled ? "project" : "session";
+        syncCrossScopeControls();
+        showToast(historyState.crossSessionEnabled ? "已启用同项目跨会话证据检索" : "已关闭跨会话检索（仅看当前会话）");
+        await runHistorySearch();
+      }
+    } catch {
+      showToast("保存跨会话设置失败");
+    }
+  });
+
+  document.getElementById("nb-hist-scope-seg")?.addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-scope]");
+    if (!btn || btn.disabled) return;
+    const sc = btn.dataset.scope || "session";
+    if (sc === "project" && !historyState.crossSessionEnabled) return;
+    historyState.scope = sc;
+    syncCrossScopeControls();
+    runHistorySearch();
+  });
+
+  document.getElementById("nb-btn-hist-sync")?.addEventListener("click", async (e) => {
+    const b = e.currentTarget;
+    b.disabled = true;
+    try {
+      await loadHistoryOverview(true);
+      showToast("已完成增量索引同步");
+    } finally {
+      b.disabled = false;
+    }
+  });
+
+  document.getElementById("nb-btn-hist-rebuild")?.addEventListener("click", async (e) => {
+    const b = e.currentTarget;
+    b.disabled = true;
+    try {
+      historyState.detailCache.clear();
+      historyState.verifyCache.clear();
+      historyState.expanded.clear();
+      const convId = historyState.convId || await resolveCurrentConversationId();
+      await apiFetch("/api/suite-history/reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conversationId: convId })
+      });
+      await loadHistoryOverview(false);
+      showToast("已重建当前会话本地历史索引（已保留 ★ 收藏）");
+    } finally {
+      b.disabled = false;
+    }
+  });
+
+  document.getElementById("nb-hist-search")?.addEventListener("input", (e) => {
+    historyState.query = String(e.target.value || "").trim();
+    clearTimeout(historyState.searchTimer);
+    historyState.searchTimer = setTimeout(() => {
+      runHistorySearch();
+    }, 180);
+  });
+
+  document.getElementById("nb-hist-ev-seg")?.addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-ev]");
+    if (!btn) return;
+    historyState.evidenceType = btn.dataset.ev || "all";
+    document.querySelectorAll("#nb-hist-ev-seg button").forEach((b) => {
+      b.classList.toggle("active", b === btn);
+    });
+    runHistorySearch();
+  });
+
+  document.getElementById("nb-btn-hist-pinned-only")?.addEventListener("click", (e) => {
+    historyState.pinnedOnly = !historyState.pinnedOnly;
+    const btn = e.currentTarget;
+    btn.classList.toggle("primary", historyState.pinnedOnly);
+    btn.classList.toggle("ghost", !historyState.pinnedOnly);
+    runHistorySearch();
+  });
+
+  document.getElementById("nb-btn-hist-pack-preview")?.addEventListener("click", () => {
+    historyState.packPreviewOpen = !historyState.packPreviewOpen;
+    refreshPackPreview();
+  });
+
+  document.getElementById("nb-btn-hist-pack-close")?.addEventListener("click", () => {
+    historyState.packPreviewOpen = false;
+    const prevWrap = document.getElementById("nb-hist-pack-preview");
+    if (prevWrap) prevWrap.style.display = "none";
+  });
+
+  document.getElementById("nb-btn-hist-pack-clear")?.addEventListener("click", () => {
+    historyState.selected.clear();
+    refreshPackPreview();
+    renderHistoryList();
+  });
+
+  document.getElementById("nb-btn-hist-pack-copy")?.addEventListener("click", async () => {
+    if (!historyState.packResult) await refreshPackPreview();
+    const pack = historyState.packResult;
+    if (!pack?.text) return showToast("请先勾选至少 1 条轮次记录");
+    try {
+      await navigator.clipboard.writeText(pack.text);
+      const driftTip = pack.driftSummary?.hasDrift ? "（含待复核/缺失提醒）" : "";
+      showToast(`已复制稳定前缀包：${pack.itemCount} 条 · ${pack.utf8Bytes}B${driftTip}`);
+    } catch {
+      historyState.packPreviewOpen = true;
+      refreshPackPreview();
+      showToast("剪贴板写入受限，已展开预览供手动复制");
+    }
+  });
+
+  document.getElementById("nb-history-list")?.addEventListener("click", async (e) => {
+    const stopEl = e.target.closest('[data-action="stop-prop"]');
+    if (stopEl && e.target.tagName !== "INPUT") {
+      e.stopPropagation();
+      return;
+    }
+
+    const actBtn = e.target.closest("[data-action]");
+    if (!actBtn) return;
+    const action = actBtn.dataset.action;
+    const turnIndex = Number(actBtn.dataset.turn);
+    const targetConv = actBtn.dataset.conv || historyState.convId;
+    const item = (historyState.items || []).find((x) => x.conversationId === targetConv && x.turnIndex === turnIndex);
+    if (!item) return;
+    const tKey = turnKey(item.conversationId, item.turnIndex);
+
+    if (action === "select-turn") {
+      e.stopPropagation();
+      const checked = actBtn.checked;
+      if (checked) {
+        if (historyState.selected.size >= 3 && !historyState.selected.has(tKey)) {
+          actBtn.checked = false;
+          showToast("稳定前缀包默认上限 3 条（≤1,200B），可先取消一条再选");
+          return;
+        }
+        historyState.selected.set(tKey, { conversationId: item.conversationId, turnIndex: item.turnIndex });
+      } else {
+        historyState.selected.delete(tKey);
+      }
+      renderHistoryList();
+      refreshPackPreview();
+      return;
+    }
+
+    if (action === "pin-turn") {
+      e.stopPropagation();
+      try {
+        const r = await apiFetch("/api/suite-history/pin", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            conversationId: item.conversationId,
+            turnIndex: item.turnIndex,
+            pinned: !item.pinned
+          })
+        });
+        const j = await r.json();
+        if (j.ok) {
+          showToast(j.pinned ? `★ 已收藏 Turn #${item.turnIndex}` : `已取消收藏 Turn #${item.turnIndex}`);
+          await runHistorySearch();
+        }
+      } catch {
+        showToast("更新收藏状态失败");
+      }
+      return;
+    }
+
+    if (action === "nav-turn") {
+      e.stopPropagation();
+      try {
+        const r = await apiFetch("/api/suite-history/navigate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            conversationId: item.conversationId,
+            turnIndex: item.turnIndex,
+            keyword: item.displayTitle || item.title,
+            lineStart: item.lineStart,
+            lineEnd: item.lineEnd
+          })
+        });
+        const j = await r.json();
+        showToast(j.ok ? `已发送定位指令到会话 Turn #${item.turnIndex}` : `定位失败：${j.error || ""}`);
+      } catch {
+        showToast("发送定位指令失败");
+      }
+      return;
+    }
+
+    if (action === "copy-turn") {
+      e.stopPropagation();
+      try {
+        const r = await apiFetch("/api/suite-history/pack", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            conversationId: historyState.convId || item.conversationId,
+            selections: [{ conversationId: item.conversationId, turnIndex: item.turnIndex }],
+            maxItems: 1,
+            maxBytes: 1200
+          })
+        });
+        const j = await r.json();
+        if (j.ok && j.text) {
+          await navigator.clipboard.writeText(j.text);
+          showToast(`已复制 Turn #${item.turnIndex} 核验摘录 (${j.utf8Bytes}B)`);
+          return;
+        }
+      } catch {}
+      showToast("剪贴板写入受限，请勾选后点「预览摘录」复制");
+      return;
+    }
+
+    if (action === "toggle-turn") {
+      if (historyState.expanded.has(tKey)) {
+        historyState.expanded.delete(tKey);
+        renderHistoryList();
+        return;
+      }
+      historyState.expanded.add(tKey);
+      renderHistoryList();
+      const qs = new URLSearchParams({
+        conversationId: item.conversationId,
+        turnIndex: String(turnIndex)
+      });
+      await Promise.all([
+        !historyState.detailCache.has(tKey)
+          ? apiFetch(`/api/suite-history/turn?${qs.toString()}`, { method: "GET" })
+              .then((r) => (r.ok ? r.json() : null))
+              .then((j) => { if (j?.ok) historyState.detailCache.set(tKey, j); })
+              .catch(() => {})
+          : Promise.resolve(),
+        apiFetch(`/api/suite-history/verify?${qs.toString()}`, { method: "GET" })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((j) => { if (j?.ok) historyState.verifyCache.set(tKey, j); })
+          .catch(() => {})
+      ]);
+      renderHistoryList();
+    }
+  });
+
   // 初始化加载与定时刷新
   (async () => {
     try {
@@ -3151,6 +3834,7 @@
   loadStudioConfig();
   syncSystemCenter();
   renderTpsMonitorSection();
+  bindDataTooltips(document.body);
 
   setInterval(refreshStatus, 8000);
   setInterval(() => {

@@ -4,6 +4,7 @@ import path from "node:path";
 import http from "node:http";
 import crypto from "node:crypto";
 import { spawn, execFile, execFileSync } from "node:child_process";
+import { createHistoryIndex } from "./history-index.mjs";
 
 const REPO_URL = "https://github.com/Altair-Codes/antigravity-ui-suggestion";
 const REPO_GIT_URL = `${REPO_URL}.git`;
@@ -15,47 +16,32 @@ function buildRemoteVersionUrl(branch = DEFAULT_UPDATE_BRANCH) {
   return `https://raw.githubusercontent.com/Altair-Codes/antigravity-ui-suggestion/${encodeURIComponent(safeBranch)}/version.json`;
 }
 
-const GUARDRAIL_TEMPLATES = {
-  strict: `# 防幻觉与工程纪律护栏规则 (Anti-Hallucination & Engineering Guardrails)
+export const GUARDRAIL_TEMPLATES = {
+  strict: `# 防幻觉与节俭工程护栏 (Strict)
 
 <!-- aura-guardrail-tier: strict -->
 
-在所有对话与代码任务中，严格遵守以下 5 项工程护栏（适用于 macOS 与 Windows 全平台）：
-
-## 1. 证据优先・未读禁猜 (Evidence-First Grounding)
-- 严禁把调用处、注释、过往摘要或 Mock 当作 API、符号、配置项或文件存在的证据。
-- 在解释、修改或依赖任何不熟悉的代码、接口签名、配置结构或运行时状态前，必须先通过 \`read_file\` 或 \`run_command\` 实查源码或真实输出。
-- 任何未经直接读取或实测验证的信息，必须明确标注「未验证」，绝不凭印象猜测编造。
-
-## 2. 外科手术式最小改动 (Surgical Minimal Scope)
-- 所有代码与配置修改严格收敛在用户明确要求的任务范围内，优先复用现有机制与架构。
-- 避免过度设计、凭空引入未要求的抽象层或冗余防御性代码；保留所有无关的既有注释与文档字符串。
-- 仅在需求确实存在歧义时通过 \`ask_question\` 或简短提问澄清。
-
-## 3. 区分「问答排查」与「执行修改」 (Inquiry vs. Directive)
-- **问答 / 评审 / 排查分析（Inquiries）**：只读调研并在对话中清晰作答，**不擅自修改工作区文件**。
-- **明确修改指令（Directives）**：端到端闭环执行（\`实查源码 → 精准修改 → 针对性命令验证\`），对可逆步骤无需反复停下来请示。
-
-## 4. 原生工具契约与高效执行 (Native Tool Contracts)
-- **并行读、串行改**：多个独立的 \`read_file\` 或只读 \`run_command\` 尽量在同一轮并行调用；对同一文件的编辑在读取目标区域后按序执行。
-- **原生文件工具优先**：优先使用 \`read_file\`、\`edit_file\`、\`write_file\`，避免用 shell \`cat\`、\`sed\`、\`awk\` 或重定向代替常规文件读写。
-- **\`edit_file\` 唯一上下文锚点**：调用 \`edit_file\` 时，\`Target\` 必须包含 3–5 行唯一上下文，确保确定性命中唯一位置，避免误替换。
-- **异步不轮询**：后台命令与子代理完成后会自动唤醒，严禁使用 shell \`sleep\` 轮询；对子代理返回的文件路径与行号需直接核验。
-
-## 5. 诚实实测验证与直出结论 (Honest Verification & Direct Delivery)
-- 最终修改完成后，必须通过 \`run_command\` 运行最窄范围的构建、类型检查或单元测试验证真实效果。
-- **严禁伪造工具输出日志**、严禁外推未看到的字段、严禁把跳过 / Mock / 部分运行汇报为全量通过。
-- 回复优先直出结论，引用核查或修改过的文件与符号时提供可点击的 \`[文件名](file:///绝对路径#L行号)\` 链接。
+1. **未读禁猜**：修改或解释不熟悉的代码、接口与配置前，先用 \`read_file\` 或 \`run_command\` 实查源码或真实输出；未核查部分明示「未验证」，绝不把历史陈述当作当前现状。
+2. **最小改动**：改动严格收敛在当前任务范围内，优先复用现有机制，保留无关注释与文档字符串。
+3. **问答与执行分离**：只读排查不改文件；明确修改指令按「实查 → 精准修改 → 窄范围实测」闭环交付。
+4. **节俭检索纪律**：大文件先定位行号再切片读（禁盲目整文件连读）；命令输出按需 \`head/tail/grep\` 截断；不重复读取未改动的已读文件；\`edit_file\` 携带 3–5 行唯一锚点。
+5. **诚实验证**：修改后运行最窄范围构建/单测验证并直出结果，严禁伪造日志或将部分/跳过汇报为全量通过；引用文件附 \`[文件名](file:///绝对路径#L行号)\`。
 `,
-  standard: `# 防幻觉核心护栏规则 (Anti-Hallucination Guardrails - Standard)
+  standard: `# 防幻觉与节俭护栏 (Standard)
 
 <!-- aura-guardrail-tier: standard -->
 
-在所有对话与代码任务中，遵守以下 3 项核心防幻觉原则：
+1. **未读禁猜**：改动或解释前先实查源码或输出，未核查明示「未验证」。
+2. **节俭最小改动**：收敛在任务范围内；大文件定位行号切片读，截断超长命令日志，不重读未变文件。
+3. **诚实验证**：改后跑最窄范围测试并如实汇报，不伪造输出。
+`,
+  lite: `# 极简防幻觉护栏 (Lite)
 
-1. **未读禁猜（Evidence-First）**：修改或解释不熟悉的文件、API 签名或运行时状态前，必须先通过 \`read_file\` 或 \`run_command\` 核查真实源码与输出；未经验证的推断必须明示「未验证」。
-2. **最小改动（Minimal Scope）**：改动严格收敛在当前任务范围内，保留无关注释与既有逻辑，不做未要求的过度重构。
-3. **诚实验证（Honest Verification）**：修改后通过最窄范围的命令或单测验证结果，绝不伪造输出日志或将未执行的检查汇报为通过。
+<!-- aura-guardrail-tier: lite -->
+
+- **未读禁猜**：改前先读源码/日志，未查明示「未验证」。
+- **省流定位**：大文件切片读、长日志截断、不重读未变文件。
+- **诚实验证**：改后跑窄范围校验并如实反馈。
 `
 };
 
@@ -501,6 +487,151 @@ export function initSuiteExtensions({
   const autoCompactFile = path.join(dataDir, "suite-auto-compact.json");
   const quotaCacheFile = path.join(dataDir, "suite-quota-cache.json");
   const tpsMonitorFile = path.join(dataDir, "suite-tps-monitor.json");
+  const historyPrefsFile = path.join(dataDir, "suite-history-prefs.json");
+  const historyIndex = createHistoryIndex({ dataDir, appDataDir });
+  let pendingHistoryNav = null;
+  let historyNavSeq = 0;
+
+  function getHistoryPrefs() {
+    const raw = readJsonSafe(historyPrefsFile, {});
+    const maxN = Math.round(Number(raw?.maxProjectSessions));
+    return {
+      ok: true,
+      crossSessionEnabled: raw?.crossSessionEnabled === true,
+      maxProjectSessions: Number.isFinite(maxN) && maxN >= 2 ? Math.min(20, maxN) : 12,
+      lastAccountEmail: typeof raw?.lastAccountEmail === "string" ? raw.lastAccountEmail.trim() : "",
+      accountEpoch: Math.max(1, Math.round(Number(raw?.accountEpoch) || 1))
+    };
+  }
+
+  function saveHistoryPrefs(patch = {}) {
+    const cur = getHistoryPrefs();
+    const maxRaw = Math.round(Number(patch?.maxProjectSessions));
+    const next = {
+      crossSessionEnabled: typeof patch?.crossSessionEnabled === "boolean" ? patch.crossSessionEnabled : cur.crossSessionEnabled,
+      maxProjectSessions: Number.isFinite(maxRaw) && maxRaw >= 2 ? Math.min(20, maxRaw) : cur.maxProjectSessions,
+      lastAccountEmail: cur.lastAccountEmail,
+      accountEpoch: cur.accountEpoch
+    };
+    writeJsonSafe(historyPrefsFile, next);
+    return { ok: true, ...next };
+  }
+
+  function notifyHistoryAccount(emailRaw) {
+    const email = String(emailRaw || "").trim().toLowerCase();
+    if (!email) return getHistoryPrefs();
+    const cur = getHistoryPrefs();
+    if (cur.lastAccountEmail && cur.lastAccountEmail === email) {
+      return cur;
+    }
+    const nextEpoch = cur.lastAccountEmail ? cur.accountEpoch + 1 : cur.accountEpoch;
+    if (cur.lastAccountEmail) {
+      pendingHistoryNav = null;
+    }
+    const next = {
+      crossSessionEnabled: cur.crossSessionEnabled,
+      maxProjectSessions: cur.maxProjectSessions,
+      lastAccountEmail: email,
+      accountEpoch: nextEpoch
+    };
+    writeJsonSafe(historyPrefsFile, next);
+    return { ok: true, ...next };
+  }
+
+  function handleHistoryOverview({ conversationId, limit }) {
+    const prefs = getHistoryPrefs();
+    const convId = resolveTargetConversationId(conversationId);
+    const res = historyIndex.getOverview(convId, { limit: Number(limit) || 60 });
+    return {
+      ...res,
+      crossSessionEnabled: prefs.crossSessionEnabled,
+      accountEpoch: prefs.accountEpoch,
+      activeAccountEmail: prefs.lastAccountEmail
+    };
+  }
+
+  function handleHistorySearch({ conversationId, q, type, pinnedOnly, scope, limit }) {
+    const prefs = getHistoryPrefs();
+    const convId = resolveTargetConversationId(conversationId);
+    const effectiveScope = prefs.crossSessionEnabled && scope === "project" ? "project" : "session";
+    const res = historyIndex.searchTurns({
+      conversationId: convId,
+      query: q || "",
+      evidenceType: type || "all",
+      pinnedOnly: Boolean(pinnedOnly),
+      scope: effectiveScope,
+      limit: Number(limit) || 60
+    });
+    return {
+      ...res,
+      crossSessionEnabled: prefs.crossSessionEnabled,
+      accountEpoch: prefs.accountEpoch,
+      activeAccountEmail: prefs.lastAccountEmail
+    };
+  }
+
+  function handleHistorySync(body = {}) {
+    const prefs = getHistoryPrefs();
+    const convId = resolveTargetConversationId(body.conversationId);
+    if (prefs.crossSessionEnabled && body.scope === "project") {
+      return historyIndex.syncProjectConversations(convId, {
+        maxSessions: prefs.maxProjectSessions,
+        forceRebuild: Boolean(body.rebuild)
+      });
+    }
+    return historyIndex.syncConversation(convId, { forceRebuild: Boolean(body.rebuild) });
+  }
+
+  function handleHistoryPack(body = {}) {
+    const convId = resolveTargetConversationId(body.conversationId);
+    return historyIndex.buildExcerptPack({
+      conversationId: convId,
+      turnIndices: body.turnIndices,
+      selections: body.selections,
+      maxItems: body.maxItems,
+      maxBytes: body.maxBytes,
+      taskHint: body.taskHint
+    });
+  }
+
+  function resolveTargetConversationId(rawId) {
+    const direct = String(rawId || "").trim();
+    if (direct && !direct.includes("..") && !direct.includes("/")) return direct;
+    try {
+      const lr = getLastRouteState();
+      const route = String(lr?.route || "");
+      const m = route.match(/\/c\/([0-9a-f-]{16,64})/i);
+      if (m) return m[1];
+    } catch {}
+    return "";
+  }
+
+  function setPendingHistoryNav(payload = {}) {
+    const convId = resolveTargetConversationId(payload.conversationId);
+    if (!convId) return { ok: false, error: "缺少 conversationId" };
+    historyNavSeq += 1;
+    pendingHistoryNav = {
+      seq: historyNavSeq,
+      conversationId: convId,
+      turnIndex: Number(payload.turnIndex) || 1,
+      keyword: String(payload.keyword || "").trim().slice(0, 80),
+      lineStart: Number(payload.lineStart) || 1,
+      lineEnd: Number(payload.lineEnd) || 1,
+      createdAt: Date.now()
+    };
+    return { ok: true, pending: pendingHistoryNav };
+  }
+
+  function consumePendingHistoryNav(peek = false) {
+    if (!pendingHistoryNav) return { ok: true, pending: null };
+    if (Date.now() - pendingHistoryNav.createdAt > 30000) {
+      pendingHistoryNav = null;
+      return { ok: true, pending: null };
+    }
+    const cur = pendingHistoryNav;
+    if (!peek) pendingHistoryNav = null;
+    return { ok: true, pending: cur };
+  }
 
   const DEFAULT_TPS_MONITOR = {
     enabled: true,
@@ -695,7 +826,7 @@ export function initSuiteExtensions({
         return { ok: true, tier: "off", enabled: false, rulesPath, bytes: 0 };
       }
       const txt = fs.readFileSync(rulesPath, "utf8");
-      const m = txt.match(/aura-guardrail-tier:\s*(strict|standard|off)/i);
+      const m = txt.match(/aura-guardrail-tier:\s*(strict|standard|lite|off)/i);
       const tier = m ? m[1].toLowerCase() : (txt.trim().length > 0 ? "strict" : "off");
       return {
         ok: true,
@@ -710,7 +841,7 @@ export function initSuiteExtensions({
   }
 
   function setGuardrailsTier(tierRaw) {
-    const tier = ["off", "standard", "strict"].includes(String(tierRaw || "").toLowerCase())
+    const tier = ["off", "lite", "standard", "strict"].includes(String(tierRaw || "").toLowerCase())
       ? String(tierRaw).toLowerCase()
       : "strict";
     try {
@@ -1164,6 +1295,7 @@ export function initSuiteExtensions({
       }
       const switched = accountVault.switchAccount(target.email);
       const toEmail = switched.email || target.email;
+      notifyHistoryAccount(toEmail);
       if (typeof recordAccountSwitch === "function") {
         try { recordAccountSwitch(toEmail); } catch {}
       }
@@ -1210,7 +1342,7 @@ export function initSuiteExtensions({
   }
 
   function getLocalVersionInfo() {
-    const fallback = { version: "2.1.5", publishedAt: "", repoUrl: REPO_URL, branch: DEFAULT_UPDATE_BRANCH, highlights: [] };
+    const fallback = { version: "2.2.0", publishedAt: "", repoUrl: REPO_URL, branch: DEFAULT_UPDATE_BRANCH, highlights: [] };
     const fromData = readJsonSafe(versionFile, null);
     if (fromData && fromData.version) return { ...fallback, ...fromData };
     const fromSeed = readJsonSafe(path.join(pluginRoot, "sidecars", "dashboard", "user", "suite-version.json"), null);
@@ -1446,6 +1578,7 @@ export function initSuiteExtensions({
 
   function updateQuotaCache(payload, opts = {}) {
     if (!payload || typeof payload !== "object") return { ok: false, error: "Invalid quota payload" };
+    if (payload.email) notifyHistoryAccount(payload.email);
     cachedQuota = {
       ...payload,
       updatedAt: Number(opts?.now) || Date.now()
@@ -2039,6 +2172,7 @@ ${relaunchLine}
     if (typeof disableThemeBeforeUninstall === "function") {
       try { await disableThemeBeforeUninstall(); } catch {}
     }
+    try { historyIndex.close(); } catch {}
 
     const removed = [];
     const restored = [];
@@ -2193,6 +2327,52 @@ ${relaunchLine}
         result = collectUninstallPlan();
       } else if (urlObj.pathname === "/api/suite-uninstall" && req.method === "POST") {
         result = await executeCompleteUninstall(bodyObj);
+      } else if (urlObj.pathname === "/api/suite-history/prefs" && req.method === "GET") {
+        result = getHistoryPrefs();
+      } else if (urlObj.pathname === "/api/suite-history/prefs" && req.method === "POST") {
+        result = saveHistoryPrefs(bodyObj);
+      } else if (urlObj.pathname === "/api/suite-history/overview" && req.method === "GET") {
+        result = handleHistoryOverview({
+          conversationId: urlObj.searchParams.get("conversationId"),
+          limit: urlObj.searchParams.get("limit")
+        });
+      } else if (urlObj.pathname === "/api/suite-history/search" && req.method === "GET") {
+        result = handleHistorySearch({
+          conversationId: urlObj.searchParams.get("conversationId"),
+          q: urlObj.searchParams.get("q") || "",
+          type: urlObj.searchParams.get("type") || "all",
+          pinnedOnly: urlObj.searchParams.get("pinnedOnly") === "1",
+          scope: urlObj.searchParams.get("scope") || "session",
+          limit: urlObj.searchParams.get("limit")
+        });
+      } else if (urlObj.pathname === "/api/suite-history/turn" && req.method === "GET") {
+        const convId = resolveTargetConversationId(urlObj.searchParams.get("conversationId"));
+        const turnIndex = Number(urlObj.searchParams.get("turnIndex"));
+        result = historyIndex.getTurnDetail({ conversationId: convId, turnIndex });
+      } else if (urlObj.pathname === "/api/suite-history/verify" && req.method === "GET") {
+        const convId = resolveTargetConversationId(urlObj.searchParams.get("conversationId"));
+        const turnIndex = Number(urlObj.searchParams.get("turnIndex"));
+        result = historyIndex.verifyTurnFiles({ conversationId: convId, turnIndex });
+      } else if (urlObj.pathname === "/api/suite-history/pin" && req.method === "POST") {
+        const convId = resolveTargetConversationId(bodyObj.conversationId);
+        result = historyIndex.toggleTurnPin({
+          conversationId: convId,
+          turnIndex: bodyObj.turnIndex,
+          customTitle: bodyObj.customTitle,
+          note: bodyObj.note,
+          pinned: bodyObj.pinned
+        });
+      } else if (urlObj.pathname === "/api/suite-history/pack" && req.method === "POST") {
+        result = handleHistoryPack(bodyObj);
+      } else if (urlObj.pathname === "/api/suite-history/sync" && req.method === "POST") {
+        result = handleHistorySync(bodyObj);
+      } else if (urlObj.pathname === "/api/suite-history/reset" && req.method === "POST") {
+        const convId = bodyObj.all ? "" : resolveTargetConversationId(bodyObj.conversationId);
+        result = historyIndex.resetIndex(convId);
+      } else if (urlObj.pathname === "/api/suite-history/navigate" && req.method === "GET") {
+        result = consumePendingHistoryNav(urlObj.searchParams.get("peek") === "1");
+      } else if (urlObj.pathname === "/api/suite-history/navigate" && req.method === "POST") {
+        result = setPendingHistoryNav(bodyObj);
       } else {
         status = 404;
       }
@@ -2269,6 +2449,62 @@ ${relaunchLine}
     Oe.api("/api/suite-uninstall/preview", () => collectUninstallPlan(), "GET");
     Oe.api("/api/suite-uninstall", async (e) => await executeCompleteUninstall(parseBody(e)), "POST");
 
+    Oe.api("/api/suite-history/prefs", () => getHistoryPrefs(), "GET");
+    Oe.api("/api/suite-history/prefs", (e) => saveHistoryPrefs(parseBody(e)), "POST");
+    Oe.api("/api/suite-history/overview", (e, req) => {
+      const u = new URL(String(req?.url || "/api/suite-history/overview"), "http://127.0.0.1");
+      return handleHistoryOverview({
+        conversationId: e?.conversationId || u.searchParams.get("conversationId"),
+        limit: e?.limit || u.searchParams.get("limit")
+      });
+    }, "GET");
+    Oe.api("/api/suite-history/search", (e, req) => {
+      const u = new URL(String(req?.url || "/api/suite-history/search"), "http://127.0.0.1");
+      return handleHistorySearch({
+        conversationId: e?.conversationId || u.searchParams.get("conversationId"),
+        q: String(e?.q ?? u.searchParams.get("q") ?? ""),
+        type: String(e?.type ?? u.searchParams.get("type") ?? "all"),
+        pinnedOnly: e?.pinnedOnly === true || e?.pinnedOnly === "1" || u.searchParams.get("pinnedOnly") === "1",
+        scope: String(e?.scope ?? u.searchParams.get("scope") ?? "session"),
+        limit: e?.limit || u.searchParams.get("limit")
+      });
+    }, "GET");
+    Oe.api("/api/suite-history/turn", (e, req) => {
+      const u = new URL(String(req?.url || "/api/suite-history/turn"), "http://127.0.0.1");
+      const convId = resolveTargetConversationId(e?.conversationId || u.searchParams.get("conversationId"));
+      const turnIndex = Number(e?.turnIndex ?? u.searchParams.get("turnIndex"));
+      return historyIndex.getTurnDetail({ conversationId: convId, turnIndex });
+    }, "GET");
+    Oe.api("/api/suite-history/verify", (e, req) => {
+      const u = new URL(String(req?.url || "/api/suite-history/verify"), "http://127.0.0.1");
+      const convId = resolveTargetConversationId(e?.conversationId || u.searchParams.get("conversationId"));
+      const turnIndex = Number(e?.turnIndex ?? u.searchParams.get("turnIndex"));
+      return historyIndex.verifyTurnFiles({ conversationId: convId, turnIndex });
+    }, "GET");
+    Oe.api("/api/suite-history/pin", (e) => {
+      const b = parseBody(e);
+      const convId = resolveTargetConversationId(b.conversationId);
+      return historyIndex.toggleTurnPin({
+        conversationId: convId,
+        turnIndex: b.turnIndex,
+        customTitle: b.customTitle,
+        note: b.note,
+        pinned: b.pinned
+      });
+    }, "POST");
+    Oe.api("/api/suite-history/pack", (e) => handleHistoryPack(parseBody(e)), "POST");
+    Oe.api("/api/suite-history/sync", (e) => handleHistorySync(parseBody(e)), "POST");
+    Oe.api("/api/suite-history/reset", (e) => {
+      const b = parseBody(e);
+      const convId = b.all ? "" : resolveTargetConversationId(b.conversationId);
+      return historyIndex.resetIndex(convId);
+    }, "POST");
+    Oe.api("/api/suite-history/navigate", (e, req) => {
+      const u = new URL(String(req?.url || "/api/suite-history/navigate"), "http://127.0.0.1");
+      return consumePendingHistoryNav(u.searchParams.get("peek") === "1");
+    }, "GET");
+    Oe.api("/api/suite-history/navigate", (e) => setPendingHistoryNav(parseBody(e)), "POST");
+
     Oe.api("/suite-panel-addon.js", () => {
       const src = panelAddonPath && fs.existsSync(panelAddonPath)
         ? fs.readFileSync(panelAddonPath, "utf8")
@@ -2283,6 +2519,9 @@ ${relaunchLine}
   return {
     getBridgeInfo: () => (bridgeOrigin ? { origin: bridgeOrigin, token: bridgeToken } : null),
     registerOnOe,
-    closeBridge: () => { try { bridgeServer.close(); } catch {} }
+    closeBridge: () => {
+      try { historyIndex.close(); } catch {}
+      try { bridgeServer.close(); } catch {}
+    }
   };
 }

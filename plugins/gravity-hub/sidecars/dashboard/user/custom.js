@@ -53,6 +53,10 @@ try {
         clearInterval(window.__ag_suite_route_interval_id);
         window.__ag_suite_route_interval_id = null;
       }
+      if (window.__ag_suite_history_nav_timer) {
+        clearInterval(window.__ag_suite_history_nav_timer);
+        window.__ag_suite_history_nav_timer = null;
+      }
       if (window.__ag_suite_notice_timer) {
         clearTimeout(window.__ag_suite_notice_timer);
         window.__ag_suite_notice_timer = null;
@@ -114,7 +118,8 @@ try {
         "nb-live-quota-popover",
         "nb-live-quota-pill",
         "nb-docked-metrics-strip",
-        "nb-tt-tps-monitor-row"
+        "nb-tt-tps-monitor-row",
+        "nb-tt-cache-hit-row"
       ];
       for (const id of removeIds) {
         document.getElementById(id)?.remove();
@@ -1357,6 +1362,7 @@ try {
         if (Date.now() - quotaState.lastSyncAttemptAt >= 8000) {
           syncNativeModelQuotas(false);
         }
+        window.__NB_QUOTA_UI__?.refreshCacheHitStat?.(true);
       }, 1200);
     }
   }
@@ -2653,10 +2659,179 @@ try {
         if (isTpsMonitorEnabled() && tpsMonitorLocal.sampleCount > 0 && !document.getElementById("nb-tt-tps-monitor-row")) {
           syncTpsTooltipRow();
         }
+        if (window.__NB_CACHE_HIT_STATE__?.lastInputTokens > 0 && !document.getElementById("nb-tt-cache-hit-row")) {
+          syncCacheHitTooltipRow();
+        }
       });
       mo.observe(tip, { childList: true });
     } catch {}
   }
+
+  const cacheHitState = (window.__NB_CACHE_HIT_STATE__ = window.__NB_CACHE_HIT_STATE__ || {
+    convId: "",
+    lastFetchAt: 0,
+    lastHitRatePct: null,
+    lastInputTokens: 0,
+    lastCacheReadTokens: 0,
+    status: "warmup",
+    advisoryLevel: "neutral",
+    lastColdNoticeAt: 0,
+    lastColdNoticeConv: ""
+  });
+
+  function formatCompactTok(n) {
+    const v = Number(n) || 0;
+    if (v >= 1e6) return (v / 1e6).toFixed(1) + "M";
+    if (v >= 1e3) return Math.round(v / 1e3) + "k";
+    return String(Math.round(v));
+  }
+
+  function syncCacheHitTooltipRow() {
+    try {
+      const tip = document.getElementById("ag-live-metrics-tooltip");
+      if (!tip) return;
+      ensureTooltipTpsObserver(tip);
+      const existing = document.getElementById("nb-tt-cache-hit-row");
+      if (!isSuiteActive() || !cacheHitState.lastInputTokens || cacheHitState.lastHitRatePct === null) {
+        if (existing) existing.remove();
+        return;
+      }
+      const pct = cacheHitState.lastHitRatePct;
+      const color = pct >= 75 ? "#34a853" : pct >= 40 ? "#fbbc05" : "#ea4335";
+      const tag =
+        cacheHitState.advisoryLevel === "cold_high_ctx"
+          ? "冷·建议开新会话"
+          : cacheHitState.status === "hot"
+          ? "热·省额度"
+          : cacheHitState.status === "warm"
+          ? "温"
+          : "冷";
+      const nextHtml =
+        `<span class="ag-tt-lbl">前缀缓存命中</span>` +
+        `<span class="ag-tt-val">` +
+        `<span class="ag-tt-num" style="color:${color}">${pct}%</span>` +
+        ` <span class="ag-tt-dot">·</span> ` +
+        `<span class="ag-tt-muted">${formatCompactTok(cacheHitState.lastCacheReadTokens)}/${formatCompactTok(cacheHitState.lastInputTokens)} (${tag})</span>` +
+        `</span>`;
+      if (existing) {
+        if (existing.innerHTML !== nextHtml) {
+          tip.__nbUpdatingTps = true;
+          existing.innerHTML = nextHtml;
+          tip.__nbUpdatingTps = false;
+        }
+        return;
+      }
+      const row = document.createElement("div");
+      row.className = "ag-tt-row";
+      row.id = "nb-tt-cache-hit-row";
+      row.innerHTML = nextHtml;
+      const footer = tip.querySelector(".ag-tt-footer");
+      tip.__nbUpdatingTps = true;
+      if (footer && footer.parentElement === tip) {
+        tip.insertBefore(row, footer);
+      } else {
+        tip.appendChild(row);
+      }
+      tip.__nbUpdatingTps = false;
+    } catch {}
+  }
+
+  async function refreshCacheHitStat(force = false) {
+    try {
+      if (!isSuiteActive()) return;
+      const m = location.pathname.match(/\/c\/([0-9a-f-]{16,64})/i);
+      const convId = m ? m[1] : "";
+      if (!convId) return;
+      const now = Date.now();
+      if (!force && cacheHitState.convId === convId && now - cacheHitState.lastFetchAt < 5000) {
+        syncCacheHitTooltipRow();
+        return;
+      }
+      cacheHitState.lastFetchAt = now;
+      cacheHitState.convId = convId;
+      const r = await bridgeFetch(`/api/suite-history/overview?conversationId=${encodeURIComponent(convId)}&limit=1`, { method: "GET" });
+      if (!r.ok) return;
+      const j = await r.json();
+      const cs = j?.cacheStats;
+      if (cs) {
+        cacheHitState.lastHitRatePct = cs.lastHitRatePct;
+        cacheHitState.lastInputTokens = Number(cs.lastInputTokens) || 0;
+        cacheHitState.lastCacheReadTokens = Number(cs.lastCacheReadTokens) || 0;
+        cacheHitState.status = cs.status || "warmup";
+        cacheHitState.advisoryLevel = cs.advisory?.level || "neutral";
+        syncCacheHitTooltipRow();
+
+        const coldReady =
+          cacheHitState.advisoryLevel === "cold_high_ctx" &&
+          !wasAgentRunning &&
+          (cacheHitState.lastColdNoticeConv !== convId || now - cacheHitState.lastColdNoticeAt >= 10 * 60 * 1000);
+        if (coldReady) {
+          cacheHitState.lastColdNoticeConv = convId;
+          cacheHitState.lastColdNoticeAt = now;
+          showMiniNotice("当前前缀缓存已冷，继续追问将全量重算高额上下文；可在引力中枢「历史目录」勾选 1–3 条证据开启新会话", false);
+        }
+      }
+    } catch {}
+  }
+
+  function tryScrollToHistoryKeyword(nav) {
+    const kw = String(nav?.keyword || "").replace(/…$/, "").trim().slice(0, 28);
+    if (!kw) return false;
+    const candidates = document.querySelectorAll('[class*="chat-message"], [data-testid*="message"], .prose, main article, main section');
+    for (let i = 0; i < candidates.length; i++) {
+      const el = candidates[i];
+      const txt = (el.textContent || "").trim();
+      if (txt && txt.includes(kw)) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+        const prevOutline = el.style.outline;
+        const prevRadius = el.style.borderRadius;
+        el.style.outline = "2px solid #8ab4f8";
+        el.style.borderRadius = "8px";
+        setTimeout(() => {
+          el.style.outline = prevOutline;
+          el.style.borderRadius = prevRadius;
+        }, 2200);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  async function pollPendingHistoryNavigate() {
+    try {
+      if (!isSuiteActive()) return;
+      const r = await bridgeFetch("/api/suite-history/navigate", { method: "GET" });
+      if (!r.ok) return;
+      const j = await r.json();
+      const nav = j?.pending;
+      if (!nav || !nav.conversationId) return;
+      const targetRoute = `/c/${nav.conversationId}`;
+      if (!location.pathname.startsWith(targetRoute)) {
+        try {
+          history.pushState(history.state, "", targetRoute);
+          window.dispatchEvent(new PopStateEvent("popstate"));
+        } catch {
+          location.assign(`${location.origin}${targetRoute}`);
+          return;
+        }
+        setTimeout(() => {
+          const hit = tryScrollToHistoryKeyword(nav);
+          if (!hit) {
+            showMiniNotice(`已打开会话，请检索「${nav.keyword.slice(0, 18)}」或核查 transcript.jsonl#L${nav.lineStart}-L${nav.lineEnd}`, false);
+          }
+        }, 650);
+      } else {
+        const hit = tryScrollToHistoryKeyword(nav);
+        if (!hit) {
+          showMiniNotice(`未命中页面节点，请搜「${nav.keyword.slice(0, 18)}」(transcript.jsonl#L${nav.lineStart}-L${nav.lineEnd})`, false);
+        }
+      }
+    } catch {}
+  }
+
+  if (window.__ag_suite_history_nav_timer) clearInterval(window.__ag_suite_history_nav_timer);
+  window.__ag_suite_history_nav_timer = setInterval(pollPendingHistoryNavigate, 2000);
+  setTimeout(() => refreshCacheHitStat(false), 1800);
 
   function recordLiveTpsSample() {
     try {
@@ -2716,6 +2891,8 @@ try {
     window.__NB_QUOTA_UI__.getTpsMonitorState = getTpsMonitorSnapshot;
     window.__NB_QUOTA_UI__.recordLiveTpsSample = recordLiveTpsSample;
     window.__NB_QUOTA_UI__.resetTpsMonitor = () => resetLocalTpsMonitor(String(Date.now()));
+    window.__NB_QUOTA_UI__.refreshCacheHitStat = refreshCacheHitStat;
+    window.__NB_QUOTA_UI__.syncCacheHitTooltipRow = syncCacheHitTooltipRow;
   }
 
   syncHostAppearanceFromThemeVars(0);

@@ -16,7 +16,7 @@
           <div>
             <div class="nb-title-wrap">
               <h1 class="nb-title">引力中枢</h1>
-              <span class="nb-ver-pill" id="nb-ver-pill">v2.1.5</span>
+              <span class="nb-ver-pill" id="nb-ver-pill">v2.2.0</span>
               <span class="nb-cdp-pill" id="nb-cdp-pill">● 检测中</span>
             </div>
             <p class="nb-subtitle">Gravity Hub · Google Gemini 流光视觉、模型额度自动轮换与算力遥测驾驶舱</p>
@@ -67,9 +67,10 @@
         </div>
       </div>
 
-      <!-- 三大舱位导航切换 -->
+      <!-- 四大舱位导航切换 -->
       <nav class="nb-tabs" role="tablist">
         <button type="button" class="nb-tab active" data-tab="cockpit">🚀 额度与算力舱</button>
+        <button type="button" class="nb-tab" data-tab="history">📚 历史目录</button>
         <button type="button" class="nb-tab" data-tab="studio">🎨 视觉与流光舱</button>
         <button type="button" class="nb-tab" data-tab="system">🛡 护栏与系统中枢</button>
       </nav>
@@ -766,11 +767,12 @@
 
         <div class="nb-form-row">
           <div>
-            <div class="nb-row-title">AI 工程纪律护栏强度</div>
-            <div class="nb-muted" id="nb-guardrail-desc">未读禁猜・最小改动・问答与执行分离・edit_file 唯一锚点・诚实实测验证</div>
+            <div class="nb-row-title">AI 工程纪律护栏强度 <button type="button" class="nb-help-q" aria-label="护栏强度说明" data-tooltip-html="<b>4 档工程纪律护栏</b><div class='nb-tip-sub'>• 极简 (Lite)：仅保留核心防幻觉与省流检索纪律，常驻 Token 最少<br>• 标准 / 严格：融入「大文件先定位行号再切片读、截断长日志、不重读未变文件」节俭纪律<br>• 全部为纯静态规则，绝不破坏 Prompt Prefix Cache</div>">?</button></div>
+            <div class="nb-muted" id="nb-guardrail-desc">未读禁猜・最小改动・问答分离・节俭检索・诚实实测验证</div>
           </div>
           <div class="nb-seg" id="nb-guardrail-seg">
             <button type="button" data-tier="off">关闭</button>
+            <button type="button" data-tier="lite">极简 (省Token)</button>
             <button type="button" data-tier="standard">标准 (3项)</button>
             <button type="button" data-tier="strict" class="active">严格 (5项推荐)</button>
           </div>
@@ -865,6 +867,103 @@
             </div>
             <button type="button" class="nb-btn danger" id="nb-btn-open-uninstall">🗑 彻底清除扩展并还原原生</button>
           </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- 舱位 4：历史目录与缓存雷达（纯本地 0 Token 增量索引） -->
+    <main id="nb-view-history" class="nb-view">
+      <section class="nb-card">
+        <div class="nb-card-head">
+          <div class="nb-card-title-group">
+            <h2 class="nb-card-title">会话历史目录</h2>
+            <button type="button" class="nb-help-q" aria-label="历史目录说明" data-tooltip-html="<b>本地 0 Token 增量历史索引</b><div class='nb-tip-sub'>基于 Node 22 原生 node:sqlite + 字节偏移增量读取，只保存轮次骨架、实体与中文双字索引。浏览、搜索、校验与预览全程 <b>0 额外模型调用</b>、<b>0 自动发送</b>，不破坏模型前缀缓存。</div>">?</button>
+            <span class="nb-badge" id="nb-hist-conv-badge">等待检测会话</span>
+            <span class="nb-badge" id="nb-hist-status-badge">0 轮</span>
+          </div>
+          <div class="nb-inline-controls">
+            <label class="nb-switch-label" title="开启后允许在同项目（已确认归属的工作区）的历史会话中检索证据">
+              <input type="checkbox" id="nb-hist-cross-enabled" />
+              <span>启用同项目跨会话</span>
+            </label>
+            <button type="button" class="nb-help-q" aria-label="跨会话检索边界说明" data-tooltip-html="<b>同项目跨会话隔离规则</b><div class='nb-tip-sub'>• 默认关闭，仅检索当前会话<br>• 开启后仅按规范化工作区路径或有效 project_id 匹配同一项目会话（兼容 Windows/macOS），跨项目与无归属会话绝不混入<br>• 切换账号时自动递增 epoch 并清空旧视图</div>">?</button>
+            <div class="nb-seg nb-hist-scope-seg" id="nb-hist-scope-seg" role="group" aria-label="检索范围">
+              <button type="button" data-scope="session" class="active">当前会话</button>
+              <button type="button" data-scope="project" disabled title="请先勾选「启用同项目跨会话」">同项目历史</button>
+            </div>
+            <button type="button" class="nb-btn ghost nb-btn-sm" id="nb-btn-hist-sync" title="仅读取新增字节推进索引">↻ 增量同步</button>
+            <button type="button" class="nb-btn ghost nb-btn-sm" id="nb-btn-hist-rebuild" title="清空并重建当前会话本地索引">⟳ 重建本会话</button>
+          </div>
+        </div>
+
+        <div class="nb-hist-cache-strip" id="nb-hist-cache-strip">
+          <div class="nb-hist-cache-metric">
+            <span class="nb-muted">最近一轮前缀缓存命中 <button type="button" class="nb-help-q" aria-label="前缀缓存命中率说明" data-tooltip-html="<b>Prefix Cache 真实命中率</b><div class='nb-tip-sub'>按 transcript.jsonl 真实字段计算：<code>cache_read / (uncached_input + cache_read)</code>。<br>• ≥75% 热缓存：同任务建议直接续做，避免过早 /compact 打断缓存<br>• &lt;40% 且高上下文：缓存已冷，继续追问将全量重算，建议勾选 1–3 条核心证据开新会话</div>">?</button></span>
+            <strong id="nb-hist-cache-rate" class="nb-hist-cache-val">--</strong>
+            <span class="nb-badge" id="nb-hist-cache-badge">预热中</span>
+          </div>
+          <div class="nb-hist-cache-metric">
+            <span class="nb-muted">命中 / 总输入</span>
+            <span id="nb-hist-cache-ratio" class="nb-mono">-- / --</span>
+          </div>
+          <div class="nb-hist-cache-metric">
+            <span class="nb-muted">本轮新增未命中</span>
+            <span id="nb-hist-cache-uncached" class="nb-mono">--</span>
+          </div>
+          <div class="nb-hist-cache-metric">
+            <span class="nb-muted">会话累计命中率</span>
+            <span id="nb-hist-cache-avg" class="nb-mono">--</span>
+          </div>
+        </div>
+        <div id="nb-hist-cache-advisory" class="nb-hist-advisory" style="display:none;"></div>
+      </section>
+
+      <section class="nb-card">
+        <div class="nb-hist-toolbar">
+          <div class="nb-hist-search-wrap">
+            <input type="search" id="nb-hist-search" class="nb-input nb-hist-search" placeholder="搜中文关键词（支持两字词）、文件路径、接口名或错误码..." />
+          </div>
+          <div class="nb-hist-filter-row">
+            <div class="nb-inline-controls">
+              <div class="nb-seg nb-hist-ev-seg" id="nb-hist-ev-seg" role="group" aria-label="证据类型筛选">
+                <button type="button" data-ev="all" class="active">全部</button>
+                <button type="button" data-ev="user_confirm">用户确认</button>
+                <button type="button" data-ev="tool_verified">工具实测</button>
+                <button type="button" data-ev="tool_called">曾调用未核</button>
+                <button type="button" data-ev="assistant_note">助手陈述</button>
+              </div>
+              <button type="button" class="nb-help-q" aria-label="防幻读证据分级说明" data-tooltip-html="<b>防幻读四级证据划分（不可越级）</b><div class='nb-tip-sub'>• <b>用户确认</b>：用户在对话中拍板的规则/要求<br>• <b>工具实测</b>：有真实返回且非截断、无报错的工具结果<br>• <b>曾调用·结果未核</b>：仅有调用或输出被截断/报错，绝不标为已实测<br>• <b>助手陈述</b>：AI 历史回答（即使写了“已修复”也不标为已验证，改码前须核查当前文件）</div>">?</button>
+            </div>
+            <button type="button" class="nb-btn ghost nb-btn-sm" id="nb-btn-hist-pinned-only" title="仅显示 ★ 收藏的轮次（收藏优先置顶）">★ 仅看收藏</button>
+          </div>
+        </div>
+        <div class="nb-hist-meta-bar">
+          <span class="nb-muted" id="nb-hist-result-meta">本地 0 Token 检索 · 仅展示当前会话</span>
+        </div>
+
+        <!-- 稳定前缀摘录打包器（默认上限 3 条 / 1,200 UTF-8 字节） -->
+        <div id="nb-hist-pack-bar" class="nb-hist-pack-bar" style="display:none;">
+          <div class="nb-hist-pack-info">
+            <span id="nb-hist-pack-stat" class="nb-mono">已选 0/3 条 · 0 / 1,200 B</span>
+            <button type="button" class="nb-help-q" aria-label="稳定前缀摘录包说明" data-tooltip-html="<b>稳定前缀摘录打包器</b><div class='nb-tip-sub'>默认最多 3 条、合计 ≤ 1,200 UTF-8 字节。按固定轮次升序拼接且不含动态时间戳，放到新会话首条消息顶部可建立高复用前缀缓存；每条均附带出处行号与 0 Token 实时文件漂移警示。</div>">?</button>
+            <span id="nb-hist-pack-drift" class="nb-badge warn" style="display:none;">含待复核文件</span>
+          </div>
+          <div class="nb-inline-controls">
+            <button type="button" class="nb-btn ghost nb-btn-sm" id="nb-btn-hist-pack-preview">👁 预览摘录</button>
+            <button type="button" class="nb-btn primary nb-btn-sm" id="nb-btn-hist-pack-copy">⎘ 复制稳定前缀包</button>
+            <button type="button" class="nb-btn ghost nb-btn-sm" id="nb-btn-hist-pack-clear">清空</button>
+          </div>
+        </div>
+        <div id="nb-hist-pack-preview" class="nb-hist-pack-preview" style="display:none;">
+          <div class="nb-hist-pack-preview-head">
+            <span class="nb-muted">稳定前缀摘录预览（纯文本 · 确定性顺序 · 绝不自动发送）</span>
+            <button type="button" class="nb-btn ghost nb-btn-sm" id="nb-btn-hist-pack-close">收起</button>
+          </div>
+          <pre id="nb-hist-pack-text" class="nb-hist-pack-pre"></pre>
+        </div>
+
+        <div id="nb-history-list" class="nb-history-list">
+          <div class="nb-empty-hint">切换到「历史目录」后将自动对当前会话执行本地增量索引...</div>
         </div>
       </section>
     </main>
