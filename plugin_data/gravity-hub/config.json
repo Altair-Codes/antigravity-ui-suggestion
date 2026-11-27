@@ -85,7 +85,11 @@
       "enable-sidecar-pill-auto-open": false
     }
   },
-  "themeVars": {},
+  "themeVars": {
+    "--nb-fx-sidebar": "off",
+    "--nb-fx-composer": "on",
+    "--nb-fx-brand": "on"
+  },
   "selectors": {
     "inputBoxId": "antigravity.agentSidePanelInputBox",
     "branchPillInBox": "#antigravity\\.agentSidePanelInputBox [data-testid=\"branch-pill-trigger\"], [id=\"antigravity.agentSidePanelInputBox\"] [data-testid=\"branch-pill-trigger\"], #antigravity\\.agentSidePanelInputBox [aria-label*=\"Select project\" i], [id=\"antigravity.agentSidePanelInputBox\"] [aria-label*=\"Select project\" i]",

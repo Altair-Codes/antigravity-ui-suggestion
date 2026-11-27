@@ -102,6 +102,7 @@ try {
       window.__ag_suite_last_route_v1 = false;
       window.__nb_preset_scheme_obs_v1 = false;
       window.__nb_appearance_obs_v1 = false;
+      window.__ag_sidebar_obs_v1 = false;
 
       if (typeof window.__ag_clear_slash_fn === "function") {
         window.__ag_clear_slash_fn();
@@ -119,7 +120,8 @@ try {
         "nb-live-quota-pill",
         "nb-docked-metrics-strip",
         "nb-tt-tps-monitor-row",
-        "nb-tt-cache-hit-row"
+        "nb-tt-cache-hit-row",
+        "nb-chat-day-nav"
       ];
       for (const id of removeIds) {
         document.getElementById(id)?.remove();
@@ -132,8 +134,33 @@ try {
         "data-nb-dock-tier",
         "data-nb-hide-sep",
         "data-nb-pane-morphing",
-        "data-nb-no-trail"
+        "data-nb-no-trail",
+        "data-nb-sidebar",
+        "data-nb-sb-role",
+        "data-nb-sb-kind",
+        "data-nb-sb-active",
+        "data-nb-sb-open",
+        "data-nb-sb-has-active",
+        "data-nb-sb-current-project",
+        "data-nb-sb-ico",
+        "data-nb-popover",
+        "data-nb-native-rail-muted"
       ];
+      const rootEl = document.documentElement;
+      if (rootEl) {
+        rootEl.removeAttribute("data-nb-fx-sidebar");
+        rootEl.removeAttribute("data-nb-fx-composer");
+        rootEl.removeAttribute("data-nb-fx-brand");
+      }
+      if (window.__ag_sidebar_observer) {
+        try { window.__ag_sidebar_observer.disconnect(); } catch {}
+        window.__ag_sidebar_observer = null;
+      }
+      if (window.__ag_sidebar_hover_fn && document.body) {
+        try { document.body.removeEventListener("pointerover", window.__ag_sidebar_hover_fn); } catch {}
+        window.__ag_sidebar_hover_fn = null;
+      }
+      window.__ag_sidebar_obs_v1 = false;
       for (const attr of stripAttrs) {
         document.querySelectorAll(`[${attr}]`).forEach((el) => el.removeAttribute(attr));
       }
@@ -2415,16 +2442,586 @@ try {
     window.__NB_QUOTA_UI__.refreshAutoCompactConfig = refreshAutoCompactConfig;
   }
 
+  // 4c. 三级 UI 特效开关同步 & 左侧导航系统重构标定（纯语义属性标记，不改文本/事件，暂停主题即刻还原）
+  function syncUiEffectsFromThemeVars() {
+    try {
+      const root = document.documentElement;
+      if (!root) return;
+      if (!isSuiteActive()) {
+        root.removeAttribute("data-nb-fx-sidebar");
+        root.removeAttribute("data-nb-fx-composer");
+        root.removeAttribute("data-nb-fx-brand");
+        return;
+      }
+      const st = root.style;
+      const sbFx = st.getPropertyValue("--nb-fx-sidebar").trim() === "on" ? "on" : "off";
+      const rawComp = st.getPropertyValue("--nb-fx-composer").trim();
+      const glowPlay = st.getPropertyValue("--nb-glow-play-state").trim();
+      const compFx = rawComp === "off" || (!rawComp && glowPlay === "paused") ? "off" : "on";
+      const brandFx = st.getPropertyValue("--nb-fx-brand").trim() === "off" ? "off" : "on";
+
+      if (root.getAttribute("data-nb-fx-sidebar") !== sbFx) root.setAttribute("data-nb-fx-sidebar", sbFx);
+      if (root.getAttribute("data-nb-fx-composer") !== compFx) root.setAttribute("data-nb-fx-composer", compFx);
+      if (root.getAttribute("data-nb-fx-brand") !== brandFx) root.setAttribute("data-nb-fx-brand", brandFx);
+    } catch {}
+  }
+
+  function decorateLeftSidebarDom() {
+    syncUiEffectsFromThemeVars();
+    if (!isSuiteActive() || !document.body) return;
+    try {
+      const sidebars = [];
+      const candAside = document.querySelectorAll("aside, .bg-sidebar");
+      for (let i = 0; i < candAside.length; i++) {
+        const el = candAside[i];
+        const rect = el.getBoundingClientRect();
+        const isNested = sidebars.some((s) => s.el.contains(el));
+        if (!isNested && rect.width >= 150 && rect.width <= 480 && rect.height >= 260 && rect.left < 60) {
+          sidebars.push({ el, rect });
+        } else if (el.hasAttribute("data-nb-sidebar")) {
+          el.removeAttribute("data-nb-sidebar");
+        }
+      }
+      if (!sidebars.length) return;
+
+      for (const { el: sb, rect: sbRect } of sidebars) {
+        if (sb.getAttribute("data-nb-sidebar") !== "1") sb.setAttribute("data-nb-sidebar", "1");
+
+        sb.querySelectorAll("[data-nb-sb-has-active], [data-nb-sb-current-project]").forEach((n) => {
+          n.removeAttribute("data-nb-sb-has-active");
+          n.removeAttribute("data-nb-sb-current-project");
+        });
+
+        const setRole = (node, role, kind = "") => {
+          if (!node) return;
+          if (node.getAttribute("data-nb-sb-role") !== role) node.setAttribute("data-nb-sb-role", role);
+          if (kind) {
+            if (node.getAttribute("data-nb-sb-kind") !== kind) node.setAttribute("data-nb-sb-kind", kind);
+          } else if (node.hasAttribute("data-nb-sb-kind")) {
+            node.removeAttribute("data-nb-sb-kind");
+          }
+        };
+
+        const setActiveFlag = (node) => {
+          if (!node) return;
+          const active =
+            node.getAttribute("aria-current") === "page" ||
+            node.getAttribute("data-active") === "true" ||
+            node.getAttribute("data-selected") === "true" ||
+            node.getAttribute("aria-selected") === "true" ||
+            /\b(bg-secondary|bg-sidebar-accent|bg-accent)\b/.test(node.className || "") ||
+            Boolean(node.querySelector('[aria-current="page"], [data-active="true"], [data-selected="true"]')) ||
+            Boolean(node.closest('[data-active="true"], [aria-current="page"], [data-selected="true"]'));
+          if (active) {
+            if (node.getAttribute("data-nb-sb-active") !== "1") node.setAttribute("data-nb-sb-active", "1");
+          } else if (node.hasAttribute("data-nb-sb-active")) {
+            node.removeAttribute("data-nb-sb-active");
+          }
+          return active;
+        };
+
+        // 1) 「项目管理 / Workspaces / Projects」分组头及右侧操作按钮
+        let sectionHeaderEl = null;
+        let sectionTop = sbRect.top + 110;
+        const textNodes = sb.querySelectorAll("div, span, p, h2, h3");
+        for (let i = 0; i < textNodes.length; i++) {
+          const tn = textNodes[i];
+          if (tn.children.length > 0) continue;
+          const t = (tn.textContent || "").replace(/\s+/g, " ").trim();
+          if (/^(项目管理|工作区|Workspaces|Projects)$/i.test(t)) {
+            let hdr = tn.parentElement;
+            for (let step = 0; step < 3 && hdr && hdr !== sb; step++) {
+              const hr = hdr.getBoundingClientRect();
+              if (hr.height > 14 && hr.height <= 46 && hr.width >= sbRect.width * 0.55) break;
+              hdr = hdr.parentElement;
+            }
+            if (hdr && hdr !== sb && hdr.getBoundingClientRect().height <= 48) {
+              sectionHeaderEl = hdr;
+              setRole(hdr, "section-header");
+              sectionTop = hdr.getBoundingClientRect().top;
+              hdr.querySelectorAll("button").forEach((b) => setRole(b, "section-action"));
+              break;
+            }
+          }
+        }
+
+        // 2) 左下角固定账号收尾区
+        let accountFooter = null;
+        const footerCands = sb.querySelectorAll("div, button, a");
+        for (let i = 0; i < footerCands.length; i++) {
+          const fc = footerCands[i];
+          if (fc === sb) continue;
+          const fr = fc.getBoundingClientRect();
+          if (fr.height < 36 || fr.height > 80 || fr.width < sbRect.width * 0.7) continue;
+          if (fr.top < sbRect.bottom - 96 || fr.bottom < sbRect.bottom - 20) continue;
+          const ft = fc.textContent || "";
+          if (ft.includes("@") || fc.querySelector("img")) {
+            accountFooter = fc;
+            if (fc.querySelectorAll("button").length > 0) break;
+          }
+        }
+        if (accountFooter) {
+          setRole(accountFooter, "account-footer");
+          accountFooter.querySelectorAll("button, a").forEach((b) => {
+            const br = b.getBoundingClientRect();
+            const isProfile = (b.textContent || "").includes("@") || Boolean(b.querySelector("img"));
+            if (isProfile) {
+              setRole(b, "account-profile");
+            } else if (br.width > 0 && br.width <= 44 && br.height <= 44) {
+              setRole(b, "account-settings");
+            }
+          });
+        }
+
+        // 3) 顶部主导航项 & 项目管理列表项语义归类
+        let newChatEl = null;
+        let navAutoEl = null;
+        let navSkillsEl = null;
+        const convRows = [];
+
+        const rows = sb.querySelectorAll('[data-testid="conversation-row-sidebar"], a[href^="/c/"], a, button, [role="button"], [role="treeitem"]');
+        for (let i = 0; i < rows.length; i++) {
+          const row = rows[i];
+          if (row.closest('[data-nb-sb-role="section-header"]') && row !== accountFooter) continue;
+          if (accountFooter && (row === accountFooter || accountFooter.contains(row))) continue;
+          if (row.tagName === "A" && row.closest('[data-testid="conversation-row-sidebar"]')) continue;
+
+          const rr = row.getBoundingClientRect();
+          if (rr.height <= 0 || rr.width <= 0) continue;
+
+          const txt = (row.textContent || "").replace(/\s+/g, " ").trim();
+          const tid = (row.getAttribute("data-testid") || "").toLowerCase();
+
+          if (/^(?:\+?\s*)?(新建对话|New conversation|New chat)$/i.test(txt) || tid.includes("new-conversation")) {
+            newChatEl = row;
+            setRole(row, "new-chat");
+            setActiveFlag(row);
+            continue;
+          }
+          if (/^(自动化任务|Automations)$/i.test(txt)) {
+            navAutoEl = row;
+            setRole(row, "nav-item", "automation");
+            setActiveFlag(row);
+            continue;
+          }
+          if (/^(技能与自定义|Customizations|Skills)$/i.test(txt)) {
+            navSkillsEl = row;
+            setRole(row, "nav-item", "skills");
+            setActiveFlag(row);
+            continue;
+          }
+          if (/^(收起|展开|Show less|Show more|See all)$/i.test(txt)) {
+            setRole(row, "toggle-more");
+            continue;
+          }
+          if (rr.width < 52 && rr.height < 40) continue;
+          if (rr.top < sectionTop - 6) continue;
+
+          const isOfficialConv = tid === "conversation-row-sidebar" || (row.tagName === "A" && (row.getAttribute("href") || "").startsWith("/c/"));
+          const hasTime = /(\b\d+\s*(?:s|m|h|d|w|mo|y)|now|刚刚|分钟|小时|天前|周前|月前)$/i.test(txt);
+          const hasExpandAttr = row.hasAttribute("aria-expanded") || row.hasAttribute("data-state");
+          const hasSvg = Boolean(row.querySelector("svg"));
+
+          if (isOfficialConv || hasTime || (!hasExpandAttr && !hasSvg)) {
+            setRole(row, "conv-row");
+            setActiveFlag(row);
+            convRows.push(row);
+            const leaves = row.querySelectorAll("span, div, time");
+            for (let k = 0; k < leaves.length; k++) {
+              const lf = leaves[k];
+              if (lf.children.length > 0) continue;
+              const lt = (lf.textContent || "").trim();
+              if (/^(?:now|刚刚|\d+\s*(?:s|m|h|d|w|mo|y)|\d+\s*(?:秒前|分钟前|小时前|天前|周前|个月前|月前)|[^\s]{1,6}(?:分钟|小时|天前|周前|月前))$/i.test(lt)) {
+                setRole(lf, "conv-time");
+              }
+            }
+          } else {
+            setRole(row, "project-row");
+            if (row.getAttribute("aria-expanded") === "true" || row.getAttribute("data-state") === "open") {
+              row.setAttribute("data-nb-sb-open", "1");
+            } else {
+              row.removeAttribute("data-nb-sb-open");
+            }
+            setActiveFlag(row);
+          }
+        }
+
+        // 4) 为顶部主导航寻找连续分组容器 (nav-group)
+        if (newChatEl && (navAutoEl || navSkillsEl)) {
+          let anc = newChatEl.parentElement;
+          const peer = navSkillsEl || navAutoEl;
+          for (let step = 0; step < 5 && anc && anc !== sb; step++) {
+            if (anc.contains(peer)) {
+              if ((!sectionHeaderEl || !anc.contains(sectionHeaderEl)) && !anc.querySelector('[data-nb-sb-role="conv-row"]')) {
+                setRole(anc, "nav-group");
+              }
+              break;
+            }
+            anc = anc.parentElement;
+          }
+        }
+
+        // 5) 为工作区项目与当前活跃会话空间标记 workspace-group / data-nb-sb-has-active
+        for (const cr of convRows) {
+          const isAct = cr.getAttribute("data-nb-sb-active") === "1";
+          let wr = cr.parentElement;
+          for (let step = 0; step < 4 && wr && wr !== sb; step++) {
+            const wrRect = wr.getBoundingClientRect();
+            const projBtns = wr.querySelectorAll('[data-nb-sb-role="project-row"]');
+            if (projBtns.length === 1 && wrRect.height < sbRect.height * 0.72 && (!sectionHeaderEl || !wr.contains(sectionHeaderEl))) {
+              setRole(wr, "workspace-group");
+              if (isAct) {
+                wr.setAttribute("data-nb-sb-has-active", "1");
+                projBtns[0].setAttribute("data-nb-sb-current-project", "1");
+              }
+              break;
+            }
+            wr = wr.parentElement;
+          }
+        }
+
+        // 6) 为 4 类核心图标注入 data-nb-sb-ico（Alpha Mask 定制双色微 Logo，零 DOM 改写）
+        if (newChatEl) {
+          const ic = newChatEl.querySelector("svg");
+          if (ic) ic.setAttribute("data-nb-sb-ico", "new-chat");
+        }
+        if (navAutoEl) {
+          const ic = navAutoEl.querySelector("svg");
+          if (ic) ic.setAttribute("data-nb-sb-ico", "automation");
+        }
+        if (navSkillsEl) {
+          const ic = navSkillsEl.querySelector("svg");
+          if (ic) ic.setAttribute("data-nb-sb-ico", "skills");
+        }
+        sb.querySelectorAll('[data-nb-sb-role="project-row"]').forEach((pr) => {
+          const prRect = pr.getBoundingClientRect();
+          const svgs = pr.querySelectorAll("svg");
+          for (let s = 0; s < svgs.length; s++) {
+            const sv = svgs[s];
+            const innerBtn = sv.closest("button");
+            if (innerBtn && innerBtn !== pr && innerBtn.getBoundingClientRect().width < 44) continue;
+            const sr = sv.getBoundingClientRect();
+            if (sr.width >= 11 && sr.width <= 24 && sr.left - prRect.left <= 44) {
+              sv.setAttribute("data-nb-sb-ico", "folder");
+              break;
+            }
+          }
+        });
+        const footerTop = accountFooter ? accountFooter.getBoundingClientRect().top : sbRect.bottom - 60;
+        const allSvgs = sb.querySelectorAll("svg");
+        for (let s = 0; s < allSvgs.length; s++) {
+          const sv = allSvgs[s];
+          if (sv.hasAttribute("data-nb-sb-ico")) continue;
+          if (sv.closest('[data-nb-sb-role="conv-row"], [data-nb-sb-role="section-header"], [data-nb-sb-role="toggle-more"], [data-nb-sb-role="new-chat"], [data-nb-sb-role="nav-item"], [data-nb-sb-role="account-footer"]')) continue;
+          const sr = sv.getBoundingClientRect();
+          if (sr.width < 11 || sr.width > 22 || sr.height < 11 || sr.height > 22) continue;
+          if (sr.top < sectionTop + 14 || sr.bottom > footerTop) continue;
+          if (sr.left - sbRect.left <= 54) {
+            const btnParent = sv.closest("button");
+            if (btnParent && btnParent.getBoundingClientRect().width < 44) continue;
+            sv.setAttribute("data-nb-sb-ico", "folder");
+          }
+        }
+
+        // 7) 标定会话悬停右侧操作条容器 ([归档] [置顶] [更多])，避免原生背景遮罩露底
+        for (const cr of convRows) {
+          const divs = cr.querySelectorAll("div");
+          for (let d = 0; d < divs.length; d++) {
+            const dv = divs[d];
+            if (dv.querySelector('a[href^="/c/"]')) continue;
+            const btns = dv.querySelectorAll("button");
+            if (btns.length >= 2 && btns.length <= 5) {
+              setRole(dv, "conv-actions");
+            }
+          }
+        }
+      }
+    } catch {}
+  }
+
+  const POPOVER_PHRASE_MAP = {
+    "Archive Conversation": "归档对话",
+    "Archive conversation": "归档对话",
+    "Unarchive Conversation": "取消归档对话",
+    "Pin Conversation": "置顶对话",
+    "Pin conversation": "置顶对话",
+    "Unpin Conversation": "取消置顶对话",
+    "Unpin conversation": "取消置顶对话",
+    "Rename Conversation": "重命名对话",
+    "Rename conversation": "重命名对话",
+    "Delete Conversation": "删除对话",
+    "Delete conversation": "删除对话",
+    "More Actions": "更多操作",
+    "More actions": "更多操作",
+    "More options": "更多操作",
+    "Filter workspaces": "筛选工作区",
+    "Add workspace": "添加工作区",
+    "New conversation": "新建对话",
+    "New chat": "新建对话",
+    "Automations": "自动化任务",
+    "Customizations": "技能与自定义"
+  };
+
+  function translateDynamicPopoverText(raw) {
+    const t = String(raw || "").trim();
+    if (!t) return "";
+    if (POPOVER_PHRASE_MAP[t]) return POPOVER_PHRASE_MAP[t];
+    const shortcutMatch = t.match(/^(.+?)\s+([⌥⌘⌃⇧]+[A-Za-z0-9⌫⏎⎋]*|(?:Ctrl|Alt|Shift|Cmd|Opt|Meta)(?:\+[A-Za-z0-9]+)+)$/i);
+    if (shortcutMatch && POPOVER_PHRASE_MAP[shortcutMatch[1].trim()]) {
+      return `${POPOVER_PHRASE_MAP[shortcutMatch[1].trim()]} ${shortcutMatch[2]}`;
+    }
+    const ofMatch = t.match(/^(\d+)\s+of\s+(\d+)$/i);
+    if (ofMatch) return `第 ${ofMatch[1]} / ${ofMatch[2]} 轮`;
+    const imgMatch = t.match(/^(\d+)\s+image\s+attachments?$/i);
+    if (imgMatch) return `${imgMatch[1]} 张图片附件`;
+    const attMatch = t.match(/^(\d+)\s+(?:file\s+)?attachments?$/i);
+    if (attMatch) return `${attMatch[1]} 个附件`;
+    if (/^Updated\s+just\s+now$/i.test(t)) return "刚刚更新";
+    if (/^Updated\s+yesterday$/i.test(t)) return "昨天更新";
+    const updMatch = t.match(/^Updated\s+(.+)$/i);
+    if (updMatch) {
+      let rest = updMatch[1].trim();
+      rest = rest
+        .replace(/^(\d+)\s*s(?:ec(?:ond)?s?)?\s*ago$/i, "$1 秒前")
+        .replace(/^(\d+)\s*m(?:in(?:ute)?s?)?\s*ago$/i, "$1 分钟前")
+        .replace(/^(\d+)\s*h(?:our)?s?\s*ago$/i, "$1 小时前")
+        .replace(/^(\d+)\s*d(?:ay)?s?\s*ago$/i, "$1 天前")
+        .replace(/^(\d+)\s*w(?:eek)?s?\s*ago$/i, "$1 周前")
+        .replace(/^(\d+)\s*mo(?:nth)?s?\s*ago$/i, "$1 个月前");
+      return `更新于 ${rest}`;
+    }
+    return "";
+  }
+
+  function hasVisibleBoxSurface(el) {
+    const cs = getComputedStyle(el);
+    const hasBg = cs.backgroundColor && cs.backgroundColor !== "rgba(0, 0, 0, 0)" && cs.backgroundColor !== "transparent";
+    const hasBorder = (parseFloat(cs.borderTopWidth) || 0) > 0 && cs.borderTopColor !== "rgba(0, 0, 0, 0)";
+    return hasBg || hasBorder;
+  }
+
+  function findFloatingBox(rootEl, depth) {
+    if (!rootEl || depth > 5) return null;
+    const role = rootEl.getAttribute?.("role") || "";
+    if (role === "dialog" || role === "menu" || role === "listbox") return null;
+    if (rootEl.matches?.("[data-mention-menu]")) return null;
+    if (rootEl.querySelector?.('input, textarea, [role="dialog"], [role="menu"], [role="listbox"]')) return null;
+
+    const rect = rootEl.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return null;
+
+    const inSize = rect.width >= 36 && rect.width <= 480 && rect.height >= 20 && rect.height <= 260;
+    const isSelfVisual = inSize && hasVisibleBoxSurface(rootEl);
+
+    const children = rootEl.children;
+    for (let i = 0; i < children.length && i < 4; i++) {
+      const found = findFloatingBox(children[i], depth + 1);
+      if (found) {
+        if (!isSelfVisual) return found;
+        const fRect = found.getBoundingClientRect();
+        if (fRect.width >= rect.width * 0.75 && fRect.height >= rect.height * 0.75) {
+          return found;
+        }
+      }
+    }
+
+    return isSelfVisual ? rootEl : null;
+  }
+
+  function decorateHostPopoversAndI18n() {
+    if (!isSuiteActive() || !document.body) return;
+    try {
+      const zhOn = typeof document !== "undefined" && (!window.__AG_LAST_PATCH_CTX__?.config?.language || window.__AG_LAST_PATCH_CTX__.config.language === "zh-CN");
+      const candidates = new Set();
+
+      const explicitNodes = document.querySelectorAll(
+        '[role="tooltip"], [data-radix-popper-content-wrapper] > [data-side], [data-side], [data-placement], [data-floating-ui-portal] > div, [data-state="open"], [data-state="delayed-open"], [data-state="instant-open"]'
+      );
+      for (let i = 0; i < explicitNodes.length; i++) {
+        const el = explicitNodes[i];
+        const resolved = findFloatingBox(el, 0);
+        if (resolved) candidates.add(resolved);
+        else if (el.getAttribute?.("role") === "tooltip" || hasVisibleBoxSurface(el)) candidates.add(el);
+      }
+
+      // Antigravity 宿主悬停详情卡片可能通过通用 Portal 直接挂载于 document.body 顶层
+      const bodyChildren = document.body.children;
+      for (let i = 0; i < bodyChildren.length; i++) {
+        const portal = bodyChildren[i];
+        if (!portal || !portal.tagName) continue;
+        const tag = portal.tagName;
+        if (tag === "SCRIPT" || tag === "STYLE" || tag === "LINK" || tag === "SVG") continue;
+        const pid = portal.id || "";
+        if (pid === "root" || pid === "app" || pid.startsWith("ag-") || pid.startsWith("nb-")) continue;
+        if (portal.matches?.('[role="dialog"], [role="menu"], [role="listbox"], [data-mention-menu]')) continue;
+
+        const rect = portal.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) continue;
+        const box = findFloatingBox(portal, 0);
+        if (box) candidates.add(box);
+      }
+
+      // 去除外层定位包装器与内层卡片重复命中的祖先节点，杜绝双层边框与内层色块遮挡
+      const candidateList = Array.from(candidates);
+      const filtered = [];
+      for (let i = 0; i < candidateList.length; i++) {
+        const a = candidateList[i];
+        let hasChildCandidate = false;
+        for (let j = 0; j < candidateList.length; j++) {
+          const b = candidateList[j];
+          if (a !== b && a.contains(b)) {
+            hasChildCandidate = true;
+            break;
+          }
+        }
+        if (hasChildCandidate) {
+          if (a.hasAttribute?.("data-nb-popover")) a.removeAttribute("data-nb-popover");
+        } else {
+          filtered.push(a);
+        }
+      }
+
+      for (const pop of filtered) {
+        if (!pop || pop.id === "ag-live-metrics-tooltip" || pop.id === "nb-live-quota-popover" || pop.id === "nb-chat-day-nav") continue;
+        if (pop.closest?.('[data-mention-menu], #ag-live-metrics-tooltip, #nb-live-quota-popover, #nb-chat-day-nav, [data-nb-sidebar="1"]')) continue;
+        const role = pop.getAttribute?.("role") || "";
+        if (role === "dialog" || role === "menu" || role === "listbox") continue;
+        if (pop.querySelector?.('input, textarea, [role="dialog"], [role="menu"], [role="listbox"]')) continue;
+
+        let p = pop.parentElement;
+        while (p && p !== document.body) {
+          if (p.hasAttribute?.("data-nb-popover")) p.removeAttribute("data-nb-popover");
+          p = p.parentElement;
+        }
+
+        const rect = pop.getBoundingClientRect();
+        if (rect.width < 36 || rect.width > 480 || rect.height < 20 || rect.height > 260) continue;
+
+        const txt = (pop.textContent || "").trim();
+        if (!txt) continue;
+
+        const isHoverCard =
+          role !== "tooltip" &&
+          (rect.height >= 54 || /\bUpdated\b|更新于|刚刚更新|昨天更新/i.test(txt) || pop.querySelectorAll("svg").length >= 2);
+        const kind = isHoverCard ? "hover-card" : "tooltip";
+        if (pop.getAttribute("data-nb-popover") !== kind) pop.setAttribute("data-nb-popover", kind);
+
+        const innerEls = pop.querySelectorAll("*");
+        for (let k = 0; k < innerEls.length; k++) {
+          const ch = innerEls[k];
+          if (!ch || !ch.style || ch.tagName === "KBD" || ch.closest?.("svg")) continue;
+          if (ch.style.background || ch.style.backgroundColor) {
+            ch.style.setProperty("background", "transparent", "important");
+            ch.style.setProperty("background-color", "transparent", "important");
+          }
+          if (ch.style.borderColor || ch.style.border) {
+            ch.style.setProperty("border-color", "transparent", "important");
+          }
+        }
+
+        if (kind === "hover-card") {
+          const svgs = pop.querySelectorAll("svg");
+          if (svgs.length >= 2) {
+            const firstSvg = svgs[0];
+            const rowTxt = (firstSvg.parentElement?.textContent || "").trim();
+            if (!firstSvg.closest("button") && !/\bUpdated\b|更新于|刚刚更新|昨天更新/i.test(rowTxt)) {
+              if (firstSvg.getAttribute("data-nb-sb-ico") !== "folder") {
+                firstSvg.setAttribute("data-nb-sb-ico", "folder");
+              }
+            }
+          }
+        }
+
+        if (zhOn && typeof document.createTreeWalker === "function") {
+          const walker = document.createTreeWalker(pop, NodeFilter.SHOW_TEXT);
+          let tn;
+          while ((tn = walker.nextNode())) {
+            const rawVal = tn.nodeValue || "";
+            const trimmed = rawVal.trim();
+            if (!trimmed) continue;
+            const zh = translateDynamicPopoverText(trimmed);
+            if (zh && trimmed !== zh) {
+              const nextVal = rawVal.replace(trimmed, zh);
+              if (tn.nodeValue !== nextVal) tn.nodeValue = nextVal;
+            }
+          }
+          // 兼容将 "4" / " of " / "23" 拆成多个 span 的计数节点
+          const splitLeaves = pop.querySelectorAll("span, div, p");
+          for (let s = 0; s < splitLeaves.length; s++) {
+            const lf = splitLeaves[s];
+            if (!lf || lf.children.length > 3) continue;
+            const leafTxt = (lf.textContent || "").replace(/\s+/g, " ").trim();
+            if (!/^(\d+)\s+of\s+(\d+)$/i.test(leafTxt)) continue;
+            const subW = document.createTreeWalker(lf, NodeFilter.SHOW_TEXT);
+            let stn;
+            while ((stn = subW.nextNode())) {
+              const sv = stn.nodeValue || "";
+              if (/^\s*of\s*$/i.test(sv)) stn.nodeValue = " / ";
+            }
+          }
+        }
+      }
+    } catch {}
+  }
+
+  let sidebarRafPending = false;
+  function scheduleDecorateSidebar() {
+    if (sidebarRafPending || !isSuiteActive()) return;
+    sidebarRafPending = true;
+    requestAnimationFrame(() => {
+      sidebarRafPending = false;
+      decorateLeftSidebarDom();
+      decorateHostPopoversAndI18n();
+    });
+  }
+
+  function ensureSidebarObserver() {
+    if (window.__ag_sidebar_obs_v1 || typeof MutationObserver !== "function" || !document.body) return;
+    window.__ag_sidebar_obs_v1 = true;
+    try {
+      if (window.__ag_sidebar_observer) {
+        try { window.__ag_sidebar_observer.disconnect(); } catch {}
+      }
+      const sbObs = new MutationObserver(() => {
+        if (isSuiteActive()) scheduleDecorateSidebar();
+      });
+      sbObs.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["class", "style", "aria-current", "aria-expanded", "data-active", "data-selected", "data-state"] });
+      window.__ag_sidebar_observer = sbObs;
+
+      if (!window.__ag_sidebar_hover_fn) {
+        let lastHoverTs = 0;
+        const onPointerOver = () => {
+          if (!isSuiteActive()) return;
+          const now = Date.now();
+          if (now - lastHoverTs < 60) return;
+          lastHoverTs = now;
+          scheduleDecorateSidebar();
+        };
+        document.body.addEventListener("pointerover", onPointerOver, { passive: true });
+        window.__ag_sidebar_hover_fn = onPointerOver;
+      }
+    } catch {}
+  }
+
   window.__ag_suite_host_tick_fn = () => {
+    syncUiEffectsFromThemeVars();
     if (!isSuiteActive()) return;
     ensureCliButton();
     ensureComposerResponsiveObserver();
+    ensureSidebarObserver();
+    decorateLeftSidebarDom();
+    decorateHostPopoversAndI18n();
     window.__NB_QUOTA_UI__?.ensureLiveQuotaPill();
     window.__NB_QUOTA_UI__?.checkTurnCompletionAndRefresh();
     window.__NB_QUOTA_UI__?.enhanceOpenModelMenu?.();
     window.__NB_QUOTA_UI__?.syncComposerResponsiveLayout?.();
     window.__NB_QUOTA_UI__?.checkAndTriggerAutoCompact?.();
   };
+
+  syncUiEffectsFromThemeVars();
+  decorateLeftSidebarDom();
+  decorateHostPopoversAndI18n();
+  ensureSidebarObserver();
 
   if (!window.__ag_suite_host_timers_v1) {
     window.__ag_suite_host_timers_v1 = true;
@@ -2831,6 +3428,14 @@ try {
 
   if (window.__ag_suite_history_nav_timer) clearInterval(window.__ag_suite_history_nav_timer);
   window.__ag_suite_history_nav_timer = setInterval(pollPendingHistoryNavigate, 2000);
+  if (window.__ag_day_sync_poll_timer) {
+    clearInterval(window.__ag_day_sync_poll_timer);
+    window.__ag_day_sync_poll_timer = null;
+  }
+  try {
+    document.querySelectorAll('[data-nb-native-rail-muted="1"]').forEach((el) => el.removeAttribute("data-nb-native-rail-muted"));
+    document.getElementById("nb-chat-day-nav")?.remove();
+  } catch {}
   setTimeout(() => refreshCacheHitStat(false), 1800);
 
   function recordLiveTpsSample() {
@@ -2907,6 +3512,7 @@ try {
       const appObs = new MutationObserver(() => {
         if (!isSuiteActive()) return;
         syncHostAppearanceFromThemeVars(0);
+        syncUiEffectsFromThemeVars();
         checkTpsMonitorResetFromThemeVars();
         syncTpsTooltipRow();
       });

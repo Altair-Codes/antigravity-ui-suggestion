@@ -418,3 +418,134 @@ test("v2.2.1 One-Click Update & Installer In-Place Sync: guards deleted cwd", as
   assert.match(parsed.gitOut, /^git version /);
   assert.equal(parsed.restoredOk, true);
 });
+
+test("UI Polish: seamless scope toggle, smart-pick, readable fallback title, and left-sidebar glass theme", () => {
+  const { root, dataDir, appDataDir } = makeTempEnv();
+  try {
+    // 1. 纯图片附件空文本轮次不输出 "未命名轮次"，应回退为可读标题
+    const convId = "conv-img-attach";
+    const logDir = path.join(appDataDir, "brain", convId, ".system_generated", "logs");
+    fs.mkdirSync(logDir, { recursive: true });
+    const tPath = path.join(logDir, "transcript.jsonl");
+    const lines = [
+      JSON.stringify({
+        step_index: 0,
+        type: "USER_INPUT",
+        status: "DONE",
+        created_at: "2026-11-27T11:00:00Z",
+        content: "<USER_REQUEST></USER_REQUEST><ADDITIONAL_METADATA>Attachment: image/png (/tmp/.user_uploaded/media_123.png)</ADDITIONAL_METADATA>"
+      }),
+      JSON.stringify({
+        step_index: 1,
+        type: "PLANNER_RESPONSE",
+        status: "DONE",
+        created_at: "2026-11-27T11:00:03Z",
+        content: "### 已定位并修复一键更新报错问题\n详细说明见正文。"
+      })
+    ].join("\n") + "\n";
+    fs.writeFileSync(tPath, lines, "utf8");
+
+    const idx = createHistoryIndex({ dataDir, appDataDir });
+    idx.syncConversation(convId);
+    const ov = idx.getOverview(convId);
+    assert.equal(ov.items.length, 1);
+    assert.notEqual(ov.items[0].title, "未命名轮次");
+    assert.ok(ov.items[0].title.includes("已定位并修复一键更新报错问题"), `unexpected fallback title: ${ov.items[0].title}`);
+    idx.close();
+
+    // 2. index.html / styles.css 结构断言
+    const htmlSrc = fs.readFileSync(path.resolve("plugins/gravity-hub/sidecars/dashboard/index.html"), "utf8");
+    const cssSrc = fs.readFileSync(path.resolve("plugins/gravity-hub/sidecars/dashboard/styles.css"), "utf8");
+    assert.doesNotMatch(htmlSrc, /nb-hist-cross-enabled/);
+    assert.match(htmlSrc, /nb-btn-hist-smart-pick/);
+    assert.match(cssSrc, /\.nb-tabs[\s\S]*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)/);
+
+    // 3. custom.js / custom.css / config.json 左侧边栏统一 Token 体系、三级 UI 特效开关与完全卸载清理
+    const cJs = fs.readFileSync(path.resolve("plugin_data/gravity-hub/custom.js"), "utf8");
+    const cCss = fs.readFileSync(path.resolve("plugin_data/gravity-hub/custom.css"), "utf8");
+    const appJs = fs.readFileSync(path.resolve("plugins/gravity-hub/sidecars/dashboard/app.js"), "utf8");
+    const cfgJson = JSON.parse(fs.readFileSync(path.resolve("plugin_data/gravity-hub/config.json"), "utf8"));
+
+    assert.equal(cfgJson.themeVars["--nb-fx-sidebar"], "off");
+    assert.equal(cfgJson.themeVars["--nb-fx-composer"], "on");
+    assert.equal(cfgJson.themeVars["--nb-fx-brand"], "on");
+
+    for (const id of ["nb-fx-sidebar-enabled", "nb-fx-composer-enabled", "nb-fx-brand-enabled"]) {
+      assert.ok(htmlSrc.includes(id), `index.html missing ${id}`);
+      assert.ok(appJs.includes(id), `app.js missing ${id}`);
+    }
+    assert.match(cssSrc, /html\[data-nb-fx-brand="off"\]/);
+
+    assert.match(cJs, /function syncUiEffectsFromThemeVars\(/);
+    assert.match(cJs, /function decorateLeftSidebarDom\(/);
+    assert.ok(cJs.includes('data-testid="conversation-row-sidebar"'), "custom.js must match conversation-row-sidebar");
+    for (const role of ["nav-group", "workspace-group", "conv-time", "conv-actions", "account-footer"]) {
+      assert.ok(cJs.includes(`"${role}"`), `custom.js missing role ${role}`);
+    }
+    for (const attr of [
+      "data-nb-sidebar", "data-nb-sb-role", "data-nb-sb-kind",
+      "data-nb-sb-active", "data-nb-sb-open", "data-nb-sb-has-active",
+      "data-nb-sb-current-project", "data-nb-sb-ico", "data-nb-popover",
+      "data-nb-fx-sidebar", "data-nb-fx-composer", "data-nb-fx-brand"
+    ]) {
+      assert.ok(cJs.includes(`"${attr}"`), `custom.js stripAttrs missing ${attr}`);
+    }
+    assert.match(cJs, /function decorateHostPopoversAndI18n\(/);
+    assert.match(cJs, /function findFloatingBox\(/);
+    assert.ok(cJs.includes("document.body.children"), "custom.js must scan document.body.children portals");
+    assert.ok(cJs.includes("pointerover"), "custom.js must attach passive pointerover for instant hover detection");
+    assert.ok(cJs.includes('removeAttribute("data-nb-popover")'), "custom.js must deduplicate nested popover ancestors");
+    const seJs = fs.readFileSync(path.resolve("plugins/gravity-hub/sidecars/dashboard/suite-extensions.mjs"), "utf8");
+    assert.ok(seJs.includes("/api/suite-history/day-sync"), "suite-extensions.mjs must expose /api/suite-history/day-sync");
+    assert.ok(cJs.includes("ofMatch"), "custom.js must translate N of M turn counters in hover cards");
+    assert.ok(cJs.includes("characterData: true"), "custom.js observer must watch characterData changes for hover ticks");
+    assert.ok(cJs.includes("image\\s+attachment"), "custom.js must translate image attachment labels");
+    assert.ok(!cJs.includes("nb-chat-day-popover"), "custom.js must NOT render floating preview card #nb-chat-day-popover");
+    assert.ok(cCss.includes("--nb-sb-selected-solid"), "custom.css missing --nb-sb-selected-solid");
+    assert.ok(cCss.includes("--color-sidebar"), "custom.css must override Tailwind v4 --color-sidebar");
+    assert.ok(cCss.includes("--tw-gradient-from"), "custom.css must override --tw-gradient-from on hover actions");
+    assert.ok(cCss.includes("div:has(> button)"), "custom.css must style conv-row action containers");
+    assert.ok(cCss.includes('[data-nb-popover="hover-card"] svg[data-nb-sb-ico="folder"]'), "custom.css must style hover-card folder micro-logo");
+    assert.ok(cCss.includes("*:not(svg):not(svg *):not(kbd)"), "custom.css must clear nested hover-card inner backgrounds");
+    assert.ok(!cCss.includes("#nb-chat-day-nav"), "custom.css must restore native chat tick rail without #nb-chat-day-nav");
+    assert.ok(!cCss.includes("data-nb-native-rail-muted"), "custom.css must NOT hide native chat tick rail");
+    assert.ok(htmlSrc.includes("nb-btn-hist-toggle-all-days"), "index.html must include toggle-all-days button");
+    assert.ok(appJs.includes("getHistDayMeta"), "app.js must implement getHistDayMeta daily grouping");
+    assert.ok(appJs.includes('action === "toggle-day"'), "app.js must handle toggle-day collapse");
+    assert.ok(appJs.includes('action === "select-nav-turn"'), "app.js must select & locate turn on compact row click");
+    assert.ok(appJs.includes("pollHistoryDaySync"), "app.js must poll /api/suite-history/day-sync for bidirectional sync");
+    assert.ok(appJs.includes("programmaticScrollUntil"), "app.js must debounce manual scroll vs programmatic jump");
+    assert.ok(cssSrc.includes(".nb-hist-day-group"), "styles.css must style .nb-hist-day-group");
+    assert.ok(cssSrc.includes(".nb-hist-row-actions"), "styles.css must reveal compact row actions on hover");
+    assert.ok(cssSrc.includes(".nb-hist-card.is-selected"), "styles.css must highlight selected turn card");
+    assert.ok(!cssSrc.includes(".nb-hist-day-body > .nb-hist-card:first-child::before"), "styles.css must NOT draw timeline spine on cards");
+    assert.match(cCss, /\[data-nb-popover="tooltip"\]/);
+    assert.match(cCss, /\[data-nb-popover="hover-card"\]/);
+    const i18nOver = JSON.parse(fs.readFileSync(path.resolve("plugin_data/gravity-hub/i18n.override.json"), "utf8"));
+    assert.equal(i18nOver["Archive Conversation"], "归档对话");
+    for (const ico of ["new-chat", "automation", "skills", "folder"]) {
+      assert.ok(cCss.includes(`svg[data-nb-sb-ico="${ico}"]`), `custom.css missing bespoke logo ${ico}`);
+    }
+    assert.ok(cJs.includes("account-profile"), "custom.js must mark account-profile");
+    assert.ok(cCss.includes("account-profile"), "custom.css must style account-profile transparently");
+    for (const tok of ["--nb-sb-radius-shell", "--nb-sb-radius-item", "--nb-sb-radius-btn", "--nb-sb-bg", "--nb-sb-selected-bg"]) {
+      assert.ok(cCss.includes(tok), `custom.css missing token ${tok}`);
+    }
+    assert.match(cCss, /--nb-sb-bg:\s*var\(--ag-theme-sidebar/);
+    assert.match(cCss, /--nb-sb-selected-bg:\s*linear-gradient\([^)]*var\(--primary/);
+    assert.doesNotMatch(cCss, /workspace-group"\]\[data-nb-sb-has-active="1"\]\s*\{[^}]*padding:\s*4px/);
+    assert.ok(cJs.includes("工作区"), "custom.js must match 工作区 header");
+    assert.ok(cJs.includes("isNested"), "custom.js must dedup nested sidebars");
+    assert.ok(appJs.includes("dataset.preset"), "app.js must sync dataset.preset");
+    for (const p of ["default", "claude-dark", "vintage-dark", "tokyo-night", "catppuccin-mocha", "dracula", "one-dark-pro", "nord", "github-dark", "gruvbox-dark", "high-contrast", "claude-desktop-purewhite", "catppuccin-latte", "github-light", "solarized-light", "tokyo-day", "rose-pine-dawn", "nord-snow", "everforest-light"]) {
+      assert.ok(cssSrc.includes(`data-preset="${p}"`), `styles.css missing preset ${p}`);
+    }
+    assert.match(cCss, /html\[data-nb-fx-sidebar="on"\]/);
+    assert.match(cCss, /html\[data-nb-fx-composer="off"\]/);
+    assert.match(cCss, /html\[data-nb-fx-brand="off"\]/);
+    assert.match(cCss, /\[data-nb-sidebar="1"\]\s+\[data-nb-sb-role="new-chat"\]/);
+    assert.match(cCss, /\[data-nb-sidebar="1"\]\s+\[data-nb-sb-role="conv-row"\]\[data-nb-sb-active="1"\]/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

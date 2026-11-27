@@ -107,11 +107,30 @@ function cleanUserText(raw) {
     .trim();
 }
 
-function makeTitleFromUserText(cleaned) {
-  if (!cleaned) return "未命名轮次";
+function makeTitleFromUserText(cleaned, raw = "") {
+  if (!cleaned) {
+    if (typeof raw === "string" && /(uploaded|Attachment|image\/|media_)/i.test(raw)) {
+      return "图片/附件交互";
+    }
+    return "";
+  }
   const lines = cleaned.split("\n").map((l) => l.trim()).filter(Boolean);
   const first = (lines[0] || cleaned).replace(/\s+/g, " ").trim();
   return first.length > 100 ? first.slice(0, 99) + "…" : first;
+}
+
+function makeTitleFromAssistantText(respText, isImageAttach = false) {
+  if (!respText || typeof respText !== "string") return "";
+  const stripped = respText
+    .replace(/^[#>*\-\s`]+/, "")
+    .replace(/\*\*/g, "")
+    .replace(/`([^`]+)`/g, "$1")
+    .split(/[。！？\n]/)[0]
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!stripped) return "";
+  const body = stripped.length > 48 ? stripped.slice(0, 47) + "…" : stripped;
+  return isImageAttach ? `🖼 ${body}` : body;
 }
 
 function makeSummaryText(raw) {
@@ -527,15 +546,16 @@ export function createHistoryIndex({
   }
 
   function upsertTurnRecord(database, convId, turnState) {
+    const safeTitle = (turnState.title && String(turnState.title).trim()) || "未命名轮次";
     const evArr = Array.from(turnState.evidenceTypes);
     const primary = pickPrimaryEvidence(turnState.evidenceTypes);
     const filesArr = Array.from(turnState.files).slice(0, 32);
     const errArr = Array.from(turnState.errorCodes).slice(0, 16);
     const summaryRaw = turnState.summaryParts.filter(Boolean).join(" · ");
-    const summary = makeSummaryText(summaryRaw || turnState.title);
+    const summary = makeSummaryText(summaryRaw || safeTitle);
     const contentHash = crypto
       .createHash("sha1")
-      .update(`${turnState.title}\n${summary}\n${filesArr.join("|")}`)
+      .update(`${safeTitle}\n${summary}\n${filesArr.join("|")}`)
       .digest("hex")
       .slice(0, 16);
 
@@ -572,7 +592,7 @@ export function createHistoryIndex({
       turnState.byteStart,
       turnState.byteEnd,
       turnState.createdAtMs,
-      turnState.title,
+      safeTitle,
       summary,
       JSON.stringify(evArr),
       primary,
@@ -633,14 +653,14 @@ export function createHistoryIndex({
 
     database.prepare("DELETE FROM turns_fts WHERE conversation_id = ? AND turn_index = ?").run(convId, turnState.turnIndex);
     const combinedForTokens = [
-      turnState.title,
+      safeTitle,
       summary,
       filesArr.join(" "),
       errArr.join(" "),
       Array.from(turnState.symbols).join(" ")
     ].join(" ");
     const textTokens = splitCodeTokens(combinedForTokens).join(" ");
-    const cjkBigrams = extractCjkBigrams(`${turnState.title} ${summary}`).join(" ");
+    const cjkBigrams = extractCjkBigrams(`${safeTitle} ${summary}`).join(" ");
     database.prepare(
       "INSERT INTO turns_fts (conversation_id, turn_index, text_tokens, cjk_bigrams) VALUES (?, ?, ?, ?)"
     ).run(convId, turnState.turnIndex, textTokens, cjkBigrams);
@@ -811,7 +831,7 @@ export function createHistoryIndex({
             }
             const rawUser = typeof obj.content === "string" ? obj.content : "";
             const cleaned = cleanUserText(rawUser);
-            const title = type === "USER_INPUT" ? makeTitleFromUserText(cleaned) : "会话片段";
+            const title = type === "USER_INPUT" ? makeTitleFromUserText(cleaned, rawUser) : "会话片段";
             currentTurn = {
               turnIndex: nextTurnIndex++,
               stepStart: stepIdx,
@@ -871,6 +891,11 @@ export function createHistoryIndex({
             if (typeof obj.content === "string" && obj.content.trim()) {
               currentTurn.evidenceTypes.add("assistant_note");
               const respText = obj.content.replace(/\s+/g, " ").trim();
+              if (!currentTurn.title || currentTurn.title === "未命名轮次" || currentTurn.title === "图片/附件交互") {
+                const isImg = currentTurn.title === "图片/附件交互";
+                const fallbackTitle = makeTitleFromAssistantText(respText, isImg);
+                if (fallbackTitle) currentTurn.title = fallbackTitle;
+              }
               currentTurn.summaryParts.push(respText.slice(0, 140));
               for (const p of extractPathsFromText(respText)) currentTurn.files.add(p);
               for (const e of extractErrorCodes(respText)) currentTurn.errorCodes.add(e);

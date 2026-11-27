@@ -154,14 +154,17 @@
     } catch {}
   }
 
-  // 0. 面板亮暗外观（跟随系统 / 深空暗夜 / 极光浅色）
+  // 0. 面板亮暗外观 & 20 套模式预设联动（跟随系统 / 深空暗夜 / 极光浅色）
   const sysLightQuery = window.matchMedia ? window.matchMedia("(prefers-color-scheme: light)") : null;
   let panelThemePref = lsGet("nb.panel.theme", "auto");
+  let activeDarkPreset = lsGet("nb.panel.darkPreset", "default");
+  let activeLightPreset = lsGet("nb.panel.lightPreset", "default");
 
   function applyPanelTheme(pref) {
     panelThemePref = pref || "auto";
     const resolved = panelThemePref === "auto" ? (sysLightQuery && sysLightQuery.matches ? "light" : "dark") : panelThemePref;
     document.documentElement.dataset.theme = resolved;
+    document.documentElement.dataset.preset = resolved === "dark" ? activeDarkPreset : activeLightPreset;
     document.documentElement.style.colorScheme = resolved;
     document.querySelectorAll("#nb-panel-theme-seg button").forEach((b) => {
       b.classList.toggle("active", b.dataset.panelTheme === panelThemePref);
@@ -2513,6 +2516,10 @@
 
         const darkPreset = c.presets?.dark || "default";
         const lightPreset = c.presets?.light || "default";
+        activeDarkPreset = darkPreset;
+        activeLightPreset = lightPreset;
+        lsSet("nb.panel.darkPreset", darkPreset);
+        lsSet("nb.panel.lightPreset", lightPreset);
         document.querySelectorAll("#nb-preset-dark-grid .nb-preset-card").forEach((card) => {
           card.classList.toggle("active", card.dataset.preset === darkPreset);
         });
@@ -2520,16 +2527,32 @@
           card.classList.toggle("active", card.dataset.preset === lightPreset);
         });
 
-        // 流光边框与全局外观 themeVars 回显
+        // 流光边框、三级 UI 特效开关与全局外观 themeVars 回显
         const tv = c.themeVars || {};
         const savedAppearance = tv["--ag-suite-appearance"];
         if (savedAppearance === "auto" || savedAppearance === "dark" || savedAppearance === "light") {
           lsSet("nb.panel.theme", savedAppearance);
           applyPanelTheme(savedAppearance);
+        } else {
+          applyPanelTheme(panelThemePref);
         }
-        const glowOff = tv["--nb-glow-play-state"] === "paused";
-        const glowEnEl = document.getElementById("nb-glow-enabled");
-        if (glowEnEl) glowEnEl.checked = !glowOff;
+
+        const sidebarFxOn = tv["--nb-fx-sidebar"] === "on";
+        const composerFxOn = tv["--nb-fx-composer"]
+          ? tv["--nb-fx-composer"] !== "off"
+          : tv["--nb-glow-play-state"] !== "paused";
+        const brandFxOn = tv["--nb-fx-brand"] !== "off";
+
+        document.documentElement.dataset.nbFxBrand = brandFxOn ? "on" : "off";
+
+        const sbFxEl = document.getElementById("nb-fx-sidebar-enabled");
+        const compFxEl = document.getElementById("nb-fx-composer-enabled");
+        const brandFxEl = document.getElementById("nb-fx-brand-enabled");
+        const compParamsEl = document.getElementById("nb-composer-fx-params");
+        if (sbFxEl) sbFxEl.checked = sidebarFxOn;
+        if (compFxEl) compFxEl.checked = composerFxOn;
+        if (brandFxEl) brandFxEl.checked = brandFxOn;
+        if (compParamsEl) compParamsEl.classList.toggle("is-dimmed", !composerFxOn);
 
         const speedNum = parseFloat(String(tv["--nb-glow-speed"] || "4.8s").replace(/s$/i, "")) || 4.8;
         const speedInput = document.getElementById("nb-glow-speed");
@@ -2800,6 +2823,9 @@
   document.querySelectorAll("#nb-preset-dark-grid .nb-preset-card").forEach((card) => {
     card.addEventListener("click", () => {
       const preset = card.dataset.preset || "default";
+      activeDarkPreset = preset;
+      lsSet("nb.panel.darkPreset", preset);
+      applyPanelTheme(panelThemePref);
       document.querySelectorAll("#nb-preset-dark-grid .nb-preset-card").forEach((c) => c.classList.toggle("active", c === card));
       patchConfig(
         { presets: { ...(currentConfig?.presets || {}), dark: preset } },
@@ -2811,6 +2837,9 @@
   document.querySelectorAll("#nb-preset-light-grid .nb-preset-card").forEach((card) => {
     card.addEventListener("click", () => {
       const preset = card.dataset.preset || "default";
+      activeLightPreset = preset;
+      lsSet("nb.panel.lightPreset", preset);
+      applyPanelTheme(panelThemePref);
       document.querySelectorAll("#nb-preset-light-grid .nb-preset-card").forEach((c) => c.classList.toggle("active", c === card));
       patchConfig(
         { presets: { ...(currentConfig?.presets || {}), light: preset } },
@@ -2819,20 +2848,39 @@
     });
   });
 
-  // Google Gemini 流光边框实时控制
-  document.getElementById("nb-glow-enabled")?.addEventListener("change", (e) => {
-    const on = e.currentTarget.checked;
+  // 三级 UI 特效开关实时控制（左侧栏 / 输出对话框 / 其他品牌特效）
+  document.getElementById("nb-fx-sidebar-enabled")?.addEventListener("change", (e) => {
+    const on = Boolean(e.currentTarget.checked);
+    patchConfig(
+      { themeVars: { "--nb-fx-sidebar": on ? "on" : "off" } },
+      on ? "已开启左侧导航栏品牌特效" : "已关闭左侧栏多余特效（保留统一深蓝灰与选中高亮）"
+    );
+  });
+
+  document.getElementById("nb-fx-composer-enabled")?.addEventListener("change", (e) => {
+    const on = Boolean(e.currentTarget.checked);
+    document.getElementById("nb-composer-fx-params")?.classList.toggle("is-dimmed", !on);
     patchConfig(
       {
         themeVars: on
-          ? { "--nb-glow-play-state": "", "--nb-glow-ring-dark": "", "--nb-glow-ring-light": "" }
+          ? { "--nb-fx-composer": "on", "--nb-glow-play-state": "", "--nb-glow-ring-dark": "", "--nb-glow-ring-light": "" }
           : {
+              "--nb-fx-composer": "off",
               "--nb-glow-play-state": "paused",
-              "--nb-glow-ring-dark": "linear-gradient(rgba(255,255,255,0.14), rgba(255,255,255,0.14))",
-              "--nb-glow-ring-light": "linear-gradient(rgba(0,0,0,0.14), rgba(0,0,0,0.14))"
+              "--nb-glow-ring-dark": "linear-gradient(rgba(148,176,224,0.16), rgba(148,176,224,0.16))",
+              "--nb-glow-ring-light": "linear-gradient(rgba(26,115,232,0.18), rgba(26,115,232,0.18))"
             }
       },
-      on ? "已启用 Google Gemini 四色动态流光边框" : "已切换为静态素净边框"
+      on ? "已开启输出对话框五色动态流光特效" : "已关闭输出对话框动态流光（切换为素净边框）"
+    );
+  });
+
+  document.getElementById("nb-fx-brand-enabled")?.addEventListener("change", (e) => {
+    const on = Boolean(e.currentTarget.checked);
+    document.documentElement.dataset.nbFxBrand = on ? "on" : "off";
+    patchConfig(
+      { themeVars: { "--nb-fx-brand": on ? "on" : "off" } },
+      on ? "已开启引力中枢与品牌区域光影特效" : "已关闭其他品牌区域装饰光影特效"
     );
   });
 
@@ -3190,6 +3238,12 @@
     items: [],
     expanded: new Set(), // "${convId}:${turnIndex}"
     selected: new Map(), // "${convId}:${turnIndex}" -> { conversationId, turnIndex }
+    dayExpandOverrides: new Map(), // "YYYY-MM-DD" -> boolean
+    activeDayKey: "",
+    activeTurnKey: "",
+    lastSeenJumpSeq: 0,
+    lastSeenSyncSeq: 0,
+    programmaticScrollUntil: 0,
     detailCache: new Map(),
     verifyCache: new Map(),
     packResult: null,
@@ -3203,13 +3257,11 @@
   }
 
   function syncCrossScopeControls() {
-    const chk = document.getElementById("nb-hist-cross-enabled");
-    if (chk) chk.checked = Boolean(historyState.crossSessionEnabled);
     document.querySelectorAll("#nb-hist-scope-seg button").forEach((b) => {
       const sc = b.dataset.scope;
       if (sc === "project") {
-        b.disabled = !historyState.crossSessionEnabled;
-        b.title = historyState.crossSessionEnabled ? "检索已确认归属的同项目历史会话" : "请先勾选「启用同项目跨会话」";
+        b.disabled = false;
+        b.title = "一步切换查看同项目工作区的历史会话（切号自动清空）";
       }
       b.classList.toggle("active", sc === historyState.scope);
     });
@@ -3223,6 +3275,9 @@
       historyState.items = [];
       historyState.expanded.clear();
       historyState.selected.clear();
+      historyState.dayExpandOverrides.clear();
+      historyState.activeDayKey = "";
+      historyState.activeTurnKey = "";
       historyState.detailCache.clear();
       historyState.verifyCache.clear();
       historyState.packResult = null;
@@ -3248,6 +3303,49 @@
     const d = new Date(ms);
     const pad = (n) => String(n).padStart(2, "0");
     return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+
+  function fmtHistClock(ms) {
+    if (!ms) return "";
+    const d = new Date(ms);
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+
+  const HIST_WEEKDAYS = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
+
+  function getHistDayMeta(ms) {
+    if (!ms || !Number.isFinite(Number(ms))) {
+      return { key: "unknown", label: "日期未知", subLabel: "" };
+    }
+    const d = new Date(Number(ms));
+    if (Number.isNaN(d.getTime())) {
+      return { key: "unknown", label: "日期未知", subLabel: "" };
+    }
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const yestStart = new Date(todayStart);
+    yestStart.setDate(yestStart.getDate() - 1);
+    const key = formatDateKeyLocal(d);
+    const todayKey = formatDateKeyLocal(todayStart);
+    const yestKey = formatDateKeyLocal(yestStart);
+    const pad = (n) => String(n).padStart(2, "0");
+    const wd = HIST_WEEKDAYS[d.getDay()] || "";
+    const dateCn = `${pad(d.getMonth() + 1)}月${pad(d.getDate())}日`;
+    const label = key === todayKey
+      ? `今天 · ${dateCn}`
+      : key === yestKey
+        ? `昨天 · ${dateCn}`
+        : dateCn;
+    return { key, label, subLabel: wd };
+  }
+
+  function isHistDayExpanded(dayKey, groupIndex, forceOpenAll) {
+    if (historyState.dayExpandOverrides.has(dayKey)) {
+      return Boolean(historyState.dayExpandOverrides.get(dayKey));
+    }
+    if (forceOpenAll) return true;
+    return groupIndex < 3;
   }
 
   function renderHistoryCacheStats(cs) {
@@ -3347,11 +3445,52 @@
   function renderHistoryList(elapsedMs) {
     const listEl = document.getElementById("nb-history-list");
     const metaEl = document.getElementById("nb-hist-result-meta");
+    const toggleAllBtn = document.getElementById("nb-btn-hist-toggle-all-days");
     if (!listEl) return;
     const items = historyState.items || [];
+
+    const dayBuckets = [];
+    const bucketMap = new Map();
+    for (const it of items) {
+      const dm = getHistDayMeta(it.createdAtMs);
+      let g = bucketMap.get(dm.key);
+      if (!g) {
+        g = {
+          key: dm.key,
+          label: dm.label,
+          subLabel: dm.subLabel,
+          items: [],
+          pinnedCount: 0,
+          packedCount: 0,
+          sessionIds: new Set()
+        };
+        bucketMap.set(dm.key, g);
+        dayBuckets.push(g);
+      }
+      g.items.push(it);
+      if (it.pinned) g.pinnedCount += 1;
+      if (historyState.selected.has(turnKey(it.conversationId, it.turnIndex))) g.packedCount += 1;
+      if (it.conversationId) g.sessionIds.add(it.conversationId);
+    }
+
+    // 日期严格从新到旧排序（unknown 置尾）；每日内按轮次从新到旧或原有顺序
+    dayBuckets.sort((a, b) => {
+      if (a.key === "unknown") return 1;
+      if (b.key === "unknown") return -1;
+      return b.key.localeCompare(a.key);
+    });
+    for (const g of dayBuckets) {
+      g.items.sort((a, b) => (Number(b.turnIndex) || 0) - (Number(a.turnIndex) || 0));
+    }
+
+    if (dayBuckets.length && (!historyState.activeDayKey || !bucketMap.has(historyState.activeDayKey))) {
+      historyState.activeDayKey = dayBuckets[0].key;
+    }
+
     if (metaEl) {
       const msTxt = typeof elapsedMs === "number" ? ` · ${elapsedMs} ms` : "";
       const pinTip = historyState.pinnedOnly ? " · 仅看收藏" : "";
+      const dayTip = dayBuckets.length > 0 ? ` · 共 ${dayBuckets.length} 天` : "";
       const sc = historyState.scopeInfo;
       let scopeTxt = "仅展示当前会话";
       if (sc?.scopeUsed === "project") {
@@ -3359,31 +3498,57 @@
       } else if (historyState.scope === "project" && sc?.scopeFallback) {
         scopeTxt = "未确认其他同项目会话，已收敛为当前会话";
       }
-      metaEl.textContent = `本地 0 Token 检索 · 命中 ${items.length} 轮${msTxt}${pinTip} · ${scopeTxt}`;
+      metaEl.textContent = `本地 0 Token 检索 · 命中 ${items.length} 轮${dayTip}${msTxt}${pinTip} · ${scopeTxt}`;
     }
+
     if (!items.length) {
+      if (toggleAllBtn) toggleAllBtn.style.display = "none";
       listEl.innerHTML = `<div class="nb-empty-hint">${historyState.convId ? "当前筛选条件下暂无匹配的轮次记录" : "未检测到当前活动会话，请先在 Antigravity 打开任意对话"}</div>`;
       return;
     }
 
-    listEl.innerHTML = items.map((it) => {
+    const forceOpenAll = Boolean(historyState.query || historyState.pinnedOnly);
+    let anyOpen = false;
+    const groupStates = dayBuckets.map((g, idx) => {
+      const isOpen = isHistDayExpanded(g.key, idx, forceOpenAll);
+      if (isOpen) anyOpen = true;
+      return { g, isOpen };
+    });
+
+    if (toggleAllBtn) {
+      toggleAllBtn.style.display = "inline-flex";
+      toggleAllBtn.dataset.mode = anyOpen ? "collapse" : "expand";
+      toggleAllBtn.textContent = anyOpen ? "▴ 全部收起" : "▾ 全部展开";
+    }
+
+    const renderCardHtml = (it, dayKey) => {
       const evClass = it.primaryEvidence || "assistant_note";
       const evLabel = EV_LABEL_MAP[evClass] || "助手陈述";
-      const files = Array.isArray(it.files) ? it.files : [];
-      const shownFiles = files.slice(0, 3);
-      const extraFiles = Math.max(0, files.length - 3);
-      const errs = Array.isArray(it.errorCodes) ? it.errorCodes.slice(0, 3) : [];
+      const rawFiles = Array.isArray(it.files) ? it.files : [];
+      const dedupByBase = new Map();
+      for (const f of rawFiles) {
+        const base = f.split(/[\\/]/).pop() || f;
+        const prev = dedupByBase.get(base);
+        if (!prev || f.length > prev.length) dedupByBase.set(base, f);
+      }
+      const uniqueFiles = Array.from(dedupByBase.values());
+      const shownFiles = uniqueFiles.slice(0, 6);
+      const extraFiles = Math.max(0, uniqueFiles.length - 6);
+      const errs = Array.isArray(it.errorCodes) ? it.errorCodes.slice(0, 4) : [];
       const hitTag = it.hitRatePct !== null && it.hitRatePct !== undefined
         ? `<span class="nb-hist-time">命中 ${it.hitRatePct}%</span>`
         : "";
       const tKey = turnKey(it.conversationId, it.turnIndex);
       const isExpanded = historyState.expanded.has(tKey);
       const isChecked = historyState.selected.has(tKey);
+      const isSelected = historyState.activeTurnKey === tKey;
       const detail = historyState.detailCache.get(tKey);
       const verify = historyState.verifyCache.get(tKey);
       const extSessionTag = it.isCurrentSession === false
         ? `<span class="nb-hist-session-tag" title="${esc(it.sessionTitle || it.conversationId)}">同项目 · ${esc(it.sessionTitle || it.conversationId.slice(0, 8))}</span>`
         : "";
+      const timeLabel = dayKey === "unknown" ? fmtHistTime(it.createdAtMs) : fmtHistClock(it.createdAtMs);
+      const titleText = String(it.displayTitle || it.title || `第 ${it.turnIndex} 轮`);
 
       let detailHtml = "";
       if (isExpanded) {
@@ -3403,11 +3568,33 @@
               }).join("")}</div>`
             : "";
           detailHtml = `
-            <div class="nb-hist-detail">
+            <div class="nb-hist-detail" data-action="stop-prop">
+              <div class="nb-hist-detail-meta">
+                <div class="nb-hist-detail-meta-left">
+                  <span class="nb-hist-ev-pill ${esc(evClass)}">${esc(evLabel)}</span>
+                  ${extSessionTag}
+                  ${it.vaultPinnedCount > 0 ? `<span class="nb-hist-vault-tag">★ 文库关联(${it.vaultPinnedCount})</span>` : ""}
+                  <span class="nb-hist-time">L${it.lineStart}-${it.lineEnd}</span>
+                  ${hitTag}
+                </div>
+                <div class="nb-inline-controls" style="gap:5px;">
+                  <button type="button" class="nb-btn ghost nb-btn-xs" data-action="nav-turn" data-conv="${esc(it.conversationId)}" data-turn="${it.turnIndex}">↗ 定位正文</button>
+                  <button type="button" class="nb-btn ghost nb-btn-xs nb-hist-pick-btn ${isChecked ? "is-picked" : ""}" data-action="toggle-pack" data-conv="${esc(it.conversationId)}" data-turn="${it.turnIndex}">${isChecked ? "✓ 已入包" : "＋ 入包"}</button>
+                  <button type="button" class="nb-btn ghost nb-btn-xs nb-hist-pin-btn ${it.pinned ? "active" : ""}" data-action="pin-turn" data-conv="${esc(it.conversationId)}" data-turn="${it.turnIndex}">${it.pinned ? "★ 已收藏" : "☆ 收藏"}</button>
+                  <button type="button" class="nb-btn ghost nb-btn-xs" data-action="copy-turn" data-conv="${esc(it.conversationId)}" data-turn="${it.turnIndex}">⎘ 出处</button>
+                </div>
+              </div>
+              ${(shownFiles.length || errs.length) ? `
+                <div class="nb-hist-chips">
+                  ${shownFiles.map((f) => `<span class="nb-hist-file-chip" title="${esc(f)}">${esc(f.split(/[\\/]/).pop() || f)}</span>`).join("")}
+                  ${extraFiles > 0 ? `<span class="nb-hist-file-chip">+${extraFiles}</span>` : ""}
+                  ${errs.map((e) => `<span class="nb-hist-err-chip">${esc(e)}</span>`).join("")}
+                </div>
+              ` : ""}
               ${verifyHtml ? `<div><div class="nb-hist-detail-label">0 Token 本地文件实时校验</div>${verifyHtml}</div>` : ""}
               <div>
                 <div class="nb-hist-detail-label">用户消息 · 出处 conv:${esc(it.conversationId.slice(0, 8))} transcript.jsonl#L${it.lineStart}-L${it.lineEnd}</div>
-                <div class="nb-hist-detail-block">${esc(detail.userText || it.displayTitle || it.title)}</div>
+                <div class="nb-hist-detail-block">${esc(detail.userText || titleText)}</div>
               </div>
               ${toolsHtml ? `<div><div class="nb-hist-detail-label">工具调用与核验</div><div class="nb-hist-detail-block">${toolsHtml}</div></div>` : ""}
               ${detail.assistantText ? `<div><div class="nb-hist-detail-label">助手历史陈述（仅作历史参考，改动源码前须实查）</div><div class="nb-hist-detail-block">${esc(detail.assistantText)}</div></div>` : ""}
@@ -3417,38 +3604,53 @@
       }
 
       return `
-        <article class="nb-hist-card ${it.pinned ? "pinned" : ""} ${isChecked ? "selected" : ""}" data-conv="${esc(it.conversationId)}" data-turn="${it.turnIndex}">
-          <div class="nb-hist-card-head" data-action="toggle-turn" data-conv="${esc(it.conversationId)}" data-turn="${it.turnIndex}">
-            <label class="nb-hist-check-wrap" data-action="stop-prop" title="勾选加入稳定前缀摘录包（最多 3 条）">
-              <input type="checkbox" class="nb-hist-check" data-action="select-turn" data-conv="${esc(it.conversationId)}" data-turn="${it.turnIndex}" ${isChecked ? "checked" : ""} />
-            </label>
-            <div class="nb-hist-card-left">
-              <div class="nb-hist-card-top">
-                <span class="nb-hist-turn-tag">Turn #${it.turnIndex}</span>
-                ${extSessionTag}
-                <span class="nb-hist-ev-pill ${esc(evClass)}">${esc(evLabel)}</span>
-                ${it.vaultPinnedCount > 0 ? `<span class="nb-hist-vault-tag">★ 文库关联(${it.vaultPinnedCount})</span>` : ""}
-                <span class="nb-hist-time">${esc(fmtHistTime(it.createdAtMs))} · L${it.lineStart}-${it.lineEnd}</span>
-                ${hitTag}
-              </div>
-              <div class="nb-hist-title">${esc(it.displayTitle || it.title)}</div>
-              ${it.summary && it.summary !== it.title ? `<div class="nb-hist-summary">${esc(it.summary)}</div>` : ""}
-              ${(shownFiles.length || errs.length) ? `
-                <div class="nb-hist-chips">
-                  ${shownFiles.map((f) => `<span class="nb-hist-file-chip" title="${esc(f)}">${esc(f.split(/[\\/]/).pop() || f)}</span>`).join("")}
-                  ${extraFiles > 0 ? `<span class="nb-hist-file-chip">+${extraFiles}</span>` : ""}
-                  ${errs.map((e) => `<span class="nb-hist-err-chip">${esc(e)}</span>`).join("")}
-                </div>
+        <article class="nb-hist-card ${it.pinned ? "pinned" : ""} ${isChecked ? "selected" : ""} ${isSelected ? "is-selected" : ""} ${isExpanded ? "is-expanded" : ""}" data-conv="${esc(it.conversationId)}" data-turn="${it.turnIndex}">
+          <div class="nb-hist-row" data-action="select-nav-turn" data-conv="${esc(it.conversationId)}" data-turn="${it.turnIndex}">
+            <div class="nb-hist-row-main">
+              <span class="nb-hist-turn-num">#${it.turnIndex}</span>
+              ${(it.pinned || isChecked) ? `
+                <span class="nb-hist-row-flags">
+                  ${it.pinned ? `<span class="nb-hist-flag-pin" title="已收藏">★</span>` : ""}
+                  ${isChecked ? `<span class="nb-hist-flag-pack" title="已加入稳定前缀包">✓</span>` : ""}
+                </span>
               ` : ""}
+              <div class="nb-hist-title">${esc(titleText)}</div>
             </div>
-            <div class="nb-hist-card-actions">
-              <button type="button" class="nb-btn ghost nb-btn-sm nb-hist-pin-btn ${it.pinned ? "active" : ""}" data-action="pin-turn" data-conv="${esc(it.conversationId)}" data-turn="${it.turnIndex}" title="${it.pinned ? "取消收藏" : "★ 收藏此轮次（优先置顶且重建保留）"}">${it.pinned ? "★" : "☆"}</button>
-              <button type="button" class="nb-btn ghost nb-btn-sm" data-action="nav-turn" data-conv="${esc(it.conversationId)}" data-turn="${it.turnIndex}" title="跳转到对应会话轮次并高亮">↗ 定位</button>
-              <button type="button" class="nb-btn ghost nb-btn-sm" data-action="copy-turn" data-conv="${esc(it.conversationId)}" data-turn="${it.turnIndex}" title="复制带实时漂移核验与出处的纯文本摘录">⎘ 出处</button>
+            <div class="nb-hist-row-right">
+              <div class="nb-hist-row-actions">
+                <button type="button" class="nb-btn ghost nb-btn-xs" data-action="toggle-turn" data-conv="${esc(it.conversationId)}" data-turn="${it.turnIndex}" title="${isExpanded ? "收起详情" : "展开完整消息、文件标签与漂移校验"}">${isExpanded ? "收起" : "详情"}</button>
+                <button type="button" class="nb-btn ghost nb-btn-xs nb-hist-pick-btn ${isChecked ? "is-picked" : ""}" data-action="toggle-pack" data-conv="${esc(it.conversationId)}" data-turn="${it.turnIndex}" title="${isChecked ? "从稳定前缀包移除" : "加入稳定前缀摘录包（最多 3 条）"}">${isChecked ? "✓" : "＋"}</button>
+                <button type="button" class="nb-btn ghost nb-btn-xs nb-hist-pin-btn ${it.pinned ? "active" : ""}" data-action="pin-turn" data-conv="${esc(it.conversationId)}" data-turn="${it.turnIndex}" title="${it.pinned ? "取消收藏" : "★ 收藏此轮次"}">${it.pinned ? "★" : "☆"}</button>
+                <button type="button" class="nb-btn ghost nb-btn-xs" data-action="copy-turn" data-conv="${esc(it.conversationId)}" data-turn="${it.turnIndex}" title="复制带核验与出处的纯文本摘录">⎘</button>
+              </div>
+              <span class="nb-hist-row-time">${esc(timeLabel)}</span>
             </div>
           </div>
           ${detailHtml}
         </article>
+      `;
+    };
+
+    listEl.innerHTML = groupStates.map(({ g, isOpen }) => {
+      const cardsHtml = isOpen ? g.items.map((it) => renderCardHtml(it, g.key)).join("") : "";
+      const isDayActive = historyState.activeDayKey === g.key;
+      return `
+        <section class="nb-hist-day-group ${isOpen ? "is-open" : "is-collapsed"} ${isDayActive ? "is-active" : ""}" data-day="${esc(g.key)}">
+          <header class="nb-hist-day-head" data-action="toggle-day" data-day="${esc(g.key)}" title="${isOpen ? "点击收起该日记录" : "点击展开查看该日记录"}">
+            <div class="nb-hist-day-head-left">
+              <span class="nb-hist-day-chevron" aria-hidden="true">▾</span>
+              <span class="nb-hist-day-title">${esc(g.label)}</span>
+              ${g.subLabel ? `<span class="nb-hist-day-sub">${esc(g.subLabel)}</span>` : ""}
+            </div>
+            <div class="nb-hist-day-head-right">
+              <span class="nb-hist-day-pill count">${g.items.length} 条</span>
+              ${g.pinnedCount > 0 ? `<span class="nb-hist-day-pill pin">★ ${g.pinnedCount}</span>` : ""}
+              ${g.packedCount > 0 ? `<span class="nb-hist-day-pill pack">✓ ${g.packedCount} 入包</span>` : ""}
+              ${g.sessionIds.size > 1 ? `<span class="nb-hist-day-pill sess">${g.sessionIds.size} 会话</span>` : ""}
+            </div>
+          </header>
+          ${isOpen ? `<div class="nb-hist-day-body">${cardsHtml}</div>` : ""}
+        </section>
       `;
     }).join("");
   }
@@ -3492,7 +3694,11 @@
       if (!historyState.crossSessionEnabled) historyState.scope = "session";
       syncCrossScopeControls();
 
-      historyState.convId = j.conversationId || convId || "";
+      const nextConvId = j.conversationId || convId || "";
+      if (historyState.convId && nextConvId && historyState.convId !== nextConvId) {
+        historyState.dayExpandOverrides.clear();
+      }
+      historyState.convId = nextConvId;
       historyState.lastSyncedAt = Date.now();
       if (convBadge) {
         convBadge.textContent = historyState.convId
@@ -3560,35 +3766,68 @@
     loadHistoryOverview(false);
   };
 
-  document.getElementById("nb-hist-cross-enabled")?.addEventListener("change", async (e) => {
-    const enabled = Boolean(e.currentTarget.checked);
+  document.getElementById("nb-hist-scope-seg")?.addEventListener("click", async (e) => {
+    const btn = e.target.closest("button[data-scope]");
+    if (!btn) return;
+    const sc = btn.dataset.scope || "session";
+    if (sc === historyState.scope) return;
+    const wantCross = sc === "project";
     try {
       const r = await apiFetch("/api/suite-history/prefs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ crossSessionEnabled: enabled })
+        body: JSON.stringify({ crossSessionEnabled: wantCross })
       });
       const j = await r.json();
       if (j.ok) {
         historyState.crossSessionEnabled = Boolean(j.crossSessionEnabled);
-        historyState.scope = historyState.crossSessionEnabled ? "project" : "session";
+        historyState.scope = wantCross && historyState.crossSessionEnabled ? "project" : "session";
         syncCrossScopeControls();
-        showToast(historyState.crossSessionEnabled ? "已启用同项目跨会话证据检索" : "已关闭跨会话检索（仅看当前会话）");
+        showToast(historyState.scope === "project"
+          ? "已切换至同项目历史（仅匹配同工作区，切号自动清空）"
+          : "已切回当前会话视图");
         await runHistorySearch();
       }
     } catch {
-      showToast("保存跨会话设置失败");
+      showToast("切换检索范围失败");
     }
   });
 
-  document.getElementById("nb-hist-scope-seg")?.addEventListener("click", (e) => {
-    const btn = e.target.closest("button[data-scope]");
-    if (!btn || btn.disabled) return;
-    const sc = btn.dataset.scope || "session";
-    if (sc === "project" && !historyState.crossSessionEnabled) return;
-    historyState.scope = sc;
-    syncCrossScopeControls();
-    runHistorySearch();
+  document.getElementById("nb-btn-hist-toggle-all-days")?.addEventListener("click", (e) => {
+    const mode = e.currentTarget?.dataset?.mode === "expand" ? "expand" : "collapse";
+    const expand = mode === "expand";
+    for (const it of historyState.items || []) {
+      const dm = getHistDayMeta(it.createdAtMs);
+      historyState.dayExpandOverrides.set(dm.key, expand);
+    }
+    renderHistoryList();
+  });
+
+  document.getElementById("nb-btn-hist-smart-pick")?.addEventListener("click", async () => {
+    const pool = Array.isArray(historyState.items) ? historyState.items : [];
+    if (!pool.length) return showToast("当前列表暂无可选轮次");
+    const evWeight = { tool_verified: 40, user_confirm: 35, tool_called: 15, assistant_note: 5 };
+    const scored = pool
+      .map((it) => ({
+        it,
+        score: (it.pinned ? 100 : 0) + (evWeight[it.primaryEvidence] || 0) + (Number(it.turnIndex) || 0) * 0.001
+      }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 3);
+    historyState.selected.clear();
+    for (const { it } of scored) {
+      historyState.selected.set(turnKey(it.conversationId, it.turnIndex), {
+        conversationId: it.conversationId,
+        turnIndex: it.turnIndex
+      });
+    }
+    historyState.packPreviewOpen = true;
+    renderHistoryList();
+    await refreshPackPreview();
+    const stat = historyState.packResult;
+    if (stat?.ok) {
+      showToast(`✨ 已精选 ${stat.itemCount} 条关键证据（${stat.utf8Bytes} B）并展开预览`);
+    }
   });
 
   document.getElementById("nb-btn-hist-sync")?.addEventListener("click", async (e) => {
@@ -3690,19 +3929,64 @@
     const actBtn = e.target.closest("[data-action]");
     if (!actBtn) return;
     const action = actBtn.dataset.action;
+    if (action === "toggle-day") {
+      e.stopPropagation();
+      const dayKey = actBtn.dataset.day || "";
+      if (!dayKey) return;
+      const groupEl = actBtn.closest(".nb-hist-day-group");
+      const currentlyOpen = groupEl ? groupEl.classList.contains("is-open") : true;
+      historyState.dayExpandOverrides.set(dayKey, !currentlyOpen);
+      renderHistoryList();
+      return;
+    }
     const turnIndex = Number(actBtn.dataset.turn);
     const targetConv = actBtn.dataset.conv || historyState.convId;
     const item = (historyState.items || []).find((x) => x.conversationId === targetConv && x.turnIndex === turnIndex);
     if (!item) return;
     const tKey = turnKey(item.conversationId, item.turnIndex);
 
-    if (action === "select-turn") {
+    if (action === "select-nav-turn") {
+      const dm = getHistDayMeta(item.createdAtMs);
+      historyState.activeTurnKey = tKey;
+      historyState.activeDayKey = dm.key;
+      historyState.programmaticScrollUntil = Date.now() + 700;
+      renderHistoryList();
+      try {
+        apiFetch("/api/suite-history/day-sync", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            conversationId: item.conversationId,
+            activeDayKey: dm.key,
+            activeTurnIndex: item.turnIndex,
+            source: "hub"
+          })
+        });
+        const r = await apiFetch("/api/suite-history/navigate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            conversationId: item.conversationId,
+            turnIndex: item.turnIndex,
+            keyword: item.displayTitle || item.title,
+            lineStart: item.lineStart,
+            lineEnd: item.lineEnd
+          })
+        });
+        const j = await r.json();
+        if (!j.ok) showToast(`定位失败：${j.error || ""}`);
+      } catch {
+        showToast("发送定位指令失败");
+      }
+      return;
+    }
+
+    if (action === "toggle-pack") {
       e.stopPropagation();
-      const checked = actBtn.checked;
-      if (checked) {
-        if (historyState.selected.size >= 3 && !historyState.selected.has(tKey)) {
-          actBtn.checked = false;
-          showToast("稳定前缀包默认上限 3 条（≤1,200B），可先取消一条再选");
+      const willPick = !historyState.selected.has(tKey);
+      if (willPick) {
+        if (historyState.selected.size >= 3) {
+          showToast("稳定前缀包默认上限 3 条（≤1,200B），可先移出一条再选");
           return;
         }
         historyState.selected.set(tKey, { conversationId: item.conversationId, turnIndex: item.turnIndex });
@@ -3784,6 +4068,7 @@
     }
 
     if (action === "toggle-turn") {
+      e.stopPropagation();
       if (historyState.expanded.has(tKey)) {
         historyState.expanded.delete(tKey);
         renderHistoryList();
@@ -3810,6 +4095,91 @@
       renderHistoryList();
     }
   });
+
+  async function pollHistoryDaySync() {
+    try {
+      const r = await apiFetch("/api/suite-history/day-sync", { method: "GET" });
+      if (!r.ok) return;
+      const j = await r.json();
+      const st = j?.state;
+      if (!st || !st.seq) return;
+
+      if (st.jumpSeq > historyState.lastSeenJumpSeq && st.jumpDayKey) {
+        historyState.lastSeenJumpSeq = st.jumpSeq;
+        historyState.lastSeenSyncSeq = st.seq;
+        lsSet("nb.panel.tab", "history");
+        activateTab("history");
+        if (!historyState.items.length || (st.conversationId && historyState.convId !== st.conversationId)) {
+          await loadHistoryOverview(false);
+        }
+        historyState.dayExpandOverrides.set(st.jumpDayKey, true);
+        historyState.activeDayKey = st.jumpDayKey;
+        historyState.programmaticScrollUntil = Date.now() + 900;
+        renderHistoryList();
+        const grp = document.querySelector(`#nb-history-list .nb-hist-day-group[data-day="${CSS.escape(st.jumpDayKey)}"]`);
+        if (grp) {
+          grp.scrollIntoView({ behavior: "smooth", block: "start" });
+          grp.classList.add("is-flash");
+          setTimeout(() => grp.classList.remove("is-flash"), 950);
+        }
+        return;
+      }
+
+      if (st.seq > historyState.lastSeenSyncSeq) {
+        historyState.lastSeenSyncSeq = st.seq;
+        if (st.source !== "hub" && st.activeDayKey && Date.now() > historyState.programmaticScrollUntil) {
+          if (st.activeDayKey !== historyState.activeDayKey) {
+            historyState.activeDayKey = st.activeDayKey;
+            document.querySelectorAll("#nb-history-list .nb-hist-day-group").forEach((el) => {
+              el.classList.toggle("is-active", el.dataset.day === st.activeDayKey);
+            });
+          }
+        }
+      }
+    } catch {}
+  }
+
+  let hubDayScrollTimer = null;
+  window.addEventListener("scroll", () => {
+    if (!views.history?.classList.contains("active")) return;
+    if (Date.now() <= historyState.programmaticScrollUntil) return;
+    if (hubDayScrollTimer) return;
+    hubDayScrollTimer = setTimeout(() => {
+      hubDayScrollTimer = null;
+      if (Date.now() <= historyState.programmaticScrollUntil) return;
+      const groups = Array.from(document.querySelectorAll("#nb-history-list .nb-hist-day-group"));
+      if (!groups.length) return;
+      let picked = "";
+      for (const grp of groups) {
+        const rect = grp.getBoundingClientRect();
+        if (rect.height <= 0) continue;
+        if (rect.top <= 180 && rect.bottom > 64) {
+          picked = grp.dataset.day || "";
+          break;
+        }
+      }
+      if (!picked) {
+        const firstVis = groups.find((g) => g.getBoundingClientRect().bottom > 64);
+        picked = firstVis?.dataset.day || "";
+      }
+      if (picked && picked !== historyState.activeDayKey) {
+        historyState.activeDayKey = picked;
+        groups.forEach((el) => el.classList.toggle("is-active", el.dataset.day === picked));
+        apiFetch("/api/suite-history/day-sync", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            conversationId: historyState.convId,
+            activeDayKey: picked,
+            source: "hub"
+          })
+        }).catch(() => {});
+      }
+    }, 150);
+  }, { passive: true });
+
+  setInterval(pollHistoryDaySync, 500);
+  pollHistoryDaySync();
 
   // 初始化加载与定时刷新
   (async () => {

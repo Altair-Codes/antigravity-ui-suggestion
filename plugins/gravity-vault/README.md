@@ -1,4 +1,4 @@
-# 引力文库 (`gravity-vault` v2.2.1)
+# 引力文库 (`gravity-vault` v2.2.2)
 
 **引力文库 (Gravity Vault)** 是面向 Google Antigravity 桌面端的会话文档与交付物管理扩展，基于 **纯 Node.js 22+（ESM + 原生 `node:sqlite`）**，冷启与热刷新响应均在毫秒级。
 

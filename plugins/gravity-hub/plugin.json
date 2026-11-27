@@ -1,7 +1,7 @@
 {
   "name": "gravity-hub",
   "displayName": "引力中枢",
-  "version": "2.2.1",
+  "version": "2.2.2",
   "description": "Antigravity 引力中枢（Gravity Hub）：Google Gemini 五色流体引擎、全量双语汉化、零遮挡一体式遥测舱、多账号周/5h双限额自动轮换、历史目录真增量检索、前缀缓存雷达与节俭防幻觉护栏中枢",
   "logo": "assets/logo.svg",
   "homepage": "https://github.com/Altair-Codes/antigravity-ui-suggestion",

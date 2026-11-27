@@ -1,6 +1,6 @@
 <div align="center">
 
-# Antigravity 引力套件 (Gravity Suite v2.2.0)
+# Antigravity 引力套件 (Gravity Suite v2.2.2)
 
 **Google Antigravity 2.x 下一代 AI 智能体工作台 × 纯 Node.js 22+ 原生全中文三扩展增强套件**
 

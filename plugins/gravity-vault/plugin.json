@@ -1,7 +1,7 @@
 {
   "name": "gravity-vault",
   "displayName": "引力文库",
-  "version": "2.2.1",
+  "version": "2.2.2",
   "description": "全自研 pure Node.js 22+ 会话交付物与项目文档管理器：基于 node:sqlite 三层精准隔离、右侧分栏直开、一键复制 @引用、★ 防压缩收藏与按日无覆盖归档。",
   "logo": "assets/logo.svg",
   "homepage": "https://github.com/Altair-Codes/antigravity-ui-suggestion",

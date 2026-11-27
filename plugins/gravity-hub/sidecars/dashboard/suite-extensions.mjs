@@ -657,6 +657,43 @@ export function initSuiteExtensions({
     return { ok: true, pending: cur };
   }
 
+  let historyDaySync = {
+    seq: 0,
+    jumpSeq: 0,
+    conversationId: "",
+    activeDayKey: "",
+    activeTurnIndex: 0,
+    jumpDayKey: "",
+    source: "",
+    updatedAt: 0
+  };
+
+  function getHistoryDaySyncState() {
+    return { ok: true, state: { ...historyDaySync } };
+  }
+
+  function updateHistoryDaySyncState(payload = {}) {
+    const convId = resolveTargetConversationId(payload.conversationId) || historyDaySync.conversationId;
+    const activeDayKey = String(payload.activeDayKey || "").trim().slice(0, 32);
+    const jumpDayKey = String(payload.jumpDayKey || "").trim().slice(0, 32);
+    const activeTurnIndex = Number(payload.activeTurnIndex) || 0;
+    const source = String(payload.source || "").trim().slice(0, 24);
+
+    historyDaySync.seq += 1;
+    if (convId) historyDaySync.conversationId = convId;
+    if (jumpDayKey) {
+      historyDaySync.jumpSeq += 1;
+      historyDaySync.jumpDayKey = jumpDayKey;
+      historyDaySync.activeDayKey = jumpDayKey;
+    } else if (activeDayKey) {
+      historyDaySync.activeDayKey = activeDayKey;
+    }
+    if (activeTurnIndex > 0) historyDaySync.activeTurnIndex = activeTurnIndex;
+    if (source) historyDaySync.source = source;
+    historyDaySync.updatedAt = Date.now();
+    return { ok: true, state: { ...historyDaySync } };
+  }
+
   const DEFAULT_TPS_MONITOR = {
     enabled: true,
     peakTps: 0,
@@ -1366,7 +1403,7 @@ export function initSuiteExtensions({
   }
 
   function getLocalVersionInfo() {
-    const fallback = { version: "2.2.1", publishedAt: "", repoUrl: REPO_URL, branch: DEFAULT_UPDATE_BRANCH, highlights: [] };
+    const fallback = { version: "2.2.2", publishedAt: "", repoUrl: REPO_URL, branch: DEFAULT_UPDATE_BRANCH, highlights: [] };
     const fromData = readJsonSafe(versionFile, null);
     if (fromData && fromData.version) return { ...fallback, ...fromData };
     const fromSeed = readJsonSafe(path.join(pluginRoot, "sidecars", "dashboard", "user", "suite-version.json"), null);
@@ -2407,6 +2444,10 @@ ${relaunchLine}
         result = consumePendingHistoryNav(urlObj.searchParams.get("peek") === "1");
       } else if (urlObj.pathname === "/api/suite-history/navigate" && req.method === "POST") {
         result = setPendingHistoryNav(bodyObj);
+      } else if (urlObj.pathname === "/api/suite-history/day-sync" && req.method === "GET") {
+        result = getHistoryDaySyncState();
+      } else if (urlObj.pathname === "/api/suite-history/day-sync" && req.method === "POST") {
+        result = updateHistoryDaySyncState(bodyObj);
       } else {
         status = 404;
       }
@@ -2538,6 +2579,8 @@ ${relaunchLine}
       return consumePendingHistoryNav(u.searchParams.get("peek") === "1");
     }, "GET");
     Oe.api("/api/suite-history/navigate", (e) => setPendingHistoryNav(parseBody(e)), "POST");
+    Oe.api("/api/suite-history/day-sync", () => getHistoryDaySyncState(), "GET");
+    Oe.api("/api/suite-history/day-sync", (e) => updateHistoryDaySyncState(parseBody(e)), "POST");
 
     Oe.api("/suite-panel-addon.js", () => {
       const src = panelAddonPath && fs.existsSync(panelAddonPath)

@@ -16,7 +16,7 @@
           <div>
             <div class="nb-title-wrap">
               <h1 class="nb-title">引力中枢</h1>
-              <span class="nb-ver-pill" id="nb-ver-pill">v2.2.1</span>
+              <span class="nb-ver-pill" id="nb-ver-pill">v2.2.2</span>
               <span class="nb-cdp-pill" id="nb-cdp-pill">● 检测中</span>
             </div>
             <p class="nb-subtitle">Gravity Hub · Google Gemini 流光视觉、模型额度自动轮换与算力遥测驾驶舱</p>
@@ -587,35 +587,68 @@
       <section class="nb-card">
         <div class="nb-card-head">
           <div class="nb-card-title-group">
-            <h2 class="nb-card-title">Google Gemini 流光边框实时调节</h2>
+            <h2 class="nb-card-title">UI 特效分项开关与流光参数</h2>
             <span class="nb-badge">themeVars 零重启热生效</span>
           </div>
-          <label class="nb-switch-label">
-            <input type="checkbox" id="nb-glow-enabled" checked />
-            <span>启用五色动态流光边框</span>
-          </label>
         </div>
 
-        <div class="nb-form-row">
-          <div>
-            <div class="nb-row-title">流光旋转周期 (速度)</div>
-            <div class="nb-muted">数值越小流光旋转越快（范围 2.0s ~ 10.0s，默认 4.8s）</div>
+        <div class="nb-fx-switches">
+          <div class="nb-form-row">
+            <div>
+              <div class="nb-row-title">左侧栏特效 <span class="nb-badge">默认关闭</span></div>
+              <div class="nb-muted">控制左侧导航栏的渐变描边、内发光与微光晕；关闭后仍保持统一深蓝灰表面、圆角体系与基础蓝紫选中态</div>
+            </div>
+            <label class="nb-switch-label">
+              <input type="checkbox" id="nb-fx-sidebar-enabled" />
+              <span>启用左侧栏特效</span>
+            </label>
           </div>
-          <div class="nb-slider-wrap">
-            <input type="range" id="nb-glow-speed" class="nb-range-slider" min="2.0" max="10.0" step="0.2" value="4.8" />
-            <span class="nb-code-pill" id="nb-glow-speed-val">4.8s</span>
+
+          <div class="nb-form-row">
+            <div>
+              <div class="nb-row-title">输出对话框特效 <span class="nb-badge ok">默认开启</span></div>
+              <div class="nb-muted">控制底部输入框 / 输出对话框区域的五色动态流光边框、呼吸外发光与流光发送 / 遥测胶囊</div>
+            </div>
+            <label class="nb-switch-label">
+              <input type="checkbox" id="nb-fx-composer-enabled" checked />
+              <span>启用输出框特效</span>
+            </label>
+          </div>
+
+          <div class="nb-form-row">
+            <div>
+              <div class="nb-row-title">其他品牌特效 <span class="nb-badge ok">默认开启</span></div>
+              <div class="nb-muted">控制引力中枢品牌头部旋转环与光影、激活标签渐变光晕、主按钮流光渐变及顶栏套件发光徽章</div>
+            </div>
+            <label class="nb-switch-label">
+              <input type="checkbox" id="nb-fx-brand-enabled" checked />
+              <span>启用品牌特效</span>
+            </label>
           </div>
         </div>
 
-        <div class="nb-form-row">
-          <div>
-            <div class="nb-row-title">流光边框粗细</div>
-            <div class="nb-muted">调整对话输入框外围流光环的常态描边厚度</div>
+        <div id="nb-composer-fx-params" class="nb-fx-params">
+          <div class="nb-form-row">
+            <div>
+              <div class="nb-row-title">流光旋转周期 (速度)</div>
+              <div class="nb-muted">数值越小流光旋转越快（范围 2.0s ~ 10.0s，默认 4.8s）</div>
+            </div>
+            <div class="nb-slider-wrap">
+              <input type="range" id="nb-glow-speed" class="nb-range-slider" min="2.0" max="10.0" step="0.2" value="4.8" />
+              <span class="nb-code-pill" id="nb-glow-speed-val">4.8s</span>
+            </div>
           </div>
-          <div class="nb-seg" id="nb-glow-width-seg">
-            <button type="button" data-width="1px">1px 纤细</button>
-            <button type="button" data-width="1.5px" class="active">1.5px 标准</button>
-            <button type="button" data-width="2px">2px 醒目</button>
+
+          <div class="nb-form-row">
+            <div>
+              <div class="nb-row-title">流光边框粗细</div>
+              <div class="nb-muted">调整底部输入框外围流光环的常态描边厚度</div>
+            </div>
+            <div class="nb-seg" id="nb-glow-width-seg">
+              <button type="button" data-width="1px">1px 纤细</button>
+              <button type="button" data-width="1.5px" class="active">1.5px 标准</button>
+              <button type="button" data-width="2px">2px 醒目</button>
+            </div>
           </div>
         </div>
       </section>
@@ -882,15 +915,11 @@
             <span class="nb-badge" id="nb-hist-status-badge">0 轮</span>
           </div>
           <div class="nb-inline-controls">
-            <label class="nb-switch-label" title="开启后允许在同项目（已确认归属的工作区）的历史会话中检索证据">
-              <input type="checkbox" id="nb-hist-cross-enabled" />
-              <span>启用同项目跨会话</span>
-            </label>
-            <button type="button" class="nb-help-q" aria-label="跨会话检索边界说明" data-tooltip-html="<b>同项目跨会话隔离规则</b><div class='nb-tip-sub'>• 默认关闭，仅检索当前会话<br>• 开启后仅按规范化工作区路径或有效 project_id 匹配同一项目会话（兼容 Windows/macOS），跨项目与无归属会话绝不混入<br>• 切换账号时自动递增 epoch 并清空旧视图</div>">?</button>
             <div class="nb-seg nb-hist-scope-seg" id="nb-hist-scope-seg" role="group" aria-label="检索范围">
               <button type="button" data-scope="session" class="active">当前会话</button>
-              <button type="button" data-scope="project" disabled title="请先勾选「启用同项目跨会话」">同项目历史</button>
+              <button type="button" data-scope="project" title="一步切换查看同项目工作区的历史会话（切号自动清空）">同项目历史</button>
             </div>
+            <button type="button" class="nb-help-q" aria-label="跨会话检索边界说明" data-tooltip-html="<b>同项目跨会话隔离规则</b><div class='nb-tip-sub'>• 默认处于「当前会话」，点击「同项目历史」一步开启并切换<br>• 仅按规范化工作区路径或有效 project_id 匹配同一项目会话（兼容 Windows/macOS），跨项目与无归属会话绝不混入<br>• 切换账号时自动递增 epoch 并清空旧视图</div>">?</button>
             <button type="button" class="nb-btn ghost nb-btn-sm" id="nb-btn-hist-sync" title="仅读取新增字节推进索引">↻ 增量同步</button>
             <button type="button" class="nb-btn ghost nb-btn-sm" id="nb-btn-hist-rebuild" title="清空并重建当前会话本地索引">⟳ 重建本会话</button>
           </div>
@@ -939,6 +968,10 @@
         </div>
         <div class="nb-hist-meta-bar">
           <span class="nb-muted" id="nb-hist-result-meta">本地 0 Token 检索 · 仅展示当前会话</span>
+          <div class="nb-inline-controls" style="gap:6px;">
+            <button type="button" class="nb-btn ghost nb-btn-sm" id="nb-btn-hist-toggle-all-days" style="display:none;" data-mode="collapse" title="一键展开或收起全部按天历史分组">▴ 全部收起</button>
+            <button type="button" class="nb-btn ghost nb-btn-sm nb-hist-smart-pick-btn" id="nb-btn-hist-smart-pick" title="纯本地 0 Token 确定性挑选：优先 ★ 收藏、工具实测与用户确认轮次，一键装入稳定前缀包">✨ 精选 3 条关键证据</button>
+          </div>
         </div>
 
         <!-- 稳定前缀摘录打包器（默认上限 3 条 / 1,200 UTF-8 字节） -->
