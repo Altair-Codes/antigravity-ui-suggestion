@@ -88,7 +88,8 @@
   "themeVars": {
     "--nb-fx-sidebar": "off",
     "--nb-fx-composer": "on",
-    "--nb-fx-brand": "on"
+    "--nb-fx-brand": "on",
+    "--nb-fx-popovers": "on"
   },
   "selectors": {
     "inputBoxId": "antigravity.agentSidePanelInputBox",

@@ -1,4 +1,4 @@
-# 引力中枢 (`gravity-hub` v2.2.2)
+# 引力中枢 (`gravity-hub` v2.2.3)
 
 **引力中枢 (Gravity Hub)** 是为 Google Antigravity 桌面端打造的原生插件与 Sidecar 驾驶舱，由 `Altair-Codes` 面向全中文研发场景构建（仓库：[`Altair-Codes/antigravity-ui-suggestion`](https://github.com/Altair-Codes/antigravity-ui-suggestion)）。
 

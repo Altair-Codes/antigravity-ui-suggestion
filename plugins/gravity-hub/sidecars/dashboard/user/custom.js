@@ -73,6 +73,13 @@ try {
         try { window.__nb_model_menu_obs_v2.disconnect(); } catch {}
         window.__nb_model_menu_obs_v2 = null;
       }
+      if (window.__nb_model_trigger_click_fn) {
+        try {
+          document.removeEventListener("pointerdown", window.__nb_model_trigger_click_fn, true);
+          document.removeEventListener("click", window.__nb_model_trigger_click_fn, true);
+        } catch {}
+        window.__nb_model_trigger_click_fn = null;
+      }
       if (window.__ag_slash_skill_i18n_observer) {
         try { window.__ag_slash_skill_i18n_observer.disconnect(); } catch {}
         window.__ag_slash_skill_i18n_observer = null;
@@ -144,12 +151,15 @@ try {
         "data-nb-sb-current-project",
         "data-nb-sb-ico",
         "data-nb-popover",
+        "data-nb-menu-surface",
+        "data-nb-pos-rel",
         "data-nb-native-rail-muted"
       ];
       const rootEl = document.documentElement;
       if (rootEl) {
         rootEl.removeAttribute("data-nb-fx-sidebar");
         rootEl.removeAttribute("data-nb-fx-composer");
+        rootEl.removeAttribute("data-nb-fx-popovers");
         rootEl.removeAttribute("data-nb-fx-brand");
       }
       if (window.__ag_sidebar_observer) {
@@ -967,11 +977,17 @@ try {
         '[role="menu"], [role="listbox"], [data-radix-menu-content], [data-radix-popper-content-wrapper]'
       )
     );
-    const visible = raw.filter((el) => isElementVisible(el));
-    const innerOnly = visible.filter(
-      (el) => !visible.some((other) => other !== el && el.contains(other))
+    const excludeSel =
+      '[data-mention-menu], [data-slash-menu], #antigravity\\.agentSidePanelInputBox, [data-testid*="mention"], [data-testid*="slash"], [data-testid*="autocomplete"]';
+    const visible = raw.filter(
+      (el) => el && isElementVisible(el) && !el.matches(excludeSel) && !el.closest(excludeSel)
     );
-    return innerOnly.filter((menu) => {
+    const matched = visible.filter((menu) => {
+      const rect = menu.getBoundingClientRect();
+      if (rect.width > 480 || rect.width < 140 || rect.height < 60) return false;
+      if (menu.querySelector("input, textarea")) return false;
+      const fullTxt = menu.textContent || "";
+      if (/Browse rules|Search conversations|扩展插件|项目规则|Context provider/i.test(fullTxt)) return false;
       const items = Array.from(
         menu.querySelectorAll('[role="menuitem"], [role="menuitemradio"], [role="option"], button')
       ).filter((row) => !row.closest('[data-nb-injected="1"]'));
@@ -980,11 +996,15 @@ try {
       let hasUsageItem = false;
       for (const row of items) {
         const lbl = getRawItemLabel(row);
-        if (/查看用量|view usage/i.test(lbl)) hasUsageItem = true;
-        else if (/gemini|claude|gpt-oss|编排器|orchestrator/i.test(lbl)) modelHits++;
+        if (/^(?:查看用量|view usage)$/i.test(lbl)) hasUsageItem = true;
+        else if (/^(?:编排器\s*)?(?:Gemini\s+\d|Claude\s+(?:Opus|Sonnet|Haiku)|GPT-?OSS|Orchestrator\b)/i.test(lbl)) modelHits++;
       }
-      return modelHits >= 2 || (modelHits >= 1 && hasUsageItem);
+      return (hasUsageItem && modelHits >= 1) || (modelHits >= 3 && rect.width <= 460 && !menu.querySelector("input"));
     });
+    // 先筛选模型菜单，再在已命中的模型菜单集合内去重，避免悬停展开子菜单时误丢弃父级模型菜单
+    return matched.filter(
+      (el) => !matched.some((other) => other !== el && el.contains(other))
+    );
   }
 
   function isModelMenuOpen() {
@@ -1061,191 +1081,48 @@ try {
   }
 
   function enhanceOpenModelMenu() {
+    // 清理菜单内所有额度头/行内额度徽章，仅保留主题底色与流光装饰
+    document.querySelectorAll(".nb-menu-qheader, .nb-menu-qbadge").forEach((el) => el.remove());
+
     const menus = findOpenModelMenus();
-    if (menus.length === 0) return;
+    const validSet = new Set(menus);
+    const staleTagged = document.querySelectorAll('[data-nb-menu-surface="model"]');
+    for (let i = 0; i < staleTagged.length; i++) {
+      if (!validSet.has(staleTagged[i])) {
+        staleTagged[i].removeAttribute("data-nb-menu-surface");
+      }
+    }
+    if (menus.length === 0) {
+      decorateUsageSubmenus();
+      return;
+    }
 
     if (isQuotaPopoverOpen()) hideQuotaPopover(true);
-    if (!quotaState.payload && !quotaState.inFlight) {
-      syncNativeModelQuotas(true);
-    }
-
-    const p = quotaState.payload;
-    const groups = Array.isArray(p?.groups) ? p.groups : [];
-    const activeGroup = pickActiveQuotaGroup(groups);
-    const burn = getGroupBurn(p?.email, activeGroup);
-
-    const headerSig = groups.length
-      ? `${p?.email || ""}|${burn.maxBurn}|${quotaState.updatedAt || 0}|` +
-        groups
-          .map((g) => `${g.key || g.label}:${g.weeklyPct ?? g.pct}:${g.fiveHourPct ?? ""}`)
-          .join(",")
-      : "syncing";
-
     for (const menu of menus) {
-      // 1) 顶部各池额度速览条
-      let header = menu.querySelector(".nb-menu-qheader");
-      if (!header) {
-        header = document.createElement("div");
-        header.className = "nb-menu-qheader";
-        header.setAttribute("data-nb-injected", "1");
-        const stopMenuClose = (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-        };
-        header.addEventListener("pointerdown", stopMenuClose);
-        header.addEventListener("mousedown", stopMenuClose);
-        header.addEventListener("click", (e) => {
-          stopMenuClose(e);
-          const refBtn = e.target.closest(".nb-menu-qrefresh");
-          if (refBtn) {
-            refBtn.classList.add("spinning");
-            syncNativeModelQuotas(true).finally(() => {
-              if (refBtn.isConnected) refBtn.classList.remove("spinning");
-            });
-          }
-        });
-
-        const firstChild = menu.firstElementChild;
-        const firstTxt = firstChild ? getRawItemLabel(firstChild) : "";
-        if (firstChild && /^(模型|Models?)$/i.test(firstTxt)) {
-          firstChild.insertAdjacentElement("afterend", header);
-        } else {
-          menu.prepend(header);
-        }
-      }
-
-      if (header.dataset.nbSig !== headerSig) {
-        header.dataset.nbSig = headerSig;
-        const chipsHtml =
-          groups.length > 0
-            ? groups
-                .map((g) => {
-                  const wPct =
-                    typeof g.weeklyPct === "number"
-                      ? Math.max(0, Math.min(100, Math.round(g.weeklyPct)))
-                      : typeof g.pct === "number"
-                      ? Math.round(g.pct)
-                      : null;
-                  const hPct =
-                    typeof g.fiveHourPct === "number"
-                      ? Math.max(0, Math.min(100, Math.round(g.fiveHourPct)))
-                      : null;
-                  const nums = [wPct, hPct].filter((v) => typeof v === "number");
-                  const minPct = nums.length ? Math.min(...nums) : null;
-                  const lvl = quotaLevelClass(minPct);
-                  const shortName = /argon/i.test(g.label || g.key || "")
-                    ? "Argon"
-                    : /claude|gpt|3p/i.test(g.label || g.key || "")
-                    ? "Claude/GPT"
-                    : "Gemini";
-                  const pctParts = [];
-                  if (wPct !== null) pctParts.push(`周 ${wPct}%`);
-                  if (hPct !== null) pctParts.push(`5h ${hPct}%`);
-                  const activeCls =
-                    activeGroup && (activeGroup.key || activeGroup.label) === (g.key || g.label)
-                      ? " is-active"
-                      : "";
-                  return `<span class="nb-menu-qchip ${lvl}${activeCls}">${escHtml(shortName)} <b>${escHtml(
-                    pctParts.join(" · ") || "--"
-                  )}</b></span>`;
-                })
-                .join("")
-            : `<span class="nb-menu-qchip">额度同步中...</span>`;
-        const burnHtml =
-          burn.maxBurn > 0 ? `<span class="nb-menu-qburn">-${burn.maxBurn}%</span>` : "";
-        header.innerHTML = `
-          <div class="nb-menu-qheader-pools">${chipsHtml}${burnHtml}</div>
-          <button type="button" class="nb-menu-qrefresh" title="刷新实时额度">↻</button>
-        `;
-      }
-
-      // 2) 每个模型行右侧周余徽章 + 查看用量行 5h 摘要
-      const rows = Array.from(
-        menu.querySelectorAll('[role="menuitem"], [role="menuitemradio"], [role="option"], button')
-      ).filter((row) => !row.closest('[data-nb-injected="1"]'));
-
-      for (const row of rows) {
-        const rawLabel = getRawItemLabel(row);
-        if (!rawLabel) continue;
-
-        if (/查看用量|view usage/i.test(rawLabel)) {
-          let txt = "同步中";
-          let lvl = "nb-q-ok";
-          let title = "正在同步实时剩余额度";
-          if (activeGroup) {
-            const wPct =
-              typeof activeGroup.weeklyPct === "number"
-                ? Math.round(activeGroup.weeklyPct)
-                : typeof activeGroup.pct === "number"
-                ? Math.round(activeGroup.pct)
-                : null;
-            const hPct =
-              typeof activeGroup.fiveHourPct === "number"
-                ? Math.round(activeGroup.fiveHourPct)
-                : null;
-            const nums = [wPct, hPct].filter((v) => typeof v === "number");
-            lvl = quotaLevelClass(nums.length ? Math.min(...nums) : null);
-            txt = hPct !== null ? `5h ${hPct}%` : wPct !== null ? `周 ${wPct}%` : "--";
-            title = `${activeGroup.label || "当前池"}：周余 ${wPct ?? "--"}% · 5h余 ${hPct ?? "--"}%`;
-          }
-          const sig = `usage|${txt}|${lvl}`;
-          let badge = row.querySelector(":scope > .nb-menu-qbadge");
-          if (!badge) {
-            badge = document.createElement("span");
-            badge.setAttribute("data-nb-injected", "1");
-          }
-          badge.className = `nb-menu-qbadge nb-menu-qbadge-usage ${lvl}`;
-          if (badge.dataset.nbSig !== sig) {
-            badge.dataset.nbSig = sig;
-            badge.textContent = txt;
-            badge.title = title;
-          }
-          placeInjectedMenuBadge(row, badge);
-          continue;
-        }
-
-        const matchedGroup = matchQuotaGroupForLabel(rawLabel, groups);
-        if (!matchedGroup) continue;
-
-        const wPct =
-          typeof matchedGroup.weeklyPct === "number"
-            ? Math.max(0, Math.min(100, Math.round(matchedGroup.weeklyPct)))
-            : typeof matchedGroup.pct === "number"
-            ? Math.round(matchedGroup.pct)
-            : null;
-        const hPct =
-          typeof matchedGroup.fiveHourPct === "number"
-            ? Math.max(0, Math.min(100, Math.round(matchedGroup.fiveHourPct)))
-            : null;
-        const nums = [wPct, hPct].filter((v) => typeof v === "number");
-        const lvl = quotaLevelClass(nums.length ? Math.min(...nums) : null);
-        const txt = wPct !== null ? `周 ${wPct}%` : hPct !== null ? `5h ${hPct}%` : "--";
-        const resetTxt = formatResetRemaining(matchedGroup.weeklyResetTime || matchedGroup.resetTime);
-        const title = `${matchedGroup.label || ""}：周余 ${wPct ?? "--"}% · 5h余 ${hPct ?? "--"}%${
-          resetTxt ? " · " + resetTxt : ""
-        }`;
-        const sig = `model|${txt}|${lvl}`;
-
-        let badge = row.querySelector(":scope > .nb-menu-qbadge");
-        if (!badge) {
-          badge = document.createElement("span");
-          badge.setAttribute("data-nb-injected", "1");
-        }
-        badge.className = `nb-menu-qbadge ${lvl}`;
-        if (badge.dataset.nbSig !== sig) {
-          badge.dataset.nbSig = sig;
-          badge.textContent = txt;
-          badge.title = title;
-        }
-        placeInjectedMenuBadge(row, badge);
+      if (menu.getAttribute?.("data-state") === "closed") continue;
+      menu.setAttribute("data-nb-menu-surface", "model");
+      if (getComputedStyle(menu).position === "static") {
+        menu.setAttribute("data-nb-pos-rel", "1");
       }
     }
+    const allMenus = document.querySelectorAll('[role="menu"], [data-radix-menu-content], [data-mention-menu]');
+    for (let i = 0; i < allMenus.length; i++) {
+      const m = allMenus[i];
+      if (!m || m.getAttribute?.("data-state") === "closed" || !isElementVisible(m)) continue;
+      if (getComputedStyle(m).position === "static") {
+        m.setAttribute("data-nb-pos-rel", "1");
+      }
+    }
+    decorateUsageSubmenus();
   }
 
   let menuEnhanceRaf = 0;
   function ensureModelMenuObserver() {
-    if (window.__nb_model_menu_obs_v2) return;
     if (typeof MutationObserver !== "function" || !document.body) return;
+    if (window.__nb_model_menu_obs_v2) {
+      try { window.__nb_model_menu_obs_v2.disconnect(); } catch {}
+      window.__nb_model_menu_obs_v2 = null;
+    }
     try {
       const obs = new MutationObserver((mutations) => {
         const onlySelf = mutations.every((m) => {
@@ -1253,6 +1130,10 @@ try {
           return t instanceof Element && Boolean(t.closest('[data-nb-injected="1"]'));
         });
         if (onlySelf) return;
+        if (hasMenuOrPopoverMutation(mutations)) {
+          enhanceOpenModelMenu();
+          decorateUsageSubmenus();
+        }
         if (menuEnhanceRaf) return;
         menuEnhanceRaf = requestAnimationFrame(() => {
           menuEnhanceRaf = 0;
@@ -1403,6 +1284,10 @@ try {
     showQuotaPopover,
     hideQuotaPopover,
     scheduleHideQuotaPopover,
+    enhanceOpenModelMenu,
+    ensureModelMenuObserver,
+    matchQuotaGroupForLabel,
+    decorateUsageSubmenus,
     isQuotaPopoverOpen: () => isQuotaPopoverOpen(),
     syncQuota: (force) => syncNativeModelQuotas(force)
   };
@@ -2118,6 +2003,7 @@ try {
       window.__NB_QUOTA_UI__.syncComposerResponsiveLayout = scheduleSolve;
       window.__NB_QUOTA_UI__.triggerPaneMorph = triggerPaneMorph;
       window.__NB_QUOTA_UI__.enhanceOpenModelMenu = enhanceOpenModelMenu;
+      window.__NB_QUOTA_UI__.ensureModelMenuObserver = ensureModelMenuObserver;
       window.__NB_QUOTA_UI__.matchQuotaGroupForLabel = matchQuotaGroupForLabel;
     }
 
@@ -2450,6 +2336,7 @@ try {
       if (!isSuiteActive()) {
         root.removeAttribute("data-nb-fx-sidebar");
         root.removeAttribute("data-nb-fx-composer");
+        root.removeAttribute("data-nb-fx-popovers");
         root.removeAttribute("data-nb-fx-brand");
         return;
       }
@@ -2458,10 +2345,12 @@ try {
       const rawComp = st.getPropertyValue("--nb-fx-composer").trim();
       const glowPlay = st.getPropertyValue("--nb-glow-play-state").trim();
       const compFx = rawComp === "off" || (!rawComp && glowPlay === "paused") ? "off" : "on";
+      const popFx = st.getPropertyValue("--nb-fx-popovers").trim() === "off" ? "off" : "on";
       const brandFx = st.getPropertyValue("--nb-fx-brand").trim() === "off" ? "off" : "on";
 
       if (root.getAttribute("data-nb-fx-sidebar") !== sbFx) root.setAttribute("data-nb-fx-sidebar", sbFx);
       if (root.getAttribute("data-nb-fx-composer") !== compFx) root.setAttribute("data-nb-fx-composer", compFx);
+      if (root.getAttribute("data-nb-fx-popovers") !== popFx) root.setAttribute("data-nb-fx-popovers", popFx);
       if (root.getAttribute("data-nb-fx-brand") !== brandFx) root.setAttribute("data-nb-fx-brand", brandFx);
     } catch {}
   }
@@ -2776,6 +2665,17 @@ try {
     if (imgMatch) return `${imgMatch[1]} 张图片附件`;
     const attMatch = t.match(/^(\d+)\s+(?:file\s+)?attachments?$/i);
     if (attMatch) return `${attMatch[1]} 个附件`;
+    const resetsMatch = t.match(/^Resets?\s+in\s+(.+)$/i);
+    if (resetsMatch) {
+      let rest = resetsMatch[1].trim();
+      rest = rest
+        .replace(/(\d+)\s*d(?:ays?)?/gi, "$1 天")
+        .replace(/(\d+)\s*h(?:ours?|rs?)?/gi, "$1 小时")
+        .replace(/(\d+)\s*m(?:in(?:utes?)?)?/gi, "$1 分钟")
+        .replace(/\s+/g, " ")
+        .trim();
+      return `${rest}后重置`;
+    }
     if (/^Updated\s+just\s+now$/i.test(t)) return "刚刚更新";
     if (/^Updated\s+yesterday$/i.test(t)) return "昨天更新";
     const updMatch = t.match(/^Updated\s+(.+)$/i);
@@ -2828,8 +2728,105 @@ try {
     return isSelfVisual ? rootEl : null;
   }
 
+  function findMenuCardBox(rootEl, depth) {
+    if (!rootEl || depth > 5) return null;
+    if (rootEl.id === "ag-live-metrics-tooltip" || rootEl.id === "nb-live-quota-popover" || rootEl.id === "root" || rootEl.id === "app") {
+      return null;
+    }
+    const rect = rootEl.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return null;
+
+    const inSize = rect.width >= 160 && rect.width <= 520 && rect.height >= 80 && rect.height <= 540;
+    const isSelfVisual = inSize && hasVisibleBoxSurface(rootEl);
+
+    const children = rootEl.children;
+    for (let i = 0; i < children.length && i < 4; i++) {
+      const found = findMenuCardBox(children[i], depth + 1);
+      if (found) {
+        if (!isSelfVisual) return found;
+        const fRect = found.getBoundingClientRect();
+        if (fRect.width >= rect.width * 0.75 && fRect.height >= rect.height * 0.75) {
+          return found;
+        }
+      }
+    }
+
+    return isSelfVisual ? rootEl : null;
+  }
+
+  function decorateUsageSubmenus() {
+    if (!isSuiteActive() || !document.body) return;
+    try {
+      const zhOn = typeof document !== "undefined" && (!window.__AG_LAST_PATCH_CTX__?.config?.language || window.__AG_LAST_PATCH_CTX__.config.language === "zh-CN");
+      const raw = Array.from(
+        document.querySelectorAll(
+          '[role="menu"], [role="listbox"], [data-radix-menu-content], [data-radix-popper-content-wrapper], [data-radix-popper-content-wrapper] > [data-side], [data-side], [data-floating-ui-portal] > div, body > div'
+        )
+      );
+      const hits = [];
+      for (let i = 0; i < raw.length; i++) {
+        const el = raw[i];
+        if (!el || el.id === "ag-live-metrics-tooltip" || el.id === "nb-live-quota-popover" || el.id === "root" || el.id === "app") continue;
+        if (el.getAttribute?.("data-state") === "closed") continue;
+        if (el.getAttribute?.("data-nb-menu-surface") === "model") continue;
+        if (el.closest?.('[data-nb-sidebar="1"], #ag-live-metrics-tooltip, #nb-live-quota-popover')) continue;
+        const txt = (el.textContent || "").trim();
+        if (/查看用量|View usage|Gemini 4 Neon/i.test(txt)) continue;
+        if (!/每周限额|5\s*小时限额|Weekly limit|5-?hour limit|后重置|Resets?\s+in/i.test(txt)) continue;
+        const r = el.getBoundingClientRect();
+        if (r.width < 160 || r.width > 520 || r.height < 80 || r.height > 540) continue;
+        const box = findMenuCardBox(el, 0) || el;
+        const br = box.getBoundingClientRect();
+        if (br.width >= 160 && br.width <= 520 && br.height >= 80 && br.height <= 540) {
+          hits.push(box);
+        }
+      }
+      const uniqueInner = hits.filter((a) => !hits.some((b) => a !== b && a.contains(b)));
+      for (let i = 0; i < uniqueInner.length; i++) {
+        const box = uniqueInner[i];
+        let p = box.parentElement;
+        while (p && p !== document.body) {
+          if (p.getAttribute?.("data-nb-menu-surface") === "usage") {
+            p.removeAttribute("data-nb-menu-surface");
+          }
+          p = p.parentElement;
+        }
+        if (box.getAttribute("data-nb-menu-surface") !== "usage") {
+          box.setAttribute("data-nb-menu-surface", "usage");
+        }
+        if (getComputedStyle(box).position === "static") {
+          box.setAttribute("data-nb-pos-rel", "1");
+        }
+        const innerEls = box.querySelectorAll("*");
+        for (let k = 0; k < innerEls.length; k++) {
+          const ch = innerEls[k];
+          if (!ch || !ch.style || ch.tagName === "svg" || ch.closest?.("svg")) continue;
+          if (ch.style.background || ch.style.backgroundColor) {
+            ch.style.setProperty("background", "transparent", "important");
+            ch.style.setProperty("background-color", "transparent", "important");
+          }
+        }
+        if (zhOn && typeof document.createTreeWalker === "function") {
+          const walker = document.createTreeWalker(box, NodeFilter.SHOW_TEXT);
+          let tn;
+          while ((tn = walker.nextNode())) {
+            const rawVal = tn.nodeValue || "";
+            const trimmed = rawVal.trim();
+            if (!trimmed) continue;
+            const zh = translateDynamicPopoverText(trimmed);
+            if (zh && trimmed !== zh) {
+              const nextVal = rawVal.replace(trimmed, zh);
+              if (tn.nodeValue !== nextVal) tn.nodeValue = nextVal;
+            }
+          }
+        }
+      }
+    } catch {}
+  }
+
   function decorateHostPopoversAndI18n() {
     if (!isSuiteActive() || !document.body) return;
+    decorateUsageSubmenus();
     try {
       const zhOn = typeof document !== "undefined" && (!window.__AG_LAST_PATCH_CTX__?.config?.language || window.__AG_LAST_PATCH_CTX__.config.language === "zh-CN");
       const candidates = new Set();
@@ -2905,6 +2902,9 @@ try {
           (rect.height >= 54 || /\bUpdated\b|更新于|刚刚更新|昨天更新/i.test(txt) || pop.querySelectorAll("svg").length >= 2);
         const kind = isHoverCard ? "hover-card" : "tooltip";
         if (pop.getAttribute("data-nb-popover") !== kind) pop.setAttribute("data-nb-popover", kind);
+        if (kind === "hover-card" && getComputedStyle(pop).position === "static") {
+          pop.setAttribute("data-nb-pos-rel", "1");
+        }
 
         const innerEls = pop.querySelectorAll("*");
         for (let k = 0; k < innerEls.length; k++) {
@@ -2972,34 +2972,99 @@ try {
       sidebarRafPending = false;
       decorateLeftSidebarDom();
       decorateHostPopoversAndI18n();
+      window.__NB_QUOTA_UI__?.enhanceOpenModelMenu?.();
     });
   }
 
+  function hasMenuOrPopoverMutation(mutations) {
+    if (!Array.isArray(mutations)) return false;
+    const menuSel = '[role="menu"], [role="listbox"], [data-radix-menu-content], [data-radix-popper-content-wrapper], [data-side]';
+    for (let i = 0; i < mutations.length; i++) {
+      const m = mutations[i];
+      if (m.type === "attributes") {
+        const t = m.target;
+        if (t instanceof Element && (t.getAttribute("data-state") === "open" || t.getAttribute("aria-expanded") === "true") && (t.matches(menuSel) || t.querySelector?.(menuSel) || t.getAttribute("data-testid") === "model-selector-trigger")) {
+          return true;
+        }
+        continue;
+      }
+      if (m.addedNodes && m.addedNodes.length > 0) {
+        for (let j = 0; j < m.addedNodes.length; j++) {
+          const n = m.addedNodes[j];
+          if (!(n instanceof Element)) continue;
+          if (n.closest?.('[data-nb-injected="1"]')) continue;
+          if (n.matches(menuSel) || n.querySelector?.(menuSel)) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  }
+
   function ensureSidebarObserver() {
-    if (window.__ag_sidebar_obs_v1 || typeof MutationObserver !== "function" || !document.body) return;
+    window.__NB_QUOTA_UI__?.ensureModelMenuObserver?.();
+    if (typeof MutationObserver !== "function" || !document.body) return;
     window.__ag_sidebar_obs_v1 = true;
     try {
       if (window.__ag_sidebar_observer) {
         try { window.__ag_sidebar_observer.disconnect(); } catch {}
+        window.__ag_sidebar_observer = null;
       }
-      const sbObs = new MutationObserver(() => {
-        if (isSuiteActive()) scheduleDecorateSidebar();
+      const sbObs = new MutationObserver((mutations) => {
+        if (!isSuiteActive()) return;
+        if (hasMenuOrPopoverMutation(mutations)) {
+          window.__NB_QUOTA_UI__?.enhanceOpenModelMenu?.();
+          decorateUsageSubmenus();
+        }
+        scheduleDecorateSidebar();
       });
       sbObs.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["class", "style", "aria-current", "aria-expanded", "data-active", "data-selected", "data-state"] });
       window.__ag_sidebar_observer = sbObs;
 
-      if (!window.__ag_sidebar_hover_fn) {
-        let lastHoverTs = 0;
-        const onPointerOver = () => {
-          if (!isSuiteActive()) return;
-          const now = Date.now();
-          if (now - lastHoverTs < 60) return;
-          lastHoverTs = now;
-          scheduleDecorateSidebar();
-        };
-        document.body.addEventListener("pointerover", onPointerOver, { passive: true });
-        window.__ag_sidebar_hover_fn = onPointerOver;
+      if (window.__ag_sidebar_hover_fn) {
+        try { document.body.removeEventListener("pointerover", window.__ag_sidebar_hover_fn); } catch {}
+        window.__ag_sidebar_hover_fn = null;
       }
+      let lastHoverTs = 0;
+      const onPointerOver = () => {
+        if (!isSuiteActive()) return;
+        const now = Date.now();
+        if (now - lastHoverTs < 60) return;
+        lastHoverTs = now;
+        scheduleDecorateSidebar();
+      };
+      document.body.addEventListener("pointerover", onPointerOver, { passive: true });
+      window.__ag_sidebar_hover_fn = onPointerOver;
+
+      if (window.__nb_model_trigger_click_fn) {
+        try {
+          document.removeEventListener("pointerdown", window.__nb_model_trigger_click_fn, true);
+          document.removeEventListener("click", window.__nb_model_trigger_click_fn, true);
+        } catch {}
+        window.__nb_model_trigger_click_fn = null;
+      }
+      const onMenuTriggerInteract = (e) => {
+        if (!isSuiteActive()) return;
+        const target = e.target instanceof Element ? e.target : null;
+        if (!target) return;
+        if (
+          target.closest('[data-testid="model-selector-trigger"]') ||
+          target.closest('[role="menuitem"]')
+        ) {
+          Promise.resolve().then(() => {
+            window.__NB_QUOTA_UI__?.enhanceOpenModelMenu?.();
+            decorateUsageSubmenus();
+          });
+          requestAnimationFrame(() => {
+            window.__NB_QUOTA_UI__?.enhanceOpenModelMenu?.();
+            decorateUsageSubmenus();
+          });
+        }
+      };
+      document.addEventListener("pointerdown", onMenuTriggerInteract, true);
+      document.addEventListener("click", onMenuTriggerInteract, true);
+      window.__nb_model_trigger_click_fn = onMenuTriggerInteract;
     } catch {}
   }
 

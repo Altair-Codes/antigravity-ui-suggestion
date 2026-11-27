@@ -468,9 +468,10 @@ test("UI Polish: seamless scope toggle, smart-pick, readable fallback title, and
 
     assert.equal(cfgJson.themeVars["--nb-fx-sidebar"], "off");
     assert.equal(cfgJson.themeVars["--nb-fx-composer"], "on");
+    assert.equal(cfgJson.themeVars["--nb-fx-popovers"], "on");
     assert.equal(cfgJson.themeVars["--nb-fx-brand"], "on");
 
-    for (const id of ["nb-fx-sidebar-enabled", "nb-fx-composer-enabled", "nb-fx-brand-enabled"]) {
+    for (const id of ["nb-fx-sidebar-enabled", "nb-fx-composer-enabled", "nb-fx-popovers-enabled", "nb-fx-brand-enabled"]) {
       assert.ok(htmlSrc.includes(id), `index.html missing ${id}`);
       assert.ok(appJs.includes(id), `app.js missing ${id}`);
     }
@@ -478,6 +479,7 @@ test("UI Polish: seamless scope toggle, smart-pick, readable fallback title, and
 
     assert.match(cJs, /function syncUiEffectsFromThemeVars\(/);
     assert.match(cJs, /function decorateLeftSidebarDom\(/);
+    assert.match(cJs, /function decorateUsageSubmenus\(/);
     assert.ok(cJs.includes('data-testid="conversation-row-sidebar"'), "custom.js must match conversation-row-sidebar");
     for (const role of ["nav-group", "workspace-group", "conv-time", "conv-actions", "account-footer"]) {
       assert.ok(cJs.includes(`"${role}"`), `custom.js missing role ${role}`);
@@ -486,10 +488,29 @@ test("UI Polish: seamless scope toggle, smart-pick, readable fallback title, and
       "data-nb-sidebar", "data-nb-sb-role", "data-nb-sb-kind",
       "data-nb-sb-active", "data-nb-sb-open", "data-nb-sb-has-active",
       "data-nb-sb-current-project", "data-nb-sb-ico", "data-nb-popover",
-      "data-nb-fx-sidebar", "data-nb-fx-composer", "data-nb-fx-brand"
+      "data-nb-menu-surface",
+      "data-nb-fx-sidebar", "data-nb-fx-composer", "data-nb-fx-popovers", "data-nb-fx-brand"
     ]) {
       assert.ok(cJs.includes(`"${attr}"`), `custom.js stripAttrs missing ${attr}`);
     }
+    assert.ok(cCss.includes("--nb-theme-flow-stops"), "custom.css missing --nb-theme-flow-stops");
+    assert.ok(cCss.includes('html[data-nb-fx-popovers="on"]'), "custom.css missing html[data-nb-fx-popovers=\"on\"]");
+    assert.ok(cCss.includes("conic-gradient(from var(--gemini-angle), var(--ai-stops-loop))"), "custom.css must unify flowing border palette with composer --ai-stops-loop");
+    assert.ok(cCss.includes('html body [role="menu"][role="menu"][role="menu"]'), "custom.css must apply high-specificity 0ms base surface directly to [role=\"menu\"]");
+    assert.ok(cCss.includes('html body [data-mention-menu][data-mention-menu][data-mention-menu]'), "custom.css must apply high-specificity 0ms base surface and ring directly to [data-mention-menu]");
+    assert.ok(cCss.includes("--nb-sb-hover-bg"), "custom.css must sync menu item hover highlight with preset --nb-sb-hover-bg");
+    assert.ok(cCss.includes("[data-radix-popper-content-wrapper] > [role=\"menu\"]"), "custom.css must apply 0ms base surface directly to Radix menu wrapper child");
+    assert.ok(cCss.includes("mask-composite: exclude"), "custom.css must render Radix menu/popover ring via ::before mask-composite");
+    assert.ok(cCss.includes(':not([data-state="closed"])::before'), "custom.css must gate Radix ::before flowing ring with :not([data-state=\"closed\"])");
+    assert.match(cCss, /\[data-nb-menu-surface="model"\][\s\S]*background:\s*var\(--nb-sb-bg\)/);
+    assert.match(cCss, /\[data-nb-menu-surface="usage"\][\s\S]*background:\s*var\(--nb-sb-bg\)/);
+    assert.match(cJs, /function findMenuCardBox\(/);
+    assert.match(cJs, /function hasMenuOrPopoverMutation\(/);
+    assert.match(cJs, /findOpenModelMenus[\s\S]*data-mention-menu[\s\S]*matched\.filter\(/);
+    assert.match(cJs, /window\.__NB_QUOTA_UI__\s*=\s*\{[\s\S]*enhanceOpenModelMenu[\s\S]*ensureModelMenuObserver/);
+    assert.doesNotMatch(cJs, /header\.className\s*=\s*"nb-menu-qheader"/);
+    assert.ok(cJs.includes('setAttribute("data-nb-menu-surface", "model")'), "custom.js must retain model menu theme surface tagging");
+    assert.ok(cJs.includes('"data-nb-pos-rel"'), "custom.js stripAttrs and layout guards must include data-nb-pos-rel");
     assert.match(cJs, /function decorateHostPopoversAndI18n\(/);
     assert.match(cJs, /function findFloatingBox\(/);
     assert.ok(cJs.includes("document.body.children"), "custom.js must scan document.body.children portals");

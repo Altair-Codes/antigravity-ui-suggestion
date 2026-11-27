@@ -68,6 +68,7 @@
   --nb-sb-icon: color-mix(in srgb, var(--muted-foreground, #8d97ab) 92%, transparent);
   --nb-sb-icon-hover: color-mix(in srgb, var(--primary, #8ab4f8) 80%, var(--foreground, #ffffff));
   --nb-sb-icon-active: var(--primary, #8ab4f8);
+  --nb-theme-flow-stops: var(--ai-stops-loop);
 }
 
 /* 渐进增强：在支持 CSS Color 4 的内核中进一步启用原生 OKLab 亚像素插值 */
@@ -2527,6 +2528,7 @@ html:not([data-ag-color-scheme="dark"]) {
   --nb-sb-icon: color-mix(in srgb, var(--muted-foreground, #5f6368) 92%, transparent);
   --nb-sb-icon-hover: var(--primary, #1a73e8);
   --nb-sb-icon-active: var(--primary, #1a73e8);
+  --nb-theme-flow-stops: var(--ai-stops-loop);
 }
 
 /* 13.1 主容器单一连续表面 + 低对比 1px 右侧边线（内部容器透明以绝不切色） */
@@ -3010,17 +3012,45 @@ html:not([data-ag-color-scheme="dark"]) body [data-nb-popover="hover-card"][data
  * 14. 三级 UI 特效开关样式层（模块化控制，跟随当前预设主色调）
  * ============================================================================ */
 
-/* 14.1 左侧栏特效开启态（默认关闭，开启后按当前预设主色补充轻柔描边与微内发光） */
+/* 14.1 左侧栏特效开启态（默认关闭，开启后与输入框统一使用 Gemini 五色 OKLab 无缝流光描边） */
+[data-nb-pos-rel="1"] {
+  position: relative !important;
+}
 html[data-nb-fx-sidebar="on"] [data-nb-sidebar="1"] [data-nb-sb-role="new-chat"] {
-  border-color: color-mix(in srgb, var(--primary, #8ab4f8) 46%, transparent) !important;
-  box-shadow: 0 4px 14px -6px color-mix(in srgb, var(--primary, #4285F4) 40%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.10) !important;
+  border: 1.5px solid transparent !important;
+  background-color: transparent !important;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--primary, #8ab4f8) 15%, var(--nb-sb-bg)) 0%, color-mix(in srgb, var(--nb-sb-accent-2, #c58af9) 11%, var(--nb-sb-bg)) 100%) padding-box,
+    conic-gradient(from var(--gemini-angle), var(--ai-stops-loop)) border-box !important;
+  animation: geminiFluidSpin var(--nb-glow-speed, 5.8s) linear infinite !important;
+  animation-play-state: running !important;
+  box-shadow: 0 4px 16px -6px color-mix(in srgb, var(--primary, #4285F4) 42%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.10) !important;
 }
 html[data-nb-fx-sidebar="on"] [data-nb-sidebar="1"] [data-nb-sb-role="new-chat"]:hover {
-  box-shadow: 0 6px 18px -5px color-mix(in srgb, var(--primary, #4285F4) 50%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.14) !important;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--primary, #8ab4f8) 22%, var(--nb-sb-bg)) 0%, color-mix(in srgb, var(--nb-sb-accent-2, #c58af9) 16%, var(--nb-sb-bg)) 100%) padding-box,
+    conic-gradient(from var(--gemini-angle), var(--ai-stops-loop)) border-box !important;
+  box-shadow: 0 6px 20px -5px color-mix(in srgb, var(--primary, #4285F4) 52%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.14) !important;
 }
 html[data-nb-fx-sidebar="on"] [data-nb-sidebar="1"] [data-nb-sb-role="nav-item"][data-nb-sb-active="1"],
-html[data-nb-fx-sidebar="on"] [data-nb-sidebar="1"] [data-nb-sb-role="conv-row"][data-nb-sb-active="1"] {
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 4px 14px -6px color-mix(in srgb, var(--primary, #4285F4) 38%, transparent) !important;
+html[data-nb-fx-sidebar="on"] [data-nb-sidebar="1"] [data-nb-sb-role="conv-row"][data-nb-sb-active="1"],
+html[data-nb-fx-sidebar="on"] [data-nb-sidebar="1"] [data-nb-sb-role="conv-row"][data-nb-sb-active="1"]:hover {
+  border: 1.5px solid transparent !important;
+  background-color: transparent !important;
+  background:
+    linear-gradient(90deg, var(--nb-sb-selected-solid) 0%, color-mix(in srgb, var(--nb-sb-accent-2, var(--primary, #c58af9)) 14%, var(--nb-sb-bg)) 55%, var(--nb-sb-selected-solid) 100%) padding-box,
+    conic-gradient(from var(--gemini-angle), var(--ai-stops-loop)) border-box !important;
+  animation: geminiFluidSpin var(--nb-glow-speed, 5.8s) linear infinite !important;
+  animation-play-state: running !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 4px 16px -6px color-mix(in srgb, var(--primary, #4285F4) 40%, transparent) !important;
+}
+html:not([data-ag-color-scheme="dark"])[data-nb-fx-sidebar="on"] [data-nb-sidebar="1"] [data-nb-sb-role="new-chat"],
+html:not([data-ag-color-scheme="dark"])[data-nb-fx-sidebar="on"] [data-nb-sidebar="1"] [data-nb-sb-role="nav-item"][data-nb-sb-active="1"],
+html:not([data-ag-color-scheme="dark"])[data-nb-fx-sidebar="on"] [data-nb-sidebar="1"] [data-nb-sb-role="conv-row"][data-nb-sb-active="1"] {
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--primary, #1a73e8) 12%, #ffffff) 0%, color-mix(in srgb, var(--nb-sb-accent-2, #7627bb) 8%, #ffffff) 100%) padding-box,
+    conic-gradient(from var(--gemini-angle), var(--ai-stops-loop)) border-box !important;
+  box-shadow: 0 4px 14px -6px color-mix(in srgb, var(--primary, #1a73e8) 28%, transparent) !important;
 }
 
 /* 14.2 输出对话框特效关闭态（默认开启；关闭后停止旋转彩环/呼吸发光，切换为静态冷色边框） */
@@ -3072,6 +3102,202 @@ html[data-nb-fx-brand="off"] [data-mention-menu],
 html[data-nb-fx-brand="off"] #nb-live-quota-popover,
 html[data-nb-fx-brand="off"] #ag-suite-update-toast {
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45) !important;
+}
+
+/* 14.4 模型/用量/子菜单统一 20 套预设主题基底 & Gemini 五色流光开关 (--nb-fx-popovers，默认开启)
+ * 注意：
+ * 1) 使用高权重重复属性选择器覆盖原生 [role="menu"] / [data-radix-menu-content] / [data-mention-menu]，悬停展开任何二级子菜单都不会回退到原生暖灰；
+ * 2) 仅对 [data-radix-popper-content-wrapper] 子节点或 JS 确认 static 后标记 [data-nb-pos-rel="1"] 的节点设 relative，绝不覆盖通用 [role="menu"] 原生 fixed/absolute 定位；
+ * 3) Radix Presence 节点严禁在本体直接挂 infinite animation，统一在 ::before 遮罩环上渲染流光并用 :not([data-state="closed"]) 保护关闭卸载链路。 */
+html body [data-radix-popper-content-wrapper] > [role="menu"],
+html body [data-radix-popper-content-wrapper] > [data-radix-menu-content] {
+  position: relative !important;
+}
+html body [role="menu"][role="menu"][role="menu"],
+html body [data-radix-menu-content][data-radix-menu-content][data-radix-menu-content],
+html body [data-mention-menu][data-mention-menu][data-mention-menu],
+html body [data-nb-menu-surface="model"][data-nb-menu-surface][data-nb-menu-surface],
+html body [data-nb-menu-surface="usage"][data-nb-menu-surface][data-nb-menu-surface] {
+  --card: var(--nb-sb-bg) !important;
+  --popover: var(--nb-sb-bg) !important;
+  --background: var(--nb-sb-bg) !important;
+  --secondary: var(--nb-sb-bg) !important;
+  --muted: var(--nb-sb-bg) !important;
+  --color-card: var(--nb-sb-bg) !important;
+  --color-popover: var(--nb-sb-bg) !important;
+  --color-background: var(--nb-sb-bg) !important;
+  --onyx-popover: var(--nb-sb-bg) !important;
+  --onyx-surface: var(--nb-sb-bg) !important;
+  --onyx-well: var(--nb-sb-bg) !important;
+  --accent: var(--nb-sb-hover-bg) !important;
+  --accent-foreground: var(--nb-sb-fg-primary) !important;
+  --popover-foreground: var(--nb-sb-fg-primary) !important;
+  background: var(--nb-sb-bg) !important;
+  background-color: var(--nb-sb-bg) !important;
+  color: var(--nb-sb-fg-primary) !important;
+  border: 1px solid var(--nb-sb-border-selected) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 16px 40px -8px rgba(0, 0, 0, 0.62), 0 0 22px -6px color-mix(in srgb, var(--primary, #4285F4) 26%, transparent) !important;
+  backdrop-filter: blur(16px) !important;
+}
+html:not([data-ag-color-scheme="dark"]) body [role="menu"][role="menu"][role="menu"],
+html:not([data-ag-color-scheme="dark"]) body [data-radix-menu-content][data-radix-menu-content][data-radix-menu-content],
+html:not([data-ag-color-scheme="dark"]) body [data-mention-menu][data-mention-menu][data-mention-menu],
+html:not([data-ag-color-scheme="dark"]) body [data-nb-menu-surface="model"][data-nb-menu-surface][data-nb-menu-surface],
+html:not([data-ag-color-scheme="dark"]) body [data-nb-menu-surface="usage"][data-nb-menu-surface][data-nb-menu-surface] {
+  background: var(--nb-sb-bg) !important;
+  background-color: var(--nb-sb-bg) !important;
+  box-shadow: 0 12px 30px -6px rgba(15, 23, 42, 0.16), 0 0 16px -6px color-mix(in srgb, var(--primary, #1a73e8) 18%, transparent) !important;
+}
+html body [role="menu"][role="menu"][role="menu"] > div:not([role="menuitem"]):not([role="menuitemradio"]):not([role="option"]):not([role="separator"]),
+html body [data-radix-menu-content][data-radix-menu-content][data-radix-menu-content] > div:not([role="menuitem"]):not([role="menuitemradio"]):not([role="option"]):not([role="separator"]) {
+  background-color: transparent !important;
+}
+html body [data-nb-menu-surface="usage"][data-nb-menu-surface][data-nb-menu-surface] *:not(svg):not(svg *) {
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+}
+html body [role="menu"][role="menu"][role="menu"] [role="menuitem"]:hover,
+html body [role="menu"][role="menu"][role="menu"] [role="menuitem"][data-highlighted],
+html body [role="menu"][role="menu"][role="menu"] [role="menuitem"][data-state="open"],
+html body [role="menu"][role="menu"][role="menu"] [role="menuitemradio"]:hover,
+html body [role="menu"][role="menu"][role="menu"] [role="menuitemradio"][data-highlighted],
+html body [role="menu"][role="menu"][role="menu"] [role="option"]:hover,
+html body [role="menu"][role="menu"][role="menu"] [role="option"][data-highlighted],
+html body [data-radix-menu-content][data-radix-menu-content][data-radix-menu-content] [role="menuitem"]:hover,
+html body [data-radix-menu-content][data-radix-menu-content][data-radix-menu-content] [role="menuitem"][data-highlighted],
+html body [data-radix-menu-content][data-radix-menu-content][data-radix-menu-content] [role="menuitem"][data-state="open"],
+html body [data-radix-menu-content][data-radix-menu-content][data-radix-menu-content] [role="menuitemradio"]:hover,
+html body [data-radix-menu-content][data-radix-menu-content][data-radix-menu-content] [role="menuitemradio"][data-highlighted] {
+  background: var(--nb-sb-hover-bg) !important;
+  background-color: var(--nb-sb-hover-bg) !important;
+  color: var(--nb-sb-fg-primary) !important;
+}
+html body [role="menu"][role="menu"][role="menu"] [role="separator"],
+html body [data-radix-menu-content][data-radix-menu-content][data-radix-menu-content] [role="separator"] {
+  background-color: var(--nb-sb-divider) !important;
+  border-color: var(--nb-sb-divider) !important;
+}
+
+/* Radix 菜单/浮卡通过 ::before 遮罩环绘制 Gemini 五色流光，绝不阻断 Radix 关闭动画卸载 */
+html[data-nb-fx-popovers="on"] body [role="menu"][role="menu"][role="menu"]:not([data-state="closed"]),
+html[data-nb-fx-popovers="on"] body [data-radix-menu-content][data-radix-menu-content][data-radix-menu-content]:not([data-state="closed"]),
+html[data-nb-fx-popovers="on"] body [data-mention-menu][data-mention-menu][data-mention-menu]:not([data-state="closed"]),
+html[data-nb-fx-popovers="on"] body [data-nb-menu-surface="model"][data-nb-menu-surface][data-nb-menu-surface]:not([data-state="closed"]),
+html[data-nb-fx-popovers="on"] body [data-nb-menu-surface="usage"][data-nb-menu-surface][data-nb-menu-surface]:not([data-state="closed"]),
+html[data-nb-fx-popovers="on"] body [data-nb-popover="hover-card"][data-nb-popover]:not([data-state="closed"]) {
+  border-color: transparent !important;
+  box-shadow: 0 16px 40px -8px rgba(0, 0, 0, 0.62), 0 0 22px -6px color-mix(in srgb, var(--primary, #4285F4) 30%, transparent) !important;
+}
+html:not([data-ag-color-scheme="dark"])[data-nb-fx-popovers="on"] body [role="menu"][role="menu"][role="menu"]:not([data-state="closed"]),
+html:not([data-ag-color-scheme="dark"])[data-nb-fx-popovers="on"] body [data-radix-menu-content][data-radix-menu-content][data-radix-menu-content]:not([data-state="closed"]),
+html:not([data-ag-color-scheme="dark"])[data-nb-fx-popovers="on"] body [data-mention-menu][data-mention-menu][data-mention-menu]:not([data-state="closed"]),
+html:not([data-ag-color-scheme="dark"])[data-nb-fx-popovers="on"] body [data-nb-menu-surface="model"][data-nb-menu-surface][data-nb-menu-surface]:not([data-state="closed"]),
+html:not([data-ag-color-scheme="dark"])[data-nb-fx-popovers="on"] body [data-nb-menu-surface="usage"][data-nb-menu-surface][data-nb-menu-surface]:not([data-state="closed"]),
+html:not([data-ag-color-scheme="dark"])[data-nb-fx-popovers="on"] body [data-nb-popover="hover-card"][data-nb-popover]:not([data-state="closed"]) {
+  box-shadow: 0 12px 30px -6px rgba(15, 23, 42, 0.16), 0 0 16px -6px color-mix(in srgb, var(--primary, #1a73e8) 22%, transparent) !important;
+}
+html[data-nb-fx-popovers="on"] body [role="menu"][role="menu"][role="menu"]:not([data-state="closed"])::before,
+html[data-nb-fx-popovers="on"] body [data-radix-menu-content][data-radix-menu-content][data-radix-menu-content]:not([data-state="closed"])::before,
+html[data-nb-fx-popovers="on"] body [data-mention-menu][data-mention-menu][data-mention-menu]:not([data-state="closed"])::before,
+html[data-nb-fx-popovers="on"] body [data-nb-menu-surface="model"][data-nb-menu-surface][data-nb-menu-surface]:not([data-state="closed"])::before,
+html[data-nb-fx-popovers="on"] body [data-nb-menu-surface="usage"][data-nb-menu-surface][data-nb-menu-surface]:not([data-state="closed"])::before,
+html[data-nb-fx-popovers="on"] body [data-nb-popover="hover-card"][data-nb-popover]:not([data-state="closed"])::before {
+  content: "" !important;
+  position: absolute !important;
+  inset: 0 !important;
+  padding: 1.5px !important;
+  border-radius: inherit !important;
+  background: conic-gradient(from var(--gemini-angle), var(--ai-stops-loop)) !important;
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0) !important;
+  -webkit-mask-composite: xor !important;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0) !important;
+  mask-composite: exclude !important;
+  pointer-events: none !important;
+  z-index: 5 !important;
+  animation: geminiFluidSpin var(--nb-glow-speed, 5.8s) linear infinite !important;
+  animation-play-state: running !important;
+}
+
+/* 非 Radix 自绘遥测/额度浮窗继续直接渲染双图层 Gemini 五色流光 */
+html[data-nb-fx-popovers="on"] #ag-live-metrics-tooltip[id],
+html[data-nb-fx-popovers="on"] #nb-live-quota-popover[id] {
+  border: 1.5px solid transparent !important;
+  background-color: transparent !important;
+  background:
+    linear-gradient(155deg, color-mix(in srgb, var(--primary, #8ab4f8) 10%, var(--nb-sb-bg)) 0%, var(--nb-sb-bg) 58%, color-mix(in srgb, var(--nb-sb-accent-2, #c58af9) 9%, var(--nb-sb-bg)) 100%) padding-box,
+    conic-gradient(from var(--gemini-angle), var(--ai-stops-loop)) border-box !important;
+  animation: geminiFluidSpin var(--nb-glow-speed, 5.8s) linear infinite !important;
+  animation-play-state: running !important;
+  box-shadow: 0 16px 40px -8px rgba(0, 0, 0, 0.62), 0 0 22px -6px color-mix(in srgb, var(--primary, #4285F4) 30%, transparent) !important;
+}
+html:not([data-ag-color-scheme="dark"])[data-nb-fx-popovers="on"] #ag-live-metrics-tooltip[id],
+html:not([data-ag-color-scheme="dark"])[data-nb-fx-popovers="on"] #nb-live-quota-popover[id] {
+  background:
+    linear-gradient(155deg, color-mix(in srgb, var(--primary, #1a73e8) 6%, var(--nb-sb-bg)) 0%, var(--nb-sb-bg) 100%) padding-box,
+    conic-gradient(from var(--gemini-angle), var(--ai-stops-loop)) border-box !important;
+  box-shadow: 0 12px 30px -6px rgba(15, 23, 42, 0.16), 0 0 16px -6px color-mix(in srgb, var(--primary, #1a73e8) 22%, transparent) !important;
+}
+@supports (background: conic-gradient(from 0deg in oklab, #4285F4, #34A853)) {
+  html[data-nb-fx-sidebar="on"] [data-nb-sidebar="1"] [data-nb-sb-role="new-chat"],
+  html[data-nb-fx-sidebar="on"] [data-nb-sidebar="1"] [data-nb-sb-role="new-chat"]:hover {
+    background:
+      linear-gradient(135deg, color-mix(in srgb, var(--primary, #8ab4f8) 16%, var(--nb-sb-bg)) 0%, color-mix(in srgb, var(--nb-sb-accent-2, #c58af9) 12%, var(--nb-sb-bg)) 100%) padding-box,
+      conic-gradient(from var(--gemini-angle) in oklab, var(--ai-stops-loop)) border-box !important;
+  }
+  html[data-nb-fx-sidebar="on"] [data-nb-sidebar="1"] [data-nb-sb-role="nav-item"][data-nb-sb-active="1"],
+  html[data-nb-fx-sidebar="on"] [data-nb-sidebar="1"] [data-nb-sb-role="conv-row"][data-nb-sb-active="1"],
+  html[data-nb-fx-sidebar="on"] [data-nb-sidebar="1"] [data-nb-sb-role="conv-row"][data-nb-sb-active="1"]:hover {
+    background:
+      linear-gradient(90deg, var(--nb-sb-selected-solid) 0%, color-mix(in srgb, var(--nb-sb-accent-2, var(--primary, #c58af9)) 14%, var(--nb-sb-bg)) 55%, var(--nb-sb-selected-solid) 100%) padding-box,
+      conic-gradient(from var(--gemini-angle) in oklab, var(--ai-stops-loop)) border-box !important;
+  }
+  html[data-nb-fx-popovers="on"] body [role="menu"][role="menu"][role="menu"]:not([data-state="closed"])::before,
+  html[data-nb-fx-popovers="on"] body [data-radix-menu-content][data-radix-menu-content][data-radix-menu-content]:not([data-state="closed"])::before,
+  html[data-nb-fx-popovers="on"] body [data-mention-menu][data-mention-menu][data-mention-menu]:not([data-state="closed"])::before,
+  html[data-nb-fx-popovers="on"] body [data-nb-menu-surface="model"][data-nb-menu-surface][data-nb-menu-surface]:not([data-state="closed"])::before,
+  html[data-nb-fx-popovers="on"] body [data-nb-menu-surface="usage"][data-nb-menu-surface][data-nb-menu-surface]:not([data-state="closed"])::before,
+  html[data-nb-fx-popovers="on"] body [data-nb-popover="hover-card"][data-nb-popover]:not([data-state="closed"])::before {
+    background: conic-gradient(from var(--gemini-angle) in oklab, var(--ai-stops-loop)) !important;
+  }
+  html[data-nb-fx-popovers="on"] #ag-live-metrics-tooltip[id],
+  html[data-nb-fx-popovers="on"] #nb-live-quota-popover[id] {
+    background:
+      linear-gradient(155deg, color-mix(in srgb, var(--primary, #8ab4f8) 10%, var(--nb-sb-bg)) 0%, var(--nb-sb-bg) 58%, color-mix(in srgb, var(--nb-sb-accent-2, #c58af9) 9%, var(--nb-sb-bg)) 100%) padding-box,
+      conic-gradient(from var(--gemini-angle) in oklab, var(--ai-stops-loop)) border-box !important;
+  }
+  html:not([data-ag-color-scheme="dark"])[data-nb-fx-popovers="on"] #ag-live-metrics-tooltip[id],
+  html:not([data-ag-color-scheme="dark"])[data-nb-fx-popovers="on"] #nb-live-quota-popover[id] {
+    background:
+      linear-gradient(155deg, color-mix(in srgb, var(--primary, #1a73e8) 6%, var(--nb-sb-bg)) 0%, var(--nb-sb-bg) 100%) padding-box,
+      conic-gradient(from var(--gemini-angle) in oklab, var(--ai-stops-loop)) border-box !important;
+  }
+}
+html[data-nb-fx-popovers="off"] #ag-live-metrics-tooltip[id],
+html[data-nb-fx-popovers="off"] #nb-live-quota-popover[id] {
+  animation: none !important;
+}
+html[data-nb-fx-popovers="off"] body [role="menu"][role="menu"][role="menu"]::before,
+html[data-nb-fx-popovers="off"] body [data-radix-menu-content][data-radix-menu-content][data-radix-menu-content]::before,
+html[data-nb-fx-popovers="off"] body [data-mention-menu][data-mention-menu][data-mention-menu]::before,
+html[data-nb-fx-popovers="off"] body [data-nb-menu-surface="model"][data-nb-menu-surface][data-nb-menu-surface]::before,
+html[data-nb-fx-popovers="off"] body [data-nb-menu-surface="usage"][data-nb-menu-surface][data-nb-menu-surface]::before,
+html[data-nb-fx-popovers="off"] body [data-nb-popover="hover-card"][data-nb-popover]::before {
+  content: none !important;
+  animation: none !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  html[data-nb-fx-sidebar="on"] [data-nb-sidebar="1"] [data-nb-sb-role],
+  html[data-nb-fx-popovers="on"] #ag-live-metrics-tooltip[id],
+  html[data-nb-fx-popovers="on"] #nb-live-quota-popover[id],
+  html[data-nb-fx-popovers="on"] body [role="menu"][role="menu"][role="menu"]::before,
+  html[data-nb-fx-popovers="on"] body [data-radix-menu-content][data-radix-menu-content][data-radix-menu-content]::before,
+  html[data-nb-fx-popovers="on"] body [data-mention-menu][data-mention-menu][data-mention-menu]::before,
+  html[data-nb-fx-popovers="on"] body [data-nb-menu-surface]::before,
+  html[data-nb-fx-popovers="on"] body [data-nb-popover="hover-card"][data-nb-popover]::before {
+    animation: none !important;
+  }
 }
 
 

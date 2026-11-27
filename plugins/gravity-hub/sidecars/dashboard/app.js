@@ -2541,16 +2541,19 @@
         const composerFxOn = tv["--nb-fx-composer"]
           ? tv["--nb-fx-composer"] !== "off"
           : tv["--nb-glow-play-state"] !== "paused";
+        const popoversFxOn = tv["--nb-fx-popovers"] !== "off";
         const brandFxOn = tv["--nb-fx-brand"] !== "off";
 
         document.documentElement.dataset.nbFxBrand = brandFxOn ? "on" : "off";
 
         const sbFxEl = document.getElementById("nb-fx-sidebar-enabled");
         const compFxEl = document.getElementById("nb-fx-composer-enabled");
+        const popFxEl = document.getElementById("nb-fx-popovers-enabled");
         const brandFxEl = document.getElementById("nb-fx-brand-enabled");
         const compParamsEl = document.getElementById("nb-composer-fx-params");
         if (sbFxEl) sbFxEl.checked = sidebarFxOn;
         if (compFxEl) compFxEl.checked = composerFxOn;
+        if (popFxEl) popFxEl.checked = popoversFxOn;
         if (brandFxEl) brandFxEl.checked = brandFxOn;
         if (compParamsEl) compParamsEl.classList.toggle("is-dimmed", !composerFxOn);
 
@@ -2872,6 +2875,14 @@
             }
       },
       on ? "已开启输出对话框五色动态流光特效" : "已关闭输出对话框动态流光（切换为素净边框）"
+    );
+  });
+
+  document.getElementById("nb-fx-popovers-enabled")?.addEventListener("change", (e) => {
+    const on = Boolean(e.currentTarget.checked);
+    patchConfig(
+      { themeVars: { "--nb-fx-popovers": on ? "on" : "off" } },
+      on ? "已开启浮窗与菜单主题流光特效" : "已关闭浮窗动态流光（保留统一玻璃底色与 1px 静态边框）"
     );
   });
 

@@ -1,7 +1,7 @@
 ﻿$ErrorActionPreference = "Stop"
 $Here = Split-Path -Parent $MyInvocation.MyCommand.Path
 
-Write-Host "🚀 正在安装 Antigravity 引力套件 (Gravity Suite v2.2.2 · 纯 Node.js 全中文三扩展 Windows)..." -ForegroundColor Cyan
+Write-Host "🚀 正在安装 Antigravity 引力套件 (Gravity Suite v2.2.3 · 纯 Node.js 全中文三扩展 Windows)..." -ForegroundColor Cyan
 
 $nodeCmd = Get-Command "node" -ErrorAction SilentlyContinue
 if (-not $nodeCmd) {
@@ -183,4 +183,4 @@ $agLogs = Join-Path $env:APPDATA "Antigravity\logs"
 Write-Host "  • 启动日志路径: $bootLog" -ForegroundColor Gray
 Write-Host "  • 客户端日志目录: $agLogs" -ForegroundColor Gray
 
-Write-Host "`n✅ 引力套件 (Gravity Suite v2.2.2) 安装完成！现在只需关闭一次 Antigravity 窗口，全量汉化与 Gemini 五色流光即刻生效！" -ForegroundColor Green
+Write-Host "`n✅ 引力套件 (Gravity Suite v2.2.3) 安装完成！现在只需关闭一次 Antigravity 窗口，全量汉化与 Gemini 五色流光即刻生效！" -ForegroundColor Green
