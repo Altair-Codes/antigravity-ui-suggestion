@@ -101,6 +101,29 @@ function writeJsonSafe(filePath, obj) {
   fs.writeFileSync(filePath, JSON.stringify(obj, null, 2) + "\n", "utf8");
 }
 
+export function getSafeExecCwd() {
+  for (const candidate of [os.tmpdir(), os.homedir()]) {
+    try {
+      if (candidate && fs.existsSync(candidate) && fs.statSync(candidate).isDirectory()) {
+        return candidate;
+      }
+    } catch {}
+  }
+  return process.platform === "win32" ? "C:\\" : "/";
+}
+
+function ensureValidProcessCwd() {
+  try {
+    const cur = process.cwd();
+    if (cur && fs.existsSync(cur)) return cur;
+  } catch {}
+  const safe = getSafeExecCwd();
+  try {
+    process.chdir(safe);
+  } catch {}
+  return safe;
+}
+
 function detectSystemProxyEnv() {
   const proxy = {
     HTTP_PROXY: process.env.HTTP_PROXY || process.env.http_proxy || "",
@@ -117,7 +140,7 @@ function detectSystemProxyEnv() {
 
   if (process.platform === "darwin") {
     try {
-      const out = execFileSync("scutil", ["--proxy"], { encoding: "utf8", timeout: 2000, stdio: ["ignore", "pipe", "ignore"] });
+      const out = execFileSync("scutil", ["--proxy"], { cwd: getSafeExecCwd(), encoding: "utf8", timeout: 2000, stdio: ["ignore", "pipe", "ignore"] });
       const getVal = (key) => {
         const m = out.match(new RegExp(`^\\s*${key}\\s*:\\s*(.+)$`, "m"));
         return m ? m[1].trim() : "";
@@ -145,7 +168,7 @@ function detectSystemProxyEnv() {
       const out = execFileSync(
         "reg",
         ["query", "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings"],
-        { encoding: "utf8", timeout: 2000, windowsHide: true, stdio: ["ignore", "pipe", "ignore"] }
+        { cwd: getSafeExecCwd(), encoding: "utf8", timeout: 2000, windowsHide: true, stdio: ["ignore", "pipe", "ignore"] }
       );
       const enMatch = out.match(/ProxyEnable\s+REG_DWORD\s+0x([0-9a-f]+)/i);
       const srvMatch = out.match(/ProxyServer\s+REG_SZ\s+(.+)/i);
@@ -201,7 +224,7 @@ function resolveAgyCliPath() {
   try {
     const cmd = process.platform === "win32" ? "where.exe" : "which";
     const arg = process.platform === "win32" ? "agy.exe" : "agy";
-    const out = execFileSync(cmd, [arg], { encoding: "utf8", timeout: 2000, stdio: ["ignore", "pipe", "ignore"] }).trim();
+    const out = execFileSync(cmd, [arg], { cwd: getSafeExecCwd(), encoding: "utf8", timeout: 2000, stdio: ["ignore", "pipe", "ignore"] }).trim();
     const first = out.split(/\r?\n/)[0]?.trim();
     if (first && fs.existsSync(first)) return first;
   } catch {}
@@ -389,7 +412,7 @@ async function fetchRemoteVersionJson(branch = DEFAULT_UPDATE_BRANCH) {
       execFile(
         process.platform === "win32" ? "curl.exe" : "curl",
         ["-fsSL", "--max-time", "4", `${remoteUrl}?t=${Date.now()}`],
-        { encoding: "utf8", env: childEnv, timeout: 4500, windowsHide: true },
+        { cwd: getSafeExecCwd(), encoding: "utf8", env: childEnv, timeout: 4500, windowsHide: true },
         (err, stdout) => {
           if (err) reject(err);
           else resolve(stdout);
@@ -424,6 +447,7 @@ export function initSuiteExtensions({
   reloadHostWindow,
   disableThemeBeforeUninstall
 }) {
+  ensureValidProcessCwd();
   const appDataDir = process.env.ANTIGRAVITY_APP_DATA_DIR || path.join(os.homedir(), ".gemini", "antigravity");
   const bootLogFile = path.join(appDataDir, "sidecar_data", "gravity-suite-boot.log");
   function appendHubBootLog(msg) {
@@ -1342,7 +1366,7 @@ export function initSuiteExtensions({
   }
 
   function getLocalVersionInfo() {
-    const fallback = { version: "2.2.0", publishedAt: "", repoUrl: REPO_URL, branch: DEFAULT_UPDATE_BRANCH, highlights: [] };
+    const fallback = { version: "2.2.1", publishedAt: "", repoUrl: REPO_URL, branch: DEFAULT_UPDATE_BRANCH, highlights: [] };
     const fromData = readJsonSafe(versionFile, null);
     if (fromData && fromData.version) return { ...fallback, ...fromData };
     const fromSeed = readJsonSafe(path.join(pluginRoot, "sidecars", "dashboard", "user", "suite-version.json"), null);
@@ -1400,6 +1424,8 @@ export function initSuiteExtensions({
       return { ok: false, error: "正在同步更新中，请稍候..." };
     }
     updateInProgress = true;
+    const safeCwd = getSafeExecCwd();
+    ensureValidProcessCwd();
     const local = getLocalVersionInfo();
     const branch = String(local.branch || DEFAULT_UPDATE_BRANCH).trim() || DEFAULT_UPDATE_BRANCH;
     const tmpDir = path.join(os.tmpdir(), `ag-ui-sync-${Date.now()}`);
@@ -1411,7 +1437,7 @@ export function initSuiteExtensions({
 
     try {
       await new Promise((resolve, reject) => {
-        execFile("git", ["clone", "--depth", "1", "--branch", branch, REPO_GIT_URL, tmpDir], { env: gitEnv, timeout: 45000, windowsHide: true }, (err, stdout, stderr) => {
+        execFile("git", ["clone", "--depth", "1", "--branch", branch, REPO_GIT_URL, tmpDir], { cwd: safeCwd, env: gitEnv, timeout: 45000, windowsHide: true }, (err, stdout, stderr) => {
           if (err) reject(new Error(stderr || err.message));
           else resolve(stdout);
         });
@@ -1449,7 +1475,11 @@ export function initSuiteExtensions({
         log: String(output).slice(-800)
       };
     } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+      const msg = err instanceof Error ? err.message : String(err);
+      const hint = msg.includes("Unable to read current working directory")
+        ? "（当前 Sidecar 工作目录已失效，请重启一次 Antigravity 或在仓库目录执行一次 bash install-mac.sh 后重试）"
+        : "";
+      return { ok: false, error: `${msg}${hint}` };
     } finally {
       updateInProgress = false;
       try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
@@ -1685,6 +1715,7 @@ export function initSuiteExtensions({
     try {
       const appBin = path.join(appPath, "Contents", "MacOS", "Antigravity");
       const out = execFileSync("/bin/ps", ["-axo", "pid=,command="], {
+        cwd: getSafeExecCwd(),
         encoding: "utf8",
         timeout: 2000,
         stdio: ["ignore", "pipe", "ignore"]
@@ -1720,7 +1751,7 @@ export function initSuiteExtensions({
       // 进程完全脱离 Antigravity / language_server 进程树，避免退出瞬间被连带杀掉导致无法重开或竞态闪退
       if (fs.existsSync(launcherApp)) {
         const openArgs = ["-g", "-n", "-a", launcherApp, "--args", oldPid ? `--relaunch-pid=${oldPid}` : "--relaunch"];
-        const child = spawn("/usr/bin/open", openArgs, { detached: true, stdio: "ignore" });
+        const child = spawn("/usr/bin/open", openArgs, { cwd: getSafeExecCwd(), detached: true, stdio: "ignore" });
         child.unref();
         return { ok: true, platform: "darwin", appPath, launcherApp, oldPid };
       }
@@ -1737,13 +1768,14 @@ done
 sleep 1
 /usr/bin/open -a "${appPath}" --args --remote-debugging-port=0
 `;
-      const child = spawn("/usr/bin/nohup", ["/bin/sh", "-c", sh], { detached: true, stdio: "ignore" });
+      const child = spawn("/usr/bin/nohup", ["/bin/sh", "-c", sh], { cwd: getSafeExecCwd(), detached: true, stdio: "ignore" });
       child.unref();
       return { ok: true, platform: "darwin", appPath, oldPid };
     }
     if (process.platform === "win32") {
       const ps = `Start-Sleep -Milliseconds 600; $p=(Get-Process -Name Antigravity -ErrorAction SilentlyContinue | Select-Object -First 1).Path; Stop-Process -Name Antigravity -ErrorAction SilentlyContinue; Start-Sleep -Milliseconds 1200; if ($p) { Start-Process -FilePath $p -ArgumentList '--remote-debugging-port=0' }`;
       const child = spawn("powershell.exe", ["-NoProfile", "-WindowStyle", "Hidden", "-Command", ps], {
+        cwd: getSafeExecCwd(),
         detached: true,
         stdio: "ignore",
         windowsHide: true
@@ -1808,7 +1840,7 @@ sleep 1
         runningExe = execFileSync(
           "powershell.exe",
           ["-NoProfile", "-Command", "(Get-Process -Name Antigravity -ErrorAction SilentlyContinue | Select-Object -First 1).Path"],
-          { encoding: "utf8", timeout: 2500, windowsHide: true, stdio: ["ignore", "pipe", "ignore"] }
+          { cwd: getSafeExecCwd(), encoding: "utf8", timeout: 2500, windowsHide: true, stdio: ["ignore", "pipe", "ignore"] }
         ).trim();
         if (runningExe) candidates.push(path.join(path.dirname(runningExe), "resources", "app.asar"));
       } catch {}
@@ -1876,7 +1908,7 @@ sleep 1
       const out = execFileSync(
         "powershell.exe",
         ["-NoProfile", "-EncodedCommand", encoded],
-        { encoding: "utf8", timeout: 3000, windowsHide: true, stdio: ["ignore", "pipe", "ignore"] }
+        { cwd: getSafeExecCwd(), encoding: "utf8", timeout: 3000, windowsHide: true, stdio: ["ignore", "pipe", "ignore"] }
       );
       return out.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
     } catch {
@@ -1900,6 +1932,7 @@ sleep 1
     try {
       const encoded = Buffer.from(ps, "utf16le").toString("base64");
       execFileSync("powershell.exe", ["-NoProfile", "-EncodedCommand", encoded], {
+        cwd: getSafeExecCwd(),
         timeout: 3000,
         windowsHide: true,
         stdio: "ignore"
@@ -2121,7 +2154,7 @@ ${rmLines}
 ${restoreLine}
 ${relaunchLine}
 `;
-      const child = spawn("/usr/bin/nohup", ["/bin/sh", "-c", sh], { detached: true, stdio: "ignore" });
+      const child = spawn("/usr/bin/nohup", ["/bin/sh", "-c", sh], { cwd: getSafeExecCwd(), detached: true, stdio: "ignore" });
       child.unref();
       return true;
     }
@@ -2149,6 +2182,7 @@ ${relaunchLine}
       ].filter(Boolean).join("\n");
       const encoded = Buffer.from(lines, "utf16le").toString("base64");
       const child = spawn("powershell.exe", ["-NoProfile", "-WindowStyle", "Hidden", "-EncodedCommand", encoded], {
+        cwd: getSafeExecCwd(),
         detached: true,
         stdio: "ignore",
         windowsHide: true

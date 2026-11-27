@@ -370,3 +370,51 @@ test("v2.2.0 Retrieval Accuracy: 12 positive query classes = 100% recall, 0 fals
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("v2.2.1 One-Click Update & Installer In-Place Sync: guards deleted cwd", async () => {
+  const { execFileSync } = await import("node:child_process");
+  const { getSafeExecCwd } = await import("../plugins/gravity-hub/sidecars/dashboard/suite-extensions.mjs");
+
+  const safeCwd = getSafeExecCwd();
+  assert.ok(safeCwd && fs.existsSync(safeCwd), "getSafeExecCwd must return an existing directory");
+
+  // 1. 静态断言：suite-extensions.mjs 对 git clone 显式传入 cwd 且导出 getSafeExecCwd
+  const extSrc = fs.readFileSync(path.resolve("plugins/gravity-hub/sidecars/dashboard/suite-extensions.mjs"), "utf8");
+  assert.match(extSrc, /export function getSafeExecCwd\(/);
+  assert.match(extSrc, /execFile\("git",\s*\["clone",\s*"--depth",\s*"1",\s*"--branch",\s*branch,\s*REPO_GIT_URL,\s*tmpDir\],\s*\{\s*cwd:\s*safeCwd/);
+
+  // 2. 静态断言：install-mac.sh / install-win.ps1 采用原地同步，避免删除运行中 Sidecar 目录 inode
+  const macSh = fs.readFileSync(path.resolve("install-mac.sh"), "utf8");
+  assert.match(macSh, /rsync -a --delete "\$HERE\/plugins\/\$p\/" "\$PLUGINS_DST\/\$p\/"/);
+  assert.doesNotMatch(macSh, /rm -rf "\$PLUGINS_DST\/\$p"/);
+
+  const winPs1 = fs.readFileSync(path.resolve("install-win.ps1"), "utf8");
+  assert.match(winPs1, /Copy-Item -Path \(Join-Path \$src "\*"\) -Destination \$dst -Recurse -Force/);
+  assert.doesNotMatch(winPs1, /Remove-Item -Recurse -Force \$dst/);
+
+  // 3. 行为测试：在独立子进程中删除当前 cwd 后，验证传 getSafeExecCwd() 执行 git --version 与 ensureValidProcessCwd 恢复均成功
+  const probeScript = `
+    import fs from "node:fs";
+    import os from "node:os";
+    import path from "node:path";
+    import { execFileSync } from "node:child_process";
+    import { getSafeExecCwd, initSuiteExtensions } from ${JSON.stringify(path.resolve("plugins/gravity-hub/sidecars/dashboard/suite-extensions.mjs"))};
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "ag-dead-cwd-"));
+    const deadDir = path.join(root, "dead-cwd");
+    const dataDir = path.join(root, "data");
+    fs.mkdirSync(deadDir, { recursive: true });
+    fs.mkdirSync(dataDir, { recursive: true });
+    process.chdir(deadDir);
+    fs.rmSync(deadDir, { recursive: true, force: true });
+    const gitOut = execFileSync("git", ["--version"], { cwd: getSafeExecCwd(), encoding: "utf8" }).trim();
+    const ext = initSuiteExtensions({ dataDir, pluginRoot: root });
+    ext.closeBridge();
+    const restoredCwd = process.cwd();
+    fs.rmSync(root, { recursive: true, force: true });
+    console.log(JSON.stringify({ gitOut, restoredOk: fs.existsSync(restoredCwd) }));
+  `;
+  const raw = execFileSync(process.execPath, ["--input-type=module", "-e", probeScript], { encoding: "utf8" }).trim();
+  const parsed = JSON.parse(raw);
+  assert.match(parsed.gitOut, /^git version /);
+  assert.equal(parsed.restoredOk, true);
+});

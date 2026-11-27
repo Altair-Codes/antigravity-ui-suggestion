@@ -2,7 +2,7 @@
 set -e
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-echo "🚀 正在安装 Antigravity 引力套件 (Gravity Suite v2.2.0 · 纯 Node.js 全中文三扩展)..."
+echo "🚀 正在安装 Antigravity 引力套件 (Gravity Suite v2.2.1 · 纯 Node.js 全中文三扩展)..."
 
 NODE_BIN="$(command -v node || true)"
 if [ -z "$NODE_BIN" ] && [ -d "$HOME/.nvm/versions/node" ]; then
@@ -59,10 +59,14 @@ rm -rf \
   "/Applications/Antigravity Aura.app" \
   "/Applications/Antigravity Nebula.app"
 
-# 1. 安装全自研纯 Node.js 三扩展（引力中枢 / 引力目录 / 引力文库）
+# 1. 安装全自研纯 Node.js 三扩展（引力中枢 / 引力目录 / 引力文库）—— 原地同步以保留运行中 Sidecar 目录 inode
 for p in gravity-hub gravity-explorer gravity-vault; do
-  rm -rf "$PLUGINS_DST/$p"
-  cp -R "$HERE/plugins/$p" "$PLUGINS_DST/$p"
+  mkdir -p "$PLUGINS_DST/$p"
+  if command -v rsync >/dev/null 2>&1; then
+    rsync -a --delete "$HERE/plugins/$p/" "$PLUGINS_DST/$p/"
+  else
+    cp -R "$HERE/plugins/$p/." "$PLUGINS_DST/$p/"
+  fi
 done
 
 # 2. 同步 Google Gemini 四色流体流光主题、零遮挡遥测舱与双语汉化配置到全部数据目录
@@ -131,7 +135,7 @@ cat > "$LAUNCHER/Contents/Info.plist" <<'PLIST'
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
-  <string>2.2.0</string>
+  <string>2.2.1</string>
   <key>CFBundleVersion</key>
   <string>7</string>
   <key>LSMinimumSystemVersion</key>
@@ -231,4 +235,4 @@ if [ -f "$HOME/.zshrc" ] && ! grep -q '\.local/bin' "$HOME/.zshrc" 2>/dev/null; 
   printf '\n# Antigravity CLI (agy)\nexport PATH="$HOME/.local/bin:$PATH"\n' >> "$HOME/.zshrc"
 fi
 
-echo "✅ 引力套件 (Gravity Suite v2.2.0) 安装完成！请完全退出 Antigravity (Cmd + Q) 并通过 Antigravity Gravity.app 重新打开。"
+echo "✅ 引力套件 (Gravity Suite v2.2.1) 安装完成！请完全退出 Antigravity (Cmd + Q) 并通过 Antigravity Gravity.app 重新打开。"

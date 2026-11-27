@@ -1,7 +1,7 @@
 ﻿$ErrorActionPreference = "Stop"
 $Here = Split-Path -Parent $MyInvocation.MyCommand.Path
 
-Write-Host "🚀 正在安装 Antigravity 引力套件 (Gravity Suite v2.2.0 · 纯 Node.js 全中文三扩展 Windows)..." -ForegroundColor Cyan
+Write-Host "🚀 正在安装 Antigravity 引力套件 (Gravity Suite v2.2.1 · 纯 Node.js 全中文三扩展 Windows)..." -ForegroundColor Cyan
 
 $nodeCmd = Get-Command "node" -ErrorAction SilentlyContinue
 if (-not $nodeCmd) {
@@ -45,12 +45,12 @@ foreach ($oldP in @("aura-dashboard", "nebula-hub", "workspace-file-tree", "file
   if (Test-Path $oldPath) { Remove-Item -Recurse -Force $oldPath }
 }
 
-# 1. 复制安装全自研纯 Node.js 3 扩展（引力中枢 / 引力目录 / 引力文库）
+# 1. 复制安装全自研纯 Node.js 3 扩展（引力中枢 / 引力目录 / 引力文库）—— 原地覆盖以避免占用目录句柄导致删除失败
 foreach ($p in @("gravity-hub", "gravity-explorer", "gravity-vault")) {
   $src = Join-Path $Here "plugins\$p"
   $dst = Join-Path $PluginsDst $p
-  if (Test-Path $dst) { Remove-Item -Recurse -Force $dst }
-  Copy-Item -Recurse -Force $src $dst
+  New-Item -ItemType Directory -Force -Path $dst | Out-Null
+  Copy-Item -Path (Join-Path $src "*") -Destination $dst -Recurse -Force
 }
 
 # 2. 同步 Google Gemini 四色流体流光主题、零遮挡遥测舱与全量汉化配置到全部候选目录
@@ -183,4 +183,4 @@ $agLogs = Join-Path $env:APPDATA "Antigravity\logs"
 Write-Host "  • 启动日志路径: $bootLog" -ForegroundColor Gray
 Write-Host "  • 客户端日志目录: $agLogs" -ForegroundColor Gray
 
-Write-Host "`n✅ 引力套件 (Gravity Suite v2.2.0) 安装完成！现在只需关闭一次 Antigravity 窗口，全量汉化与 Gemini 五色流光即刻生效！" -ForegroundColor Green
+Write-Host "`n✅ 引力套件 (Gravity Suite v2.2.1) 安装完成！现在只需关闭一次 Antigravity 窗口，全量汉化与 Gemini 五色流光即刻生效！" -ForegroundColor Green
